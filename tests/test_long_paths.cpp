@@ -45,15 +45,6 @@ namespace {
 // Fifty characters, so a few of them nest past the limit.
 const std::wstring kSegment = L"A Very Long Chart Pack Folder Name For Testing 0001";
 
-std::wstring long_tail(int segments) {
-    std::wstring tail;
-    for (int i = 0; i < segments; ++i) {
-        if (i) tail += L"\\";
-        tail += kSegment;
-    }
-    return tail;
-}
-
 // A fresh scratch folder (testtemp::temp_dir; the root, short) with a folder
 // nested more than 300 characters deep inside it. Both removed at the end of
 // the test.
@@ -87,38 +78,55 @@ void copy_file_to(const std::string& from_utf8, const std::string& to_utf8) {
 const std::string kChartDir = corpus::root() + "/common/IB24/T1/Allister - Overrated";
 const std::string kOpus = testaudio::fixture_path("sine220.opus");
 
+// What the Preview opens for the chart at `notes`, read for Expert Pro Drums.
+hydra::app::PreviewSource preview_of(const std::string& notes) {
+    return hydra::app::resolve_preview_source(
+        notes, hydra::ChartReading{hydra::Difficulty::Expert, true, false, false},
+        hydra::core::default_rules(), hydra::kTestFillRule);
+}
+
 }  // namespace
 
+// A corpus chart's own paths: the full one the scan hands the file calls, and
+// the folder-and-file part a path relative to the library folder holds.
 TEST_CASE("win32_path leaves a short path as it is") {
-    CHECK(hydra::win32_path(std::wstring(L"C:\\Songs\\notes.mid")) == L"C:\\Songs\\notes.mid");
-    CHECK(hydra::win32_path(std::string("relative\\notes.mid")) == L"relative\\notes.mid");
+    const std::string notes = kChartDir + "/notes.mid";
+    const std::wstring wnotes = hydra::utf8_to_wide(notes);
+    CHECK(hydra::win32_path(wnotes) == wnotes);
+    CHECK(hydra::win32_path(notes) == wnotes);
+    const std::wstring relative = (fs::path(wnotes).parent_path().filename() / L"notes.mid").native();
+    CHECK(hydra::win32_path(relative) == relative);
     CHECK(hydra::win32_path(std::wstring()) == L"");
 }
 
+// A real folder nested past 300 characters on this machine's scratch drive.
 TEST_CASE("win32_path prefixes a long path and makes it full") {
-    const std::wstring tail = long_tail(6);  // 305 characters
-    CHECK(hydra::win32_path(L"C:\\" + tail) == L"\\\\?\\C:\\" + tail);
+    LongDir dir("prefix");
+    const std::wstring deep = hydra::utf8_to_wide(dir.deep);
+    REQUIRE_FALSE(hydra::fits_shell(deep));  // past the shell's limit, so past the plain one too
+    const std::wstring prefixed = L"\\\\?\\" + deep;
+    CHECK(hydra::win32_path(deep) == prefixed);
 
     // Under the prefix Windows takes '/' and ".." literally, so they are
     // resolved before it goes on.
-    std::wstring slashed = L"C:/" + tail + L"/sub/../notes.mid";
+    std::wstring slashed = deep + L"/sub/../notes.mid";
     for (wchar_t& c : slashed)
         if (c == L'\\') c = L'/';
-    CHECK(hydra::win32_path(slashed) == L"\\\\?\\C:\\" + tail + L"\\notes.mid");
+    CHECK(hydra::win32_path(slashed) == prefixed + L"\\notes.mid");
 
-    // A network share gets the UNC form of the prefix.
-    CHECK(hydra::win32_path(L"\\\\server\\share\\" + tail) ==
-          L"\\\\?\\UNC\\server\\share\\" + tail);
+    // A network share gets the UNC form of the prefix. The same folders,
+    // under a share's name in place of the drive.
+    const std::wstring folders = fs::path(deep).relative_path().native();
+    CHECK(hydra::win32_path(L"\\\\server\\share\\" + folders) ==
+          L"\\\\?\\UNC\\server\\share\\" + folders);
 
     // Already prefixed: left alone.
-    const std::wstring prefixed = L"\\\\?\\C:\\" + tail;
     CHECK(hydra::win32_path(prefixed) == prefixed);
 
     // The UTF-8 and std::filesystem forms are the same conversion.
-    const std::string utf8 = hydra::wide_to_utf8(L"C:\\" + tail);
-    CHECK(hydra::win32_path(utf8) == L"\\\\?\\C:\\" + tail);
-    CHECK(hydra::os_path(utf8).native() == L"\\\\?\\C:\\" + tail);
-    CHECK(hydra::os_path(fs::path(L"C:\\" + tail)).native() == L"\\\\?\\C:\\" + tail);
+    CHECK(hydra::win32_path(dir.deep) == prefixed);
+    CHECK(hydra::os_path(dir.deep).native() == prefixed);
+    CHECK(hydra::os_path(fs::path(deep)).native() == prefixed);
 }
 
 TEST_CASE("a chart folder past 260 characters scans, reads, and previews") {
@@ -150,28 +158,43 @@ TEST_CASE("a chart folder past 260 characters scans, reads, and previews") {
     CHECK(errors.empty());
     REQUIRE(items.size() == 1);
     CHECK(items[0].notespath == notes);
-    CHECK(items[0].md5 == hydra::app::hash_chart_file(notes));
+    // The same chart's hash as the scan takes it from its short path.
+    CHECK(items[0].md5 == hydra::app::hash_chart_file(kChartDir + "/notes.mid"));
     CHECK_FALSE(items[0].md5.empty());
 
-    // The Preview finds the audio beside it and streams it.
-    hydra::app::PreviewSource src = hydra::app::resolve_preview_source(
-        notes, hydra::ChartReading{hydra::Difficulty::Expert, true, false, false},
-        hydra::core::default_rules(), hydra::kTestFillRule);
-    CHECK_FALSE(src.song.sequence.empty());
+    // The Preview finds the audio beside it and streams it: the same notes as
+    // the chart read from its short path, and the same audio as the file
+    // opened from its short path.
+    const hydra::app::PreviewSource src = preview_of(notes);
+    CHECK(src.song.sequence.size() == preview_of(kChartDir + "/notes.mid").song.sequence.size());
     REQUIRE(src.stems.size() == 1);
     std::unique_ptr<hydra::audio::StemReader> reader = hydra::audio::open_stem_reader(src.stems[0]);
     REQUIRE(reader);
-    CHECK(reader->length_frames() > 0);
+    hydra::app::PreviewAudioStem short_stem;
+    short_stem.label = src.stems[0].label;
+    short_stem.path = kOpus;
+    std::unique_ptr<hydra::audio::StemReader> short_reader = hydra::audio::open_stem_reader(short_stem);
+    REQUIRE(short_reader);
+    CHECK(reader->length_frames() == short_reader->length_frames());
 }
 
 TEST_CASE("settings, reports, and the database work past 260 characters") {
     LongDir dir("files");
 
+    // The same settings saved at a short path and at depth: the two files are
+    // the same, and each loads back the same library folder. The folder is a
+    // real corpus one, so the file is not the defaults, and a load at depth
+    // that fell back to them would not match.
     const std::string ini = dir.deep + "\\hydra_settings.ini";
+    const std::string short_ini = dir.root + "\\hydra_settings.ini";
     hydra::app::Settings s;
-    s.depth_value = 7;
+    s.chartfolders = {kChartDir};
+    REQUIRE(s.save_file(short_ini));
     REQUIRE(s.save_file(ini));
-    CHECK(hydra::app::Settings::load_file(ini).depth_value == 7);
+    CHECK(hydra::read_file_bytes(ini) == hydra::read_file_bytes(short_ini));
+    const hydra::app::Settings short_loaded = hydra::app::Settings::load_file(short_ini);
+    REQUIRE(short_loaded.chartfolders != hydra::app::Settings{}.chartfolders);
+    CHECK(hydra::app::Settings::load_file(ini).chartfolders == short_loaded.chartfolders);
 
     const fs::path page(hydra::utf8_to_wide(dir.deep + "\\hydra_paths.html"));
     hydra::app::write_report_file(page, "<html>long</html>");
@@ -179,12 +202,14 @@ TEST_CASE("settings, reports, and the database work past 260 characters") {
     CHECK_FALSE(hydra::file_exists_utf8(
         hydra::wide_to_utf8(hydra::app::replacing_temp_path(page).wstring())));
 
-    // SQLite writes a -wal and -shm file beside the database, so those go
-    // through the same long path too.
+    // SQLite writes a -wal and -shm file beside the database while it is open
+    // (the store opens in WAL mode), so those go through the same long path too.
     const std::string db = dir.deep + "\\hydra.db";
     {
         hydra::store::RecordStore store(db);
         CHECK(store.record_count() == 0);
+        CHECK(hydra::file_exists_utf8(db + "-wal"));
+        CHECK(hydra::file_exists_utf8(db + "-shm"));
         store.close();
     }
     CHECK(hydra::file_exists_utf8(db));
@@ -194,32 +219,50 @@ TEST_CASE("settings, reports, and the database work past 260 characters") {
     sqlite3_close(raw);
 }
 
-TEST_CASE("ImGui's own file calls (hydra_ui.ini, fonts) work past 260 characters") {
+// ImGui opens its font files and hydra_ui.ini itself, through Hydra's
+// ImFileOpen (ui/imgui_files.cpp). Every file of the app's resource folder
+// (its fonts and icons) is written at depth through ImGui's calls and loaded
+// back the way ImGui loads a font, byte for byte.
+TEST_CASE("ImGui's own file calls write and load the app's resource files past 260 characters") {
     LongDir dir("imgui");
-    const std::string ini = dir.deep + "\\hydra_ui.ini";
-    ImFileHandle f = ImFileOpen(ini.c_str(), "wb");
-    REQUIRE(f != nullptr);
-    CHECK(ImFileWrite("[Window]\n", 1, 9, f) == 9);
-    CHECK(ImFileClose(f));
+    const std::string resources = corpus::resource_root();
+    const std::vector<hydra::DirEntry> entries = hydra::list_dir(resources);
+    REQUIRE_FALSE(entries.empty());
+    for (const hydra::DirEntry& e : entries) {
+        if (e.is_dir) continue;
+        INFO(e.name);
+        const std::vector<uint8_t> bytes = hydra::read_file_bytes(resources + "/" + e.name);
+        const std::string deep = dir.deep + "\\" + e.name;
+        ImFileHandle f = ImFileOpen(deep.c_str(), "wb");
+        REQUIRE(f != nullptr);
+        CHECK(ImFileWrite(bytes.data(), 1, bytes.size(), f) == bytes.size());
+        CHECK(ImFileClose(f));
 
-    size_t size = 0;
-    void* data = ImFileLoadToMemory(ini.c_str(), "rb", &size);
-    REQUIRE(data != nullptr);
-    CHECK(std::string(static_cast<const char*>(data), size) == "[Window]\n");
-    IM_FREE(data);
+        size_t size = 0;
+        void* data = ImFileLoadToMemory(deep.c_str(), "rb", &size);
+        REQUIRE(data != nullptr);
+        const uint8_t* loaded = static_cast<const uint8_t*>(data);
+        CHECK(std::vector<uint8_t>(loaded, loaded + size) == bytes);
+        IM_FREE(data);
+    }
 }
 
-// fits_shell is the one place that asks whether the shell takes a path: under
-// 260 characters and without a \\?\ or \\.\ prefix. The edge is pinned here as
-// a literal so the test doesn't share the owner's arithmetic.
-TEST_CASE("fits_shell takes 259 characters, not 260, and no prefixed path") {
-    const std::wstring at_259 = L"C:\\" + std::wstring(251, L'a') + L".html";
-    const std::wstring at_260 = L"C:\\" + std::wstring(252, L'a') + L".html";
-    REQUIRE(at_259.size() == 259);
-    REQUIRE(at_260.size() == 260);
-    CHECK(hydra::fits_shell(at_259));
-    CHECK_FALSE(hydra::fits_shell(at_260));
-    CHECK_FALSE(hydra::fits_shell(at_260 + L"x"));
+// fits_shell is the one place that asks whether the shell takes a path:
+// shorter than the platform's MAX_PATH (the shell's own edge, which ADR 0020
+// measured) and without a \\?\ or \\.\ prefix. The edge is MAX_PATH from
+// windows.h, a platform constant, so the test shares none of the owner's
+// arithmetic and types no number.
+TEST_CASE("fits_shell takes a path shorter than MAX_PATH, and no prefixed path") {
+    const std::wstring head = L"C:\\";
+    const std::wstring tail = L".html";
+    const size_t fixed = head.size() + tail.size();
+    const std::wstring below_edge = head + std::wstring(MAX_PATH - 1 - fixed, L'a') + tail;
+    const std::wstring at_edge = head + std::wstring(MAX_PATH - fixed, L'a') + tail;
+    REQUIRE(below_edge.size() == static_cast<size_t>(MAX_PATH - 1));
+    REQUIRE(at_edge.size() == static_cast<size_t>(MAX_PATH));
+    CHECK(hydra::fits_shell(below_edge));
+    CHECK_FALSE(hydra::fits_shell(at_edge));
+    CHECK_FALSE(hydra::fits_shell(at_edge + L"x"));
     CHECK(hydra::fits_shell(L"C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\UNC\\server\\share\\hydra_paths.html"));
@@ -237,23 +280,17 @@ TEST_CASE("shell_path gives the shell a short name for a long path") {
     copy_file_to(kOpus, page);  // any bytes will do
     const std::wstring wpage = hydra::utf8_to_wide(page);
 
-    // What Windows itself says the short form is. A drive without short
-    // names hands the long path back, and then there's nothing to give.
-    const std::wstring full = hydra::win32_path(wpage);
-    std::wstring raw(32768, L'\0');
-    raw.resize(GetShortPathNameW(full.c_str(), &raw[0], static_cast<DWORD>(raw.size())));
-    REQUIRE(raw.rfind(L"\\\\?\\", 0) == 0);
-    const std::wstring unprefixed = raw.substr(4);
-    const std::wstring expected = hydra::fits_shell(unprefixed) ? unprefixed : L"";
-
+    // The shell takes what comes back, and it names the same file: the same
+    // bytes. A drive without 8.3 short names gives the shell nothing for a
+    // long path, so this test needs a scratch drive that has them, and fails
+    // on one that does not.
     const std::wstring got = hydra::shell_path(wpage);
-    CHECK(got == expected);
-    if (!got.empty()) {
-        CHECK(hydra::fits_shell(got));
-        CHECK(hydra::read_file_bytes(hydra::wide_to_utf8(got)) == hydra::read_file_bytes(kOpus));
-    }
-    const std::string has_short = got.empty() ? "no" : "yes";
-    MESSAGE("short names on this drive: " << has_short);
+    const std::string drive = fs::path(wpage).root_name().string();
+    const std::string needs = "the scratch folder's drive " + drive + " must keep 8.3 short names";
+    INFO(needs);
+    REQUIRE_FALSE(got.empty());
+    CHECK(hydra::fits_shell(got));
+    CHECK(hydra::read_file_bytes(hydra::wide_to_utf8(got)) == hydra::read_file_bytes(kOpus));
 
     CHECK(hydra::shell_path(wpage + L".missing") == L"");
 }

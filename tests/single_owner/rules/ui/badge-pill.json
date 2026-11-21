@@ -38,9 +38,13 @@
       "date": "2026-10-24",
       "decision": "D262, the user's ruling \"there should be one shared helper function that all badges draw from\"",
       "added_by": "PILL-W1",
-      "pattern": "\\bAddRect(?:Filled)?\\s*\\([^;]*\\bpill_u32\\s*\\(|\\bkPillRadius\\b|\\bpill_rect\\s*\\(|\\bcentred_text_x\\s*\\(|\\bdraw_window_tag\\b|\\bwindow_tag_width\\b|\\bkWindowTag",
+      "pattern": "\\bAddRect(?:Filled)?\\s*\\([^;]*\\bpill_u32\\s*\\(|\\bAddRect(?:Filled)?\\s*\\([^;]*\\bwindow_tag_(?:fill|ink|pill)\\s*\\(|\\bkPillRadius\\b|\\bpill_rect\\s*\\(|\\bcentred_text_x\\s*\\(|\\bdraw_window_tag\\b|\\bwindow_tag_width\\b|\\bkWindowTag",
       "must_match": [
         "dl->AddRectFilled(lo, hi, pill_u32(kPillFill), kPillRadius * scale);",
+        "dl->AddRectFilled(pos, hi, pill_u32(kPillFill), px(9.0f));",
+        "dl->AddRectFilled(pos, hi, ImGui::ColorConvertFloat4ToU32(window_tag_fill(w.is_short)), px(3.0f));",
+        "dl->AddRect(pos, hi, ImGui::GetColorU32(window_tag_ink(w.is_short)), px(3.0f), 0, px(1.0f));",
+        "dl->AddRectFilled(lo, hi, pill.fill, kPillRadius * scale);",
         "dl->AddRect(b_min, b_max, pill_u32(kPillBorder), px(9.0f));",
         "const PillRect r = pill_rect(bx, by, l.pill_w, line, px(1.0f));",
         "text_at(ImVec2(centred_text_x(r, w), by), warn_or_dim(b.warn), b.text.c_str(), TextRole::Figure);",
@@ -53,7 +57,10 @@
         "ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));",
         "ImGui::PushStyleColor(ImGuiCol_Border, s.warn ? kWarningColor : pill_vec4(kPillBorder));",
         "const ActivationRowLayout l =",
-        "window_tag_ink(w.is_short), px(1.0f));",
+        "window_tag_ink(w.is_short), px(1.0f), window_tag_pill(w.is_short));",
+        "inline PillColors window_tag_pill(bool is_short) {",
+        "return {ImGui::ColorConvertFloat4ToU32(window_tag_fill(is_short)),",
+        "ImU32 fill = pill_u32(kPillFill);",
         "shared_pill_width(badge_pill_text_w(), ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));"
       ],
       "owner_lines": [
@@ -79,13 +86,13 @@
         },
         {
           "file": "src/ui/badge_pill.h",
-          "line_text": "dl->AddRectFilled(lo, hi, pill_u32(kPillFill), kPillRadius * scale);",
-          "why": "draw_badge's fill"
+          "line_text": "dl->AddRectFilled(lo, hi, pill.fill, kPillRadius * scale);",
+          "why": "draw_badge's fill, in the colours its caller gives (the shared pill's by default)"
         },
         {
           "file": "src/ui/badge_pill.h",
-          "line_text": "dl->AddRect(lo, hi, pill_u32(kPillBorder), kPillRadius * scale);",
-          "why": "draw_badge's border"
+          "line_text": "dl->AddRect(lo, hi, pill.border, kPillRadius * scale);",
+          "why": "draw_badge's border, in the colours its caller gives (the shared pill's by default)"
         },
         {
           "file": "src/ui/badge_pill.h",
@@ -96,7 +103,7 @@
       "scope": [
         "src"
       ],
-      "note": "draw_badge paints the pill and places the badge's text, so a pill painted in the pill's colours, its corner radius, a pill rectangle or a centred badge text anywhere else under src is a second badge drawer. badge_pill.h is scanned too: only draw_badge's own lines and the definitions it uses are listed, so a second drawer added beside it fails as well. draw_window_tag, window_tag_width and any kWindowTag constant are refused everywhere, badge_pill.h included: the Dynamic Hit Window tag is a badge, drawn by draw_badge at shared_pill_width. The squeeze box reads the pill's colours through pill_vec4 for its own box shape, which this row lets through. Tests are out of scope: they call pill_rect and centred_text_x to check the owner, and the GUI test reads pill_u32 to find drawn pills."
+      "note": "draw_badge paints the pill and places the badge's text, so a pill painted in the pill's colours, its corner radius, a pill rectangle or a centred badge text anywhere else under src is a second badge drawer. badge_pill.h is scanned too: only draw_badge's own lines and the definitions it uses are listed, so a second drawer added beside it fails as well. draw_badge paints the colours its caller gives in PillColors, the shared pill's by default; the Dynamic Hit Window tag passes window_tag_pill. A rect painted in the tag's colours (window_tag_fill, window_tag_ink or window_tag_pill) anywhere under src is a second drawer too. draw_window_tag, window_tag_width and any kWindowTag constant are refused everywhere, badge_pill.h included: the Dynamic Hit Window tag is a badge, drawn by draw_badge at shared_pill_width. The squeeze box reads the pill's colours through pill_vec4 for its own box shape, which this row lets through. Tests are out of scope: they call pill_rect and centred_text_x to check the owner, and the GUI test reads pill_u32 to find drawn pills."
     }
   ]
 }

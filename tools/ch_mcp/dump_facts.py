@@ -10,13 +10,12 @@ The facts table (`--tsv`) holds one row for each game fact the pages under a
 folder cite, and each fact `tools/ch_probe/constants.py` names, looked up in
 one build's dump. docs/clone-hero/README.md, section "Page rules", gives its
 columns, and TABLE_COLUMNS adds `cited`, the span as the page
-writes it, which is what the C++ test matches a page span by. A page writes a
+writes it, which is how a page span finds its row. A page writes a
 scrambled game name by our readable name for it, from that build's names map
 (`names_path`, columns NAMES_COLUMNS); `_lookup` resolves those names, and
 `check_names` checks the map against the dump. Which backticked spans count as game facts is decided by
-`game_fact` alone; the C++ docs test (tests/test_docs_match_code.cpp) applies
-the same forms, so compare the two when either changes. Which build a span
-belongs to is decided by `span_builds`, which mirrors that test's rule too.
+`game_fact` alone. Which build a span belongs to is decided by
+`span_builds`.
 A method address that dump.cs prints only inside a generic method's
 `GenericInstMethod` block (`parse_dump` collects those as `instances`) also
 gets a method row; facts.json does not carry them, so a facts.json holds no
@@ -398,9 +397,7 @@ _RVA_MIN_DIGITS = 5
 _FACT_INDEX_OFFSET_RE = re.compile(rf"^#(?P<idx>\d+)\+(?P<off>{_HEX_ADDRESS})$")
 _FACT_INDEX_MEMBER_RE = re.compile(r"^#(?P<idx>\d+)\.(?P<member>[A-Za-z_]\w*)$", re.ASCII)
 _FACT_NAME_RE = re.compile(r"^(?P<left>[A-Za-z_]\w*)\.(?P<right>[A-Za-z_]\w*)$", re.ASCII)
-# The C++ test's `file_ext` list (is_file_name in
-# tests/test_docs_match_code.cpp): a span ending in one of these names a file,
-# not a game fact.
+# A span ending in one of these names a file, not a game fact.
 _FILE_EXT_RE = re.compile(
     r"\.(cpp|h|c|md|ini|json|py|ps1|exe|db|txt|mid|chart|sng|srb|opus|ogg|mp3|wav|flac|png|jpg|"
     r"cmake|hlsl|dll|asm|cs|tsv|bin|log|csv|xml|yml|yaml|dat|cfg)$",

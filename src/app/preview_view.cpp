@@ -13,7 +13,7 @@
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str, kFactSeparator
 #include "core/replay.h"
-#include "core/scoring.h"  // solo_bonus, solo_note_count
+#include "core/scoring.h"  // solo_figures
 
 namespace hydra::app {
 
@@ -67,8 +67,8 @@ PreviewSpan span_from_ticks(const Song& song, int64_t start, int64_t end) {
 constexpr double kGeneratedFillDrawnMeasures = 0.5;
 
 // Where the Preview starts drawing the fill that ends on `ts`. An authored
-// fill, and a Clone Hero 1.0 generated fill (already that half measure long,
-// by place_fills_ch10), draw from fill_start_tick. A Clone Hero 1.1 generated
+// fill, and a Clone Hero 1.0 generated fill, draw from fill_start_tick: the
+// start the chart or place_fills_ch10 gave it. A Clone Hero 1.1 generated
 // fill starts on its measure line, often at its own chord, so it draws
 // kGeneratedFillDrawnMeasures of the grid measure in force at the chord
 // (MeasureIndex) before the chord instead.
@@ -119,11 +119,12 @@ SpMeterCurve build_unanalyzed_sp_meter_curve(const PreviewScene& scene, int sp_c
 
 // The SP meter along a path (see SpMeterCurve), drawn only from what the
 // record stamped: each bar's arrival between windows (Path::bank_arrivals),
-// and where each window's SP end changed, up to its end
-// (Activation::window_end_tick). It counts no phrase and applies no cap; the engine already did
-// both. Every comparison is in ticks; ms only places the drawing.
-SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& timing,
-                                  int sp_cap) {
+// each window's level (Activation::meter_bars_at), and each window's end
+// (Activation::window_end_tick), where SP is over and what the meter still
+// holds is dropped. It counts no phrase and applies no cap; the engine
+// already did both. Every comparison is in ticks; ms only places the drawing.
+SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const Path& path,
+                                  const SongTiming& timing, int sp_cap) {
     SpMeterCurve curve;
     curve.cap = sp_meter_cap_of(sp_cap);
     if (scene.activations.empty() && scene.trailing_bank_ticks.empty()) return curve;
@@ -139,14 +140,6 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
             bank += 1.0;
         }
     };
-    // Bars left at `tick` while SP ends at `end_tick`: the measures between,
-    // two to a bar. Never below empty: between an end in force and a late
-    // phrase's chord past it, the tick is past that end.
-    auto bars_left = [&](int64_t tick, int64_t end_tick) {
-        const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -
-                                timing.measures_at_tick_f(static_cast<double>(tick));
-        return std::max(0.0, measures / static_cast<double>(kMeasuresPerSpBar));
-    };
 
     // Tempos and meters are sorted by tick, and the activations come in path
     // order, which is time order. So one moving index per list finds the
@@ -154,30 +147,40 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
     // lists for every activation.
     size_t next_tempo = 0;
     size_t next_meter = 0;
-    for (const PreviewActivation& act : scene.activations) {
+    // The scene's activations are the path's, in walk order
+    // (apply_preview_overlay builds one per walked activation).
+    const ActivationWalk records = path.walk_activations();
+    for (size_t n = 0; n < scene.activations.size(); ++n) {
+        const PreviewActivation& act = scene.activations[n];
+        const Activation& rec = records[n];
         bank_bars(act.bank_rise_ticks);
         push_segment(curve, cursor_ms, act.ms, bank, bank);
         cursor_ms = std::max(cursor_ms, act.ms);
         bank = 0.0;  // the activation spends the bank
         // Nothing stamped (a hand-built activation): no window to draw. The
-        // changes and has_sp_end both come from the record's SP-end steps, so
+        // level and has_sp_end both come from the record's SP-end steps, so
         // the list being empty is the one check.
-        if (act.sp_end_changes.empty()) continue;
+        const std::vector<SpEndStep>& steps = rec.sp_end_steps;
+        if (steps.empty()) continue;
+        // The record's level at `tick`; `just_before` reads a step's own tick
+        // with the end in force before it.
+        auto level = [&](int64_t tick, bool just_before) {
+            return *rec.meter_bars_at(tick, timing, just_before);
+        };
 
-        // Inside the window: the measures left until the SP end in force, two
-        // to a bar. Cut where the record says the end changed, at an end in
-        // force that falls before the next change (so the drain reaches empty
-        // on that end and waits there), and at each tempo and meter change,
-        // where measures stop being linear in ms.
+        // Inside the window: cut where the record says the end changed, at an
+        // end in force that falls before the next change (so the drain
+        // reaches empty on that end and waits there), and at each tempo and
+        // meter change, where measures stop being linear in ms.
         struct Cut {
             int64_t tick;
             double ms;
         };
         std::vector<Cut> cuts;
-        for (size_t k = 1; k < act.sp_end_changes.size(); ++k) {
-            const int64_t t = act.sp_end_changes[k].at_tick;
+        for (size_t k = 1; k < steps.size(); ++k) {
+            const int64_t t = steps[k].tick;
             cuts.push_back({t, timing.ms_index().at(t)});
-            const int64_t before = act.sp_end_changes[k - 1].end_tick;
+            const int64_t before = steps[k - 1].end_tick;
             if (before < t) cuts.push_back({before, timing.ms_index().at(before)});
         }
         // The tempo and meter changes strictly inside the window. Each index
@@ -189,8 +192,8 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         for (size_t i = next_tempo; i < tempos.size() && tempos[i].tick < act.sp_end_tick; ++i)
             cuts.push_back({tempos[i].tick, tempos[i].ms});
         // The meter changes are the continuous count's span starts, because
-        // bars_left reads that count. They carry only ticks; their ms comes
-        // from the same index every other time in the scene does.
+        // the record's level reads that count. They carry only ticks; their
+        // ms comes from the same index every other time in the scene does.
         const std::vector<PreviewMeasureSpan>& spans = scene.measure_spans;
         while (next_meter < spans.size() && spans[next_meter].tick <= act.tick) ++next_meter;
         for (size_t i = next_meter; i < spans.size() && spans[i].tick < act.sp_end_tick; ++i)
@@ -202,24 +205,19 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         // the next starts on the new one's: that is the step. A late phrase's
         // change sits on its own chord, past the end in force, so the drain
         // holds at empty from that end until the chord, then steps up.
-        size_t step = 0;  // the change in force
         int64_t prev_tick = act.tick;
         double prev_ms = act.ms;
         for (const Cut& cut : cuts) {
-            const int64_t end_tick = act.sp_end_changes[step].end_tick;
-            push_segment(curve, prev_ms, cut.ms, bars_left(prev_tick, end_tick),
-                         bars_left(cut.tick, end_tick));
-            while (step + 1 < act.sp_end_changes.size() &&
-                   act.sp_end_changes[step + 1].at_tick <= cut.tick)
-                ++step;
+            push_segment(curve, prev_ms, cut.ms, level(prev_tick, false), level(cut.tick, true));
             prev_tick = cut.tick;
             prev_ms = cut.ms;
         }
-        // The last stretch runs to the window's end, the last change's end:
-        // empty exactly there.
-        const int64_t end_tick = act.sp_end_changes[step].end_tick;
-        push_segment(curve, prev_ms, act.sp_end_ms, bars_left(prev_tick, end_tick),
-                     bars_left(act.sp_end_tick, end_tick));
+        // The last stretch runs to the window's end (Activation::window_end_tick).
+        // That is the last step's end, empty there, unless an early
+        // squeeze-out ended SP first: then the meter still holds a little on
+        // the squeezed chord, and the bank that follows drops it.
+        push_segment(curve, prev_ms, act.sp_end_ms, level(prev_tick, false),
+                     level(act.sp_end_tick, true));
         cursor_ms = std::max(cursor_ms, act.sp_end_ms);
     }
 
@@ -330,18 +328,20 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> song_len
         }
     }
     // Solo spans: one per section the song names (Song::solo_sections), from
-    // its first chord to its last. Beside each, the notes the solo box
-    // counts (solo_note_count) and the bonus (solo_bonus).
-    for (const SoloSection& s : song.solo_sections) {
+    // its first chord to its last. Beside each, the engine's figures for that
+    // solo (solo_figures), each step placed at its chord's onset.
+    const std::vector<SoloFigures> figures = solo_figures(song);
+    for (size_t k = 0; k < song.solo_sections.size(); ++k) {
+        const SoloSection& s = song.solo_sections[k];
         scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
                                               song.sequence[s.last].timecode.ticks()));
+        const SoloFigures& f = figures[k];
         PreviewSoloNotes notes;
-        for (size_t i = s.first; i <= s.last; ++i) {
-            const SongTimestamp& ts = song.sequence[i];
-            notes.bonus += solo_bonus(ts.chord, ts.flag_solo);
-            notes.notes += solo_note_count(ts.chord, ts.flag_solo);
-            notes.steps.push_back({ts.timecode.ms(), notes.notes});
-        }
+        notes.notes = f.notes;
+        notes.bonus = f.bonus;
+        notes.steps.reserve(f.steps.size());
+        for (const SoloFigures::AtChord& step : f.steps)
+            notes.steps.push_back({song.sequence[step.chord].timecode.ms(), step.notes_hit});
         scene.solo_notes.push_back(std::move(notes));
     }
     // Drum lanes: each one's span as the chart wrote it, lighting the pads
@@ -430,14 +430,9 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         pa.ms = song.timecode(pa.tick).ms();
         pa.skipped_fill_ticks = a.skipped_fill_ticks;
         pa.bank_rise_ticks = p.bank_arrivals(i);
-        // Each stored step's tick and end, the last step's end being the
-        // window's end (Activation::window_end_tick).
+        // Each stored step's tick and end, as stored.
+        for (const SpEndStep& s : a.sp_end_steps) pa.sp_end_changes.push_back({s.tick, s.end_tick});
         const std::optional<int64_t> window_end = a.window_end_tick();
-        for (size_t k = 0; k < a.sp_end_steps.size(); ++k) {
-            const bool last = k + 1 == a.sp_end_steps.size();
-            pa.sp_end_changes.push_back(
-                {a.sp_end_steps[k].tick, last ? *window_end : a.sp_end_steps[k].end_tick});
-        }
         if (window_end) {
             pa.has_sp_end = true;
             pa.sp_end_tick = *window_end;
@@ -514,7 +509,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     // The SP meter, built last. With a path it reads the record's facts
     // gathered above; without one, the chart's phrases.
     scene.score = build_score(song, path, rules);
-    scene.sp_meter = path != nullptr ? build_sp_meter_curve(scene, timing, sp_cap)
+    scene.sp_meter = path != nullptr ? build_sp_meter_curve(scene, *path, timing, sp_cap)
                                      : build_unanalyzed_sp_meter_curve(scene, sp_cap);
     return scene;
 }
@@ -821,7 +816,8 @@ std::string sp_meter_readout(const SpMeterCurve& curve, double now_ms) {
 std::string preview_path_label(const PathButtonView& button) {
     switch (button.group) {
         case PathButtonView::Group::Optimal: return button.notation + "  (optimal)";
-        case PathButtonView::Group::AllZero: return button.notation + "  (best all-0)";
+        case PathButtonView::Group::AllZero:
+            return button.notation + "  (" + std::string(kBestAllZeroLabel) + ")";
         case PathButtonView::Group::Within:  break;
     }
     return button.notation;

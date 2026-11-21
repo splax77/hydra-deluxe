@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/strutil.h"
 #include "json.hpp"
 #include "single_owner/engine.h"
 #include "source_tree.h"
@@ -220,6 +221,20 @@ std::string strip_source_dir(const std::string& s) { return replace_all(s, "${CM
 
 bool unresolved(const std::string& s) { return s.find("${") != std::string::npos || s.rfind("$<", 0) == 0; }
 
+// `$<TARGET_PROPERTY:T,INTERFACE_INCLUDE_DIRECTORIES>` in an include-folder
+// list hands over T's own include folders, which T's CMakeLists.txt (one this
+// reader does not open) sets. The folder is kept as the name "target:T", and
+// an externals.json row names that folder for T's headers. Any other argument
+// comes back unchanged.
+std::string include_folder_of(const std::string& arg) {
+    const std::string open = "$<TARGET_PROPERTY:", close = ",INTERFACE_INCLUDE_DIRECTORIES>";
+    if (arg.size() > open.size() + close.size() && arg.rfind(open, 0) == 0 && hydra::ends_with(arg, close)) {
+        const std::string target = arg.substr(open.size(), arg.size() - open.size() - close.size());
+        if (!target.empty() && target.find_first_of("$<>,:") == std::string::npos) return "target:" + target;
+    }
+    return arg;
+}
+
 void apply(const std::vector<CMakeCommand>& cmds, size_t from, size_t to, BuildModel& m,
            std::map<std::string, std::vector<std::string>>& globs);
 
@@ -305,7 +320,9 @@ void apply(const std::vector<CMakeCommand>& cmds, size_t from, size_t to, BuildM
         } else if (c.name == "target_link_libraries") {
             add_by_mode(m.links[c.args[0]], c.args, {"debug", "optimized", "general"});
         } else if (c.name == "target_include_directories") {
-            add_by_mode(m.include_dirs[c.args[0]], c.args, {"SYSTEM", "BEFORE", "AFTER"});
+            std::vector<std::string> args = c.args;
+            for (std::string& a : args) a = include_folder_of(a);
+            add_by_mode(m.include_dirs[c.args[0]], args, {"SYSTEM", "BEFORE", "AFTER"});
         }
     }
 }
@@ -345,8 +362,7 @@ std::vector<ExternalRow> parse_externals(const std::string& text) {
     return rows;
 }
 
-// The first row whose pattern matches `include`, or null for a standard or
-// Windows SDK header, which needs no link line.
+// The first row whose pattern matches `include`, or null when no row names it.
 const ExternalRow* external_for(const std::vector<ExternalRow>& rows, const std::string& include) {
     for (const ExternalRow& r : rows)
         if (glob_match(r.header, include)) return &r;
@@ -355,9 +371,16 @@ const ExternalRow* external_for(const std::vector<ExternalRow>& rows, const std:
 
 // ---- The include check ----
 
-// The text of every `#include "x"` or `#include <x>` line in a file.
-std::vector<std::string> includes_of(const std::string& text) {
-    std::vector<std::string> out;
+// One `#include "x"` or `#include <x>` line: the x, and which of the two forms
+// named it.
+struct IncludeLine {
+    std::string text;
+    bool quoted = false;  // "x" rather than <x>
+};
+
+// Every `#include "x"` or `#include <x>` line in a file.
+std::vector<IncludeLine> includes_of(const std::string& text) {
+    std::vector<IncludeLine> out;
     std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
@@ -368,7 +391,7 @@ std::vector<std::string> includes_of(const std::string& text) {
         i = line.find_first_not_of(" \t", i + 7);
         if (i == std::string::npos || (line[i] != '"' && line[i] != '<')) continue;
         const size_t end = line.find(line[i] == '"' ? '"' : '>', i + 1);
-        if (end != std::string::npos) out.push_back(line.substr(i + 1, end - i - 1));
+        if (end != std::string::npos) out.push_back({line.substr(i + 1, end - i - 1), line[i] == '"'});
     }
     return out;
 }
@@ -384,6 +407,15 @@ std::string resolve(const std::string& rel, const std::string& include, const st
         const std::string s = p.lexically_normal().generic_string();
         if (known.count(s)) return s;
     }
+    return {};
+}
+
+// The vendored file under third_party/ that `include` names from some include
+// folder, or empty when it names none.
+std::string vendored_file(const std::string& include, const std::set<std::string>& known) {
+    const std::string tail = "/" + include;
+    for (const std::string& k : known)
+        if (k.rfind("third_party/", 0) == 0 && hydra::ends_with(k, tail)) return k;
     return {};
 }
 
@@ -405,6 +437,11 @@ using Gap = std::pair<std::string, std::string>;  // (file, include text)
 
 // One line per include that reaches past its library's links, skipping the
 // listed gaps. `texts` holds the files to read, `known` every repo file.
+// An include that names no repo file its library can see, and no externals
+// row, is one line too when it is quoted or names a vendored file under
+// third_party/: the check cannot place it, so it fails rather than pass it
+// unread. Only an <x> that names no vendored file passes that way, as a
+// standard or Windows SDK header.
 std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<std::string, std::string>& texts,
                                             const std::set<std::string>& known,
                                             const std::vector<ExternalRow>& externals,
@@ -412,7 +449,8 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
     std::vector<std::string> out;
     for (const auto& [rel, text] : texts) {
         if (!scanned(m, rel)) continue;
-        for (const std::string& inc : includes_of(text)) {
+        for (const IncludeLine& line : includes_of(text)) {
+            const std::string& inc = line.text;
             if (gaps.count({rel, inc})) continue;
             for (const std::string& lib : m.owners(rel)) {
                 const std::set<std::string> allowed = m.allowed(lib);
@@ -420,7 +458,9 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
                 const std::string file = resolve(rel, inc, folders, known);
                 if (!file.empty()) {
                     const std::set<std::string> owners = m.owners(file);
-                    if (owners.empty()) continue;  // a test helper header, free to include
+                    // In no target's source list: a test helper header, or a
+                    // vendored header in an include folder lib adds. Free to include.
+                    if (owners.empty()) continue;
                     if (std::any_of(owners.begin(), owners.end(),
                                     [&](const std::string& t) { return allowed.count(t) > 0; }))
                         continue;
@@ -429,7 +469,16 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
                     continue;
                 }
                 const ExternalRow* row = external_for(externals, inc);
-                if (!row) continue;
+                if (!row) {
+                    if (line.quoted) {
+                        out.push_back(rel + ": include \"" + inc + "\" names no file " + lib +
+                                      " can see and no externals.json row");
+                    } else if (const std::string v = vendored_file(inc, known); !v.empty()) {
+                        out.push_back(rel + ": include <" + inc + "> names " + v + ", which " + lib +
+                                      " cannot see, and no externals.json row");
+                    }
+                    continue;
+                }
                 if (!row->target.empty() && !allowed.count(row->target))
                     out.push_back(rel + ": include \"" + inc + "\" reaches target " + row->target + ", which " +
                                   lib + " does not link");
@@ -454,7 +503,7 @@ std::string read_text(const fs::path& path) {
 
 struct Repo {
     BuildModel build;
-    std::set<std::string> known;
+    std::set<std::string> known;  // the walked files and git's third_party files
     std::map<std::string, std::string> texts;  // every code file the walk lists
     std::vector<ExternalRow> externals;
 };
@@ -467,6 +516,12 @@ const Repo& repo() {
             out.known.insert(rel);
             if (is_code(rel)) out.texts[rel] = read_text(path);
         });
+        // The vendored headers under third_party are files too. The walk
+        // above does not read them, but a target's include folders reach
+        // into them (hydra_tests adds third_party/doctest), so an include
+        // resolves against them the way the compiler's search does.
+        for (const std::string& rel : sourcetree::git_listed(sourcetree::root(), "third_party"))
+            out.known.insert(rel);
         out.externals = parse_externals(read_text(sourcetree::root() / "tests/layering/externals.json"));
         return out;
     }();
@@ -519,7 +574,8 @@ std::string joined(const std::vector<std::string>& lines) {
 }
 
 // A made-up build: three libraries in one PUBLIC chain and one PRIVATE link,
-// a tool loop, a glob of tests and a link under an if().
+// a folder handed over by another target's include folders, a tool loop, a
+// glob of tests and a link under an if().
 const char* const kMadeUpCMake = R"(
 # add_library(commented_out STATIC src/never.cpp)
 add_library(base STATIC src/base/a.cpp src/base/only.h)
@@ -530,6 +586,7 @@ add_library(mid STATIC
 target_link_libraries(mid PUBLIC base PRIVATE secret)
 add_library(top STATIC src/top/c.cpp)
 target_link_libraries(top PUBLIC mid)
+target_include_directories(top PRIVATE $<TARGET_PROPERTY:alloc,INTERFACE_INCLUDE_DIRECTORIES>)
 add_executable(tool_a src/cli/a.cpp)
 add_executable(tool_b src/cli/b.cpp)
 foreach(tool IN ITEMS tool_a tool_b)
@@ -565,25 +622,43 @@ TEST_CASE("layering: the CMake reader, pinned on a made-up file") {
 
     CHECK(m.folders("base") == std::set<std::string>{"src", "third_party/json"});
     CHECK(m.folders("mid") == std::set<std::string>{"src"});  // base's PRIVATE folder stays its own
+    CHECK(m.folders("top") == std::set<std::string>{"src", "target:alloc"});
 
     const std::vector<ExternalRow> externals{{"secret*.h", "secret", "", {"secret.h"}},
-                                             {"json.hpp", "", "third_party/json", {"json.hpp"}}};
+                                             {"json.hpp", "", "third_party/json", {"json.hpp"}},
+                                             {"alloc.h", "", "target:alloc", {"alloc.h"}}};
+    // third_party/json/json.hpp is a vendored file no target lists: base finds
+    // it through its own folder, mid falls back to the externals row.
+    // third_party/raw/include/raw.h is vendored too, and no folder base adds
+    // and no row reaches it.
     const std::set<std::string> known{"src/base/a.cpp", "src/base/a.h",  "src/mid/b.cpp",
-                                      "src/mid/b.h",    "src/top/c.cpp", "src/top/c.h"};
+                                      "src/mid/b.h",    "src/top/c.cpp", "src/top/c.h",
+                                      "third_party/json/json.hpp", "third_party/alloc/include/alloc.h",
+                                      "third_party/raw/include/raw.h"};
     const std::map<std::string, std::string> texts{
-        {"src/base/a.cpp", "#include \"base/a.h\"\n#include <vector>\n#include \"json.hpp\"\n"},
+        {"src/base/a.cpp", "#include \"base/a.h\"\n#include <vector>\n#include \"json.hpp\"\n#include <raw.h>\n"},
         {"src/base/a.h", "#include \"mid/b.h\"\n"},  // the wrong way
-        {"src/mid/b.cpp", "#include \"mid/b.h\"\n#include \"base/a.h\"\n  #  include <secret.h>\n"},
+        {"src/mid/b.cpp", "#include \"mid/b.h\"\n#include \"base/a.h\"\n  #  include <secret.h>\n#include <alloc.h>\n"},
         {"src/mid/b.h", "#include \"json.hpp\"\n"},
-        {"src/top/c.cpp", "#include \"top/c.h\"\n#include \"mid/b.h\"\n#include \"base/a.h\"\n"},
+        {"src/top/c.cpp",
+         "#include \"top/c.h\"\n#include \"mid/b.h\"\n#include \"base/a.h\"\n#include \"gone.h\"\n#include <alloc.h>\n"},
         {"src/top/c.h", "#include <secret.h>\n"},
     };
     CHECK(joined(wrong_way_includes(m, texts, known, externals, {})) ==
+          "src/base/a.cpp: include <raw.h> names third_party/raw/include/raw.h, which base cannot see, and no "
+          "externals.json row\n"
           "src/base/a.h: include \"mid/b.h\" reaches target mid, which base does not link\n"
+          "src/mid/b.cpp: include \"alloc.h\" reaches include folder target:alloc, which mid does not add\n"
           "src/mid/b.h: include \"json.hpp\" reaches include folder third_party/json, which mid does not add\n"
+          "src/top/c.cpp: include \"gone.h\" names no file top can see and no externals.json row\n"
           "src/top/c.h: include \"secret.h\" reaches target secret, which top does not link\n");
     CHECK(wrong_way_includes(m, texts, known, externals,
-                             {{"src/base/a.h", "mid/b.h"}, {"src/mid/b.h", "json.hpp"}, {"src/top/c.h", "secret.h"}})
+                             {{"src/base/a.cpp", "raw.h"},
+                              {"src/base/a.h", "mid/b.h"},
+                              {"src/mid/b.cpp", "alloc.h"},
+                              {"src/mid/b.h", "json.hpp"},
+                              {"src/top/c.cpp", "gone.h"},
+                              {"src/top/c.h", "secret.h"}})
               .empty());
 }
 
@@ -606,26 +681,8 @@ TEST_CASE("layering: externals rows match their own examples") {
     }
 }
 
-TEST_CASE("layering: every known gap names a real include and is not past its date") {
-    const std::string today = single_owner::today_iso();
-    std::vector<std::string> bad;
-    for (const KnownGap& g : known_gaps()) {
-        const std::string name = gap_name(g);
-        auto it = repo().texts.find(g.file);
-        const bool real = it != repo().texts.end() && [&] {
-            const std::vector<std::string> incs = includes_of(it->second);
-            return std::find(incs.begin(), incs.end(), g.include) != incs.end();
-        }();
-        if (!real) bad.push_back(name + ": no such include line; delete the entry");
-        if (const std::string due = single_owner::baseline_due(name, g.dates, today); !due.empty())
-            bad.push_back(due);
-    }
-    INFO(joined(bad));
-    CHECK(bad.empty());
-}
-
-// Without this case a new wrong-way include could hide behind a new entry,
-// since an entry that names a real include passes the case above.
+// Without this case a new wrong-way include could hide behind a new entry:
+// the include check skips every listed gap.
 TEST_CASE("layering: no known gap is left") {
     std::vector<std::string> left;
     for (const KnownGap& g : known_gaps())
@@ -634,16 +691,26 @@ TEST_CASE("layering: no known gap is left") {
     CHECK(left.empty());
 }
 
-TEST_CASE("layering: every src file is in one library") {
+// At least one library's source list names each src code file; the include
+// check reads only files a list names. An empty walk read nothing, so it fails.
+TEST_CASE("layering: every src file is in a library's source list") {
     std::vector<std::string> bad;
-    for (const auto& [rel, text] : repo().texts)
-        if (rel.rfind("src/", 0) == 0 && repo().build.owners(rel).empty())
-            bad.push_back(rel + ": in no library's source list");
+    size_t src_files = 0;
+    for (const auto& [rel, text] : repo().texts) {
+        if (rel.rfind("src/", 0) != 0) continue;
+        ++src_files;
+        if (repo().build.owners(rel).empty()) bad.push_back(rel + ": in no library's source list");
+    }
+    REQUIRE_MESSAGE(src_files > 0, "the walk found no code file under src/");
     INFO(joined(bad));
     CHECK(bad.empty());
 }
 
 TEST_CASE("layering: every include stays inside its library's links") {
+    size_t src_scanned = 0;
+    for (const auto& [rel, text] : repo().texts)
+        if (rel.rfind("src/", 0) == 0 && scanned(repo().build, rel)) ++src_scanned;
+    REQUIRE_MESSAGE(src_scanned > 0, "the include check would read no code file under src/");
     std::set<Gap> gaps;
     for (const KnownGap& g : known_gaps()) gaps.insert({g.file, g.include});
     const std::vector<std::string> bad =

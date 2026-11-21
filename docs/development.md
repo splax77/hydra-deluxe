@@ -374,6 +374,23 @@ into each test process ahead of mimalloc, and the mimalloc tests fail.
 
 To instrument again after a test run, relink first (delete the exe and build).
 
+The CI coverage job builds with the 14.51 compiler (cl 19.51), which it
+installs next to the image's newest. The 14.52 compiler (cl 19.52, from
+Visual Studio 18.12) breaks the coverage build. A plain 14.52 build passes
+every test. Instrumented, it crashes, even with only one source file
+instrumented. The tool rewrites the whole exe, and in places it pads the code
+after an unconditional jump so the next block starts on a 16-byte boundary.
+It leaves a short jump over that padding unchanged, so the jump lands early.
+In nlohmann's `basic_json` constructor, the jump that skips the shared
+`mov qword ptr [rdi+8],rax` after storing a new object's map pointer now lands
+on that `mov`. The map pointer is overwritten with a tree node's, and every
+JSON object the tests parse is corrupt. The coverage tool from Visual Studio
+2022 (17.14.3) breaks the same 14.52 exe the same way. Coverage builds with
+14.51 passed in CI every night through 2026-11-17. What in 14.52's output makes
+the tool pad these spots is not known. A local build with 14.52 reproduces the
+crash: build the `coverage` preset, instrument `hydra_tests`, and run
+`hydra_tests.exe -sf=*single_owner*`.
+
 ## The report windows
 
 The path report and the dmleaderboards comparison are Hydra windows, each its
@@ -528,7 +545,7 @@ The full recipe, with the commands for each comparison, is in the header of
 
 `hydra_precheck --tests <range>` picks the test files a merge must run from
 the range's diff, and prints them as one `tests:` line of `-sf=` filters, plus
-the `always:` line of the three repo-wide checks. It was built so a merge
+the `always:` lines of the two repo-wide checks. It was built so a merge
 never misses a test that reaches changed code only through an enum value. Merge
 18a2c64f rewrote `Song::place_fills_ch10` and its hand-written test list missed
 `tests/test_preview_load_progress.cpp`, which reaches that function only
@@ -983,6 +1000,14 @@ any other change. `docs/agents/doc-screenshots.md` explains the command, the
 shot list and the size limits.
 
 ### Every release: build and sign
+
+Before the build, the main session runs the live update test:
+`build-cpp\Release\hydra_tests.exe "-sf=*test_update_live*" --no-skip`. It
+asks the real GitHub for the latest release through Hydra's own network code,
+and checks that the reply still parses and names an installer and a signature.
+It makes one request and downloads no installer. An ordinary run of
+`hydra_tests.exe` skips it, so it runs only when named with `--no-skip`. If it
+fails, its output gives the job's own message; find out why before you build.
 
 ```
 .\installer\build_installer.ps1 -Sign

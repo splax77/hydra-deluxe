@@ -22,7 +22,32 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 
-REAL_PACKAGE_JSON = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "package.json")
+REAL_AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
+REAL_PACKAGE_JSON = os.path.join(REAL_AGENT_DIR, "package.json")
+# A real run's prep schedule, written by hydra_replay
+# (testdata/ch_runs/2026-11-12-pitch-dark-prep/schedule.json).
+REAL_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-12-pitch-dark-prep",
+                             "schedule.json")
+# The builds record a real run wrote (testdata/ch_runs/ls-g2-run1/builds-1.json).
+REAL_BUILDS_RECORD = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "builds-1.json")
+
+
+def real_scripts():
+    """The build scripts of the real agent package.json."""
+    with open(REAL_PACKAGE_JSON, encoding="utf-8") as f:
+        return json.load(f)["scripts"]
+
+
+def real_agent_js_paths():
+    """The built-agent path of each TypeScript source in the real agent
+    folder, built or not."""
+    return sorted(os.path.join(REAL_AGENT_DIR, os.path.splitext(n)[0] + ".js")
+                  for n in os.listdir(REAL_AGENT_DIR) if n.endswith(".ts") and not n.endswith(".d.ts"))
+
+
+def source_of(js_path):
+    """The TypeScript source a built agent is compiled from."""
+    return os.path.splitext(os.path.basename(js_path))[0] + ".ts"
 
 
 def bundle_bytes(assets):
@@ -127,19 +152,48 @@ class StampTest(unittest.TestCase):
         self.assertIn("cannot read the build stamp", BS.check(self.js))
 
     def test_the_build_command_comes_from_package_json(self):
-        for name in ("clock", "trace", "state", "menuhooks", "kit", "launch"):
-            with self.subTest(agent=name):
-                self.assertEqual(BS.build_command(os.path.join(self.agent, f"{name}.js")),
-                                 f"npm run build:{name}")
+        # Every agent source in the real agent folder: one a script builds
+        # gets that script's npm command; a module the agents import gets
+        # none. Every script is some agent's command.
+        scripts = real_scripts()
+        commanded = set()
+        for js in real_agent_js_paths():
+            with self.subTest(agent=os.path.basename(js)):
+                try:
+                    command = BS.build_command(js)
+                except BS.StampError as e:
+                    self.assertIn("no build script writes", str(e))
+                    continue
+                self.assertTrue(command.startswith("npm run "), command)
+                script = command[len("npm run "):]
+                self.assertIn(script, scripts)
+                self.assertIn(source_of(js), scripts[script])
+                commanded.add(script)
+        self.assertEqual(commanded, set(scripts))
 
     def test_each_build_script_writes_the_stamp_after_the_compile(self):
-        with open(REAL_PACKAGE_JSON, encoding="utf-8") as f:
-            scripts = json.load(f)["scripts"]
-        for script, text in scripts.items():
+        scripts = real_scripts()
+        checked = set()
+        for js in real_agent_js_paths():
+            try:
+                script = BS.build_command(js)[len("npm run "):]
+            except BS.StampError:
+                continue
+            checked.add(script)
             with self.subTest(script=script):
-                name = script.split(":", 1)[1]
-                self.assertEqual(text, f"frida-compile -o {name}.js {name}.ts && "
-                                       f"py -I ../build_stamp.py {name}.js")
+                name = os.path.basename(js)
+                steps = [step.split() for step in scripts[script].split("&&")]
+                compiles = [i for i, words in enumerate(steps)
+                            if words[:1] == ["frida-compile"] and name in words
+                            and source_of(js) in words]
+                stamps = [i for i, words in enumerate(steps)
+                          if any(os.path.basename(w) == "build_stamp.py" for w in words)
+                          and words[-1:] == [name]]
+                self.assertEqual(len(compiles), 1)
+                self.assertEqual(len(stamps), 1)
+                self.assertLess(compiles[0], stamps[0])
+        # Every script was reached; a folder that gives none fails here.
+        self.assertEqual(checked, set(scripts))
 
     def test_a_bundle_with_no_source_map_writes_no_stamp(self):
         with open(self.js, "wb") as f:
@@ -166,13 +220,24 @@ class BuildsRecordTest(unittest.TestCase):
         self.state = make_built_agent(self.agent, "state")
 
     def test_builds_record_holds_each_stamp_and_the_replay_build(self):
-        record = BS.builds_record([self.kit, self.state], {"hydra_replay_build": "2.9.1+abc"})
+        with open(REAL_SCHEDULE, encoding="utf-8") as f:
+            schedule = json.load(f)
+        record = BS.builds_record([self.kit, self.state], schedule)
         self.assertEqual([a["file"] for a in record["agents"]], ["kit.js", "state.js"])
         for entry, js in zip(record["agents"], (self.kit, self.state)):
             self.assertEqual(entry["stamp"], BS.read_stamp(js))
             self.assertEqual(entry["digest"], BS.stamp_digest(BS.read_stamp(js)))
             self.assertTrue(entry["fresh"])
-        self.assertEqual(record["hydra_replay_build"], "2.9.1+abc")
+        # The record names the hydra_replay that wrote the real schedule,
+        # not the stand-in for a schedule with none.
+        self.assertEqual(record["hydra_replay_build"], schedule["hydra_replay_build"])
+        self.assertNotEqual(record["hydra_replay_build"], BS.NO_REPLAY_BUILD)
+        # It holds what a real run's builds record holds, for a fresh agent.
+        with open(REAL_BUILDS_RECORD, encoding="utf-8") as f:
+            real = json.load(f)
+        self.assertEqual(set(record), set(real))
+        for entry in record["agents"]:
+            self.assertEqual(set(entry), set(real["agents"][0]))
 
     def test_a_schedule_with_no_build_says_so(self):
         for schedule in ({}, {"hydra_replay_build": ""}, {"hydra_replay_build": None}):

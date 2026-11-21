@@ -1,0 +1,55 @@
+file_kind	state	files	no_test	tests	hits
+tests .cpp	read	143	0	2171	337
+tests .h	read	56	2	155	4
+tests .txt	skipped	1			
+tests/fuzz .cpp	read	6	6	0	0
+tests/fuzz .dict	skipped	1			
+tests/fuzz .h	read	1	0	1	0
+tests/layering .json	skipped	2			
+tests/pb_ui .cpp	read	6	0	35	0
+tests/pb_ui .h	read	1	0	1	0
+tests/single_owner .cpp	read	4	0	27	0
+tests/single_owner .h	read	4	2	5	0
+tests/single_owner .json	skipped	1			
+tests/single_owner/rules .json	skipped	15			
+tests/single_owner/rules/app .json	skipped	18			
+tests/single_owner/rules/core .json	skipped	10			
+tests/single_owner/rules/parse .json	skipped	3			
+tests/single_owner/rules/pathbuilder .json	skipped	5			
+tests/single_owner/rules/search .json	skipped	3			
+tests/single_owner/rules/store .json	skipped	5			
+tests/single_owner/rules/tests .json	skipped	1			
+tests/single_owner/rules/ui .json	skipped	15			
+tests/ui .cpp	read	13	0	180	373
+tests/ui .h	read	4	1	9	8
+tests/ui/scripts .txt	skipped	1			
+tools .cpp	read	4	0	10	0
+tools .h	read	2	2	0	0
+tools .ps1	skipped	20			
+tools .py	read	19	5	44	0
+tools .xml	skipped	1			
+tools/capture .ps1	skipped	3			
+tools/ch_mcp .json	skipped	5			
+tools/ch_mcp .ps1	skipped	1			
+tools/ch_mcp .py	read	28	7	104	0
+tools/ch_mcp/agent .json	skipped	3			
+tools/ch_mcp/agent .ts	skipped	11			
+tools/ch_mcp/tests .bin	skipped	1			
+tools/ch_mcp/tests .py	read	29	7	62	0
+tools/ch_probe .py	read	13	9	5	0
+tools/ch_probe/experiments .mjs	skipped	1			
+tools/ch_probe/experiments .py	read	18	9	17	0
+tools/ch_probe/experiments/results .csv	skipped	2			
+tools/ch_probe/experiments/results/overlay-spike .csv	skipped	8			
+tools/ch_probe/experiments/results/overlay-spike .json	skipped	1			
+tools/ch_probe/experiments/results/overlay-spike .txt	skipped	16			
+tools/ch_probe/tests .json	skipped	19			
+tools/ch_probe/tests .py	read	28	10	31	0
+tools/doc_shots .py	read	1	0	1	0
+tools/doc_shots .txt	skipped	1			
+tools/mutate .cpp	read	1	1	0	0
+tools/mutate .h	read	1	0	8	0
+tools/mutate .py	read	14	1	29	0
+tools/mutate .txt	skipped	1			
+tools/precheck .cpp	read	19	0	43	0
+tools/precheck .h	read	15	9	7	0

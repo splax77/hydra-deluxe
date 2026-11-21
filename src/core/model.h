@@ -66,6 +66,13 @@ struct ChordNote;
 bool lane_allows_flag(NoteColor c);
 void set_lane_flag(ChordNote& note);
 bool lane_flag(const ChordNote& note);
+// Clone Hero 1.1's drum lane bit for a note: its colour, and for a pad that
+// has both, its cymbal flag. The one home of the game's lane bit values and
+// of their order (every cymbal bit above every tom bit): the note shuffle
+// (parse/note_shuffle.cpp), a drum lane's lowest and highest pads (lane_pads
+// in parse/song.cpp) and Chord::activation_note all read it. Throws
+// std::logic_error for a note with no lane.
+uint32_t lane_bit(const ChordNote& note);
 std::string color_str(NoteColor c);         // "Kick"/"Red"/...
 std::string dynamic_str(NoteDynamicType t); // "none"/"ghost"/"accent"
 // The display word for a dynamic: dynamic_str capitalised, and "" for
@@ -265,7 +272,8 @@ public:
     void apply_ghost(NoteColor color);
     void apply_accent(NoteColor color);
 
-    // Highest-priority note (Green→Blue→Yellow→Red→Kick); throws if empty.
+    // The note Clone Hero flags to activate Star Power on this chord; the
+    // rank and its sources are in model.cpp. Throws if the chord is empty.
     const ChordNote& activation_note() const;
 
 private:
@@ -599,6 +607,13 @@ struct ActivationTiming {
     bool difficult = false;
 };
 
+// Where the meter reached the activation level (kSpActivationBars), read off
+// a stored list of bar arrivals in order (Activation::bank_rise_ticks, or
+// Path::trailing_bank_ticks after the last window): that bar's arrival.
+// Unset when fewer bars are stored, never a guess. The one home of "enough
+// Star Power saved to activate" for a stored list.
+std::optional<int64_t> sp_ready_tick(const std::vector<int64_t>& bank_ticks);
+
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (docs/adr/0017).
@@ -643,17 +658,15 @@ struct Activation {
     // Where each bar this activation spends arrived, since the previous window
     // closed (or the chart began), in order. A phrase hit at the cap gains
     // nothing and is not here. A squeezed-out phrase's bar is the first
-    // entry, stamped where the search's own bookkeeping puts it
-    // (search/engine.cpp, the SqOut branch); Path::bank_arrivals gives the
-    // arrival as played. Stamped by the search. sp_meter() is its size.
+    // entry (search/engine.cpp, the SqOut branch). Stamped by the search.
+    // sp_meter() is its size.
     std::vector<int64_t> bank_rise_ticks;
 
     // Bars of SP this activation spends: one per stored arrival.
     int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
 
-    // Where the meter reached the activation level (kSpActivationBars): that
-    // bar's stored arrival in bank_rise_ticks. Unset when fewer bars are
-    // stored (a hand-built activation), never a guess.
+    // The free sp_ready_tick over bank_rise_ticks. Unset on a hand-built
+    // activation that stores too few bars.
     std::optional<int64_t> sp_ready_tick() const;
 
     // The fills the path was shown and passed over before this activation,
@@ -667,8 +680,11 @@ struct Activation {
     int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
-    //   deact_tick()             - the deactivation node D: where this
-    //                              window's SP ends, every extension included.
+    //   deact_tick()             - the deactivation node D, the last stored
+    //                              step's end: the node every backend row's
+    //                              offset was measured against (the search's
+    //                              copy-out in search/engine.cpp says so). Where
+    //                              SP ends as played is window_end_tick().
     //   clamp_tick()             - the collecting note the SP cap last pinned
     //                              the end to (ADR 0013); unset if none.
     //   collected_phrase_ticks() - every phrase chord the gauge received while
@@ -680,9 +696,19 @@ struct Activation {
     // chord when core::after_sp_end says it is not after deact_tick(), since
     // set_sqout treats every chord past it as hit after SP ended; otherwise
     // deact_tick(). The search asks the same function of the same two ticks
-    // (SqueezeChoice::late). deact_tick() stays the stored end the search,
-    // the replay and the press schedule read.
+    // (SqueezeChoice::late).
     std::optional<int64_t> window_end_tick() const;
+    // Bars of SP left in the meter at `tick` while this window runs: the
+    // measures from `tick` to the SP end in force there (the last step at or
+    // before `tick`, or strictly before it when `just_before`, so a step's
+    // own tick can be read from either side), two to a bar, never below
+    // empty. The first step stands for every tick before it. It does not stop
+    // at window_end_tick(): on an early squeeze-out SP ends with bars still in
+    // the meter, and the caller drops them there (docs/clone-hero/
+    // 05-star-power.md, SP-25). Unset with no stored step. The Preview's gauge
+    // reads every level inside a window here.
+    std::optional<double> meter_bars_at(int64_t tick, const SongTiming& timing,
+                                        bool just_before = false) const;
     std::optional<int64_t> clamp_tick() const;           // the last Clamped step's tick
     std::vector<int64_t> collected_phrase_ticks() const; // every step after the first
     std::optional<int64_t> nominal_end() const;          // the first step's end
@@ -739,15 +765,13 @@ struct Activation {
     std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
-    // count one. Empty, too, for an activation with nothing to time.
+    // count one. Empty, too, for an activation with nothing to time, so a
+    // value here means the activation needs timing. The Paths tab's path
+    // button and the stored summary read Path::difficulty(), which rests on
+    // this (D51 call 4, D302). The row badges alone also show a squeeze that
+    // needs no timing (SPSqueeze::needs_no_timing; badge_timings, D80) and a
+    // fill with time to spare (D261).
     std::optional<double> difficulty() const;
-    // Does this activation need any timing at all? The per-activation half of
-    // Path::needs_timing. The Paths tab's path button and the stored summary
-    // read Path::difficulty(), which rests on hardest() (D51 call 4, D302). The
-    // row badges alone also show a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing; badge_timings, D80) and a fill with time
-    // to spare (D261).
-    bool needs_timing() const;
     // Is every timing of this activation inside `limit_ms`? Each squeeze
     // answers through SPSqueeze::within_limit and the early fill through
     // fill_within_limit, the same pieces the search's Engine::act_within_limit
@@ -866,14 +890,14 @@ struct Path {
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
-    // Where the bars spent by activation i (walk_activations order) arrived
-    // as played; i equal to the activation count means the trailing bars,
-    // and i is never more than that.
-    // The stored list (Activation::bank_rise_ticks, trailing_bank_ticks),
-    // with its first entry on the previous activation's sqout_tick when that
-    // activation squeezed out: the search banks that bar when the player hits
-    // the phrase, and starts a fresh list for it (search/engine.cpp, the SqOut
-    // branch). An empty list is returned as it is.
+    // Where enough is saved to activate again after the last window: the free
+    // sp_ready_tick over trailing_bank_ticks.
+    std::optional<int64_t> trailing_sp_ready_tick() const;
+
+    // Where the bars spent by activation i (walk_activations order) arrived;
+    // i equal to the activation count means the trailing bars, and i is never
+    // more than that. The stored list as the search stamped it
+    // (Activation::bank_rise_ticks, trailing_bank_ticks), unchanged.
     std::vector<int64_t> bank_arrivals(size_t i) const;
 
     int64_t notes_points = 0;
@@ -905,10 +929,9 @@ struct Path {
     int recount_tied_paths();
     void prepare_variants();
 
+    // The hardest Activation::difficulty() on the path. Empty when no
+    // activation needs timing, and for a path with no activations.
     std::optional<double> difficulty() const;
-    // Does any activation on this path need timing (Activation::needs_timing)?
-    // False for a path with no activations.
-    bool needs_timing() const;
     // Is every timing on this path at or below `limit_ms`
     // (Activation::within_ms_limit)? True for a path with no activations.
     // The all-0 pass's shortcut asks it at its 0 ms limit (search/pather.cpp).

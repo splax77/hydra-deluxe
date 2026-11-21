@@ -272,15 +272,16 @@ listed once, in `search_tips()` in src/app/library_query.h; the library's
 Search tips popup draws that list.
 
 **Batch time left**:
-The batch strip's estimate of how long the rest of a batch will take: the
-charts still to go over the rate across the last 2W finished charts, W being
-the run's worker count (`kTimeLeftWorkerRounds` in src/ui/library_jobs.h). It
-shows nothing until that many have finished, and changes at most once a
-second. Paused time never counts inside the window, because the finishes are
-timed on the batch clock, which leaves pauses out. The rate, the window and
-the hold are `app::TimeLeftClock`'s (src/app/time_left.h), which the Song
-Preview's loading bar reads too, over its own last second of bytes (D271
-item 4, D276 item 8, D283).
+The batch strip's estimate of how long the rest of a batch will take. The
+speed is the rows done over the batch time so far, an average since the batch
+started. The time left is the rows still to go over that speed. Both are
+measured on the batch clock, which leaves paused time out. It shows nothing
+until 2W rows have finished, W being the run's worker count, and changes at
+most once a second. The user chose this rule: "C: average since start
+(Recommended)", decision D352. The speed, the gate and the hold are
+`app::TimeLeftClock`'s (src/app/time_left.h), which the Song Preview's
+loading bar reads too, over its own last second of bytes (D271 item 4, D276
+item 8).
 
 **Batch counts**:
 A batch's three counts: analyzed, failed, and skipped (rows that already had a
@@ -445,7 +446,7 @@ lines through `ini_not_key_value_text`, `ini_unknown_key_text` and
 in src/app/ini_errors.h (D270 call 4); a scan row (ini-errors.json) holds
 that. A number outside its range loads at the nearest edge in the settings
 file, so `sp_cap=0` reads 1, where `hydra_rules.ini` refuses a number below
-one of its five floors (D270 calls 1 to 3). A key Hydra used to write is
+one of its four floors (D270 calls 1 to 3). A key Hydra used to write is
 skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
 `kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
 `is_retired_key` asks. A live key of the same name wins. A retired settings
@@ -644,20 +645,10 @@ setting picks which game version's generator runs, in one place:
 
 Clone Hero 1.1 (the default) follows the game's own generator, whose rules
 are docs/clone-hero/04-fills.md (FL-13 to FL-18). hydra_rules.ini can change
-its 4-line step and its half-beat distance (`fill_cooldown_measures` and
-`fill_max_distance_beats`).
+its half-beat distance (`fill_max_distance_beats`); its 4-line step is fixed,
+as in the game (`kLinesAfterFill` in src/core/song.cpp).
 
-Clone Hero 1.0 mode keeps Hydra's own model of 1.0's fill rule (the user's
-call, 2026-10-14; docs/adr/0023), and counts measures on the same grid as 1.1
-(`MeasureIndex`; the user's call, 2026-10-24). It puts the fill on the chord
-nearest a measure line, within half a beat (no extra tick), half a grid
-measure long at the chord (`kCh10FillLengthMeasures`, fixed; the old
-`fill_length_measures` key is read and ignored), and at least 4 lines after
-the last one. When two chords sit equally near the line, the later one gets
-the fill. The distance and the length are cut down to whole ticks.
-`Song::place_fills_ch10` holds it, and `Song::place_fills_ch11` the 1.1
-generator. How the game's own 1.0 generator differs is
-docs/clone-hero/04-fills.md (FL-36).
+Clone Hero 1.0 mode places generated fills by old Clone Hero 1.0's own fill code (the user's call, 2026-11-21). The rules are FL-35 to FL-42 in docs/clone-hero/04-fills.md, held by `Song::place_fills_ch10`.
 
 `Song::generated_fills` records which generator ran (empty for authored
 fills): the one answer to "was this fill generated". The Preview reads it to
@@ -665,7 +656,7 @@ draw a 1.1 generated fill as the half measure before its chord
 (`drawn_fill_start_tick`, the user's call, 2026-10-19), because the fill's
 engine length is often 0. That is display only: it changes no length the
 deadline math reads, and authored and 1.0 fills are drawn from their own
-length.
+start.
 
 **Fill rule**:
 Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
@@ -731,8 +722,10 @@ it. The engine stores it once per activation. The deact node, the clamp note
 and the collected phrases are read from it (docs/adr/0021).
 
 **Deact node**:
-The exact chart position where an activation's Star Power ends; backend
-squeeze timings are measured against it. The search stamps it onto the
+Where an activation's Star Power would end with nothing squeezed out. Backend
+squeeze timings are measured against it. On an early squeeze-out Star Power
+ends sooner, on the squeezed-out chord (`Activation::window_end_tick`). The
+search stamps it onto the
 analysis as it runs, and nothing downstream re-derives it: every reader asks
 `Activation::deact_tick` (src/core/model.h), which reads the last step of the
 SP-end history.
@@ -964,11 +957,13 @@ The vertical gauge on the note highway's right edge showing banked Star Power
 at the playhead. With a path, every value is the analysis's. Between activations
 it steps up one bar at each tick where the engine stamped a bar's arrival. In
 an active window it shows the measures left until the SP end in force, two
-measures to a bar, and the analysis lists every place that end moved. It empties
-exactly at the deact node. The gauge counts no phrases and applies no cap. A
+measures to a bar, and the analysis lists every place that end moved. It runs
+until Star Power ends (`Activation::window_end_tick`). On an early squeeze-out
+that is the squeezed-out chord, and whatever is left in the meter is dropped
+there. The gauge counts no phrases and applies no cap. A
 late squeeze-in refills at the old SP end, because the player hits that phrase
-early and SP never stops. A squeezed-out phrase's bar arrives when the player
-hits it: as SP ends for an early phrase, on its own note for a late one.
+early and SP never stops. A squeezed-out phrase's bar arrives on the
+squeezed-out chord, for early and late phrases alike.
 Without a path it fills one bar per phrase and pins at the cap, since nothing
 spends it and there is no analysis to read. Every scene built from a song has
 the gauge (`PreviewScene::has_sp_gauge`), so a chart with no Star Power phrase

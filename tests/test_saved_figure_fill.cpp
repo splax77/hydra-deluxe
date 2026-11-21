@@ -1,12 +1,14 @@
 // The one-time fill of the saved hardest figure (app::fill_saved_hardest):
 // rows an older build saved with an empty figure get the engine's figure back
 // by replaying their saved path on the chart. Each case saves a real corpus
-// analysis as an older build left it, with the figure of the rows named
-// emptied, then runs the fill. Every figure and path text below is pinned
-// from one run.
+// analysis as an older build left it, with the figure of the rows the fill
+// reads emptied, then runs the fill. The rows emptied are the store's own
+// answer (rows_missing_hardest), and every figure a case expects is the one a
+// fresh save of the same analysis holds (the store's row builder).
 
 #include "doctest.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -18,7 +20,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/saved_figure_fill.h"
-#include "core/model.h"  // shown_timing
+#include "core/model.h"  // shown_timing, timing_needs_hitting, ChartFileError
 #include "corpus_util.h"
 #include "db_file_util.h"     // scalar_on_file
 #include "display_fixtures.h"  // save_old_build_record
@@ -35,10 +37,9 @@ using hydra::store::RecordStore;
 
 namespace {
 
-// The corpus chart whose best path, "1 0+ 0 0", carries a squeeze-in at
-// exactly 0.0 ms.
+// The corpus chart the one-chart cases save.
 const char* const kSmashMouth = "Smash Mouth - I_m A Believer";
-// The corpus chart whose best path's only squeeze-in is inside Star Power.
+// A second corpus chart, for the cases that need two in one library.
 const char* const kEverlong = "Foo Fighters - Everlong";
 
 // The running settings every case fills under: the defaults.
@@ -73,6 +74,61 @@ std::vector<std::optional<double>> figures_of(RecordStore& store, const std::str
     return hydra::test::saved_figures(store, md5, fill_settings().profile());
 }
 
+// The index of 1-based rank `rank` in a record's paths.
+size_t rank_index(int rank) { return static_cast<size_t>(rank - 1); }
+
+// Empties the saved figure of every rank in `ranks`, as an older build left
+// them.
+void empty_ranks(PreparedRecord& prepared, const std::vector<int>& ranks) {
+    for (int rank : ranks) prepared.record.paths.at(rank_index(rank)).hardest_ms.reset();
+}
+
+// Empties the saved figure of every rank.
+void empty_every_figure(PreparedRecord& prepared) {
+    for (auto& path : prepared.record.paths) path.hardest_ms.reset();
+}
+
+// The record a fresh save of `chart`'s analysis under the running settings
+// writes.
+PreparedRecord fresh_record(const CorpusChart& chart) {
+    return hydra::store::prepare_record(
+        chart.entry.md5, fill_settings().profile(),
+        corpus::analyzed(chart.file, fill_settings().to_analysis_settings()));
+}
+
+// The figure of every rank, in rank order, that a fresh save of `chart`'s
+// analysis holds: the store's own row (engine_hardest_ms, set where the store
+// builds the row), and so the figure the fill must write back.
+std::vector<std::optional<double>> fresh_figures(const CorpusChart& chart) {
+    RecordStore fresh(":memory:");
+    save_old(fresh, chart, {});
+    return figures_of(fresh, chart.entry.md5);
+}
+
+// The ranks of `chart`, in rank order, that the fill reads once every figure
+// is emptied: the store's own answer (RecordStore::rows_missing_hardest).
+std::vector<int> fill_ranks(const CorpusChart& chart) {
+    RecordStore probe(":memory:");
+    save_old(probe, chart, {}, empty_every_figure);
+    std::vector<int> out;
+    for (const hydra::store::MissingHardestRow& row :
+         probe.rows_missing_hardest(fill_settings().profile()))
+        out.push_back(row.rank);
+    return out;
+}
+
+// The analysis of corpus chart `file` under the running settings, or null
+// when the engine refuses the chart (a ChartFileError: the file cannot be
+// read, or it has no notes at the difficulty). Any other exception fails the
+// case that asked.
+const hydra::HydraRecord* analyzed_or_refused(const std::string& file) {
+    try {
+        return &corpus::analyzed(file, fill_settings().to_analysis_settings());
+    } catch (const hydra::ChartFileError&) {
+        return nullptr;
+    }
+}
+
 // A progress callback that counts its calls and the charts it was told of,
 // and answers stop at call `stop_at` (0 = never).
 struct Counter {
@@ -90,26 +146,30 @@ struct Counter {
 
 }  // namespace
 
-TEST_CASE("a saved path with a squeeze-in on the SP end gets its figure back") {
+// Every row the fill reads gets back the figure a fresh save of its path
+// holds, and every other row keeps the figure it was saved with.
+TEST_CASE("a saved path with a squeeze-in gets back the figure a fresh save holds") {
     RecordStore store(":memory:");
     const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
-    save_old(store, chart, {1, 2, 3});
+    const std::vector<int> emptied = fill_ranks(chart);
+    REQUIRE_FALSE(emptied.empty());
+    const std::vector<std::optional<double>> fresh = fresh_figures(chart);
+    save_old(store, chart, emptied);
     const std::vector<std::optional<double>> before = figures_of(store, entry.md5);
-    REQUIRE(before.size() == 5);
-    CHECK_FALSE(before[0].has_value());
-    CHECK_FALSE(before[1].has_value());
-    CHECK_FALSE(before[2].has_value());
+    for (int rank : emptied) CHECK_FALSE(before.at(rank_index(rank)).has_value());
 
     Counter first;
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), first.fn()));
     // One chart: reported before it and once it is done.
     CHECK(first.calls == 2);
     CHECK(first.charts_total == 1);
-    const hydra::store::RecordLookup found = store.lookup_one(entry.md5, fill_settings().profile());
-    CHECK(found.record.paths[0].path == "1 0+ 0 0");
-    CHECK(figures_of(store, entry.md5) ==
-          std::vector<std::optional<double>>{0.0, 0.0, 0.0, std::nullopt, 0.0});
+    const std::vector<std::optional<double>> after = figures_of(store, entry.md5);
+    for (int rank : emptied) {
+        CAPTURE(rank);
+        CHECK(after.at(rank_index(rank)).has_value());
+    }
+    CHECK(after == fresh);
     CHECK(store.hardest_figure_filled(fill_settings().profile()));
 
     // The marker is set, so a second run reads no chart.
@@ -134,13 +194,22 @@ TEST_CASE("a row that disagrees with its replay keeps its empty figure") {
     RecordStore store(":memory:");
     const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
-    save_old(store, chart, {1, 2}, [](PreparedRecord& p) { p.record.paths[0].score += 1; });
+    // The first two rows the fill reads: the first one's score is changed, so
+    // it no longer matches its replay; the second still does.
+    const std::vector<int> read = fill_ranks(chart);
+    REQUIRE(read.size() >= 2);
+    const int changed = read[0];
+    const int matching = read[1];
+    const std::vector<std::optional<double>> fresh = fresh_figures(chart);
+    save_old(store, chart, {changed, matching}, [changed](PreparedRecord& p) {
+        p.record.paths.at(rank_index(changed)).score += 1;
+    });
 
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}));
     const std::vector<std::optional<double>> after = figures_of(store, entry.md5);
-    // Rank 1's score no longer matches its replay; rank 2 still does.
-    CHECK_FALSE(after[0].has_value());
-    CHECK(after[1] == std::optional<double>(0.0));
+    CHECK_FALSE(after.at(rank_index(changed)).has_value());
+    REQUIRE(after.at(rank_index(matching)).has_value());
+    CHECK(after.at(rank_index(matching)) == fresh.at(rank_index(matching)));
     CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 
@@ -148,45 +217,57 @@ TEST_CASE("a stop leaves the marker unset") {
     RecordStore store(":memory:");
     const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
-    save_old(store, chart, {1});
+    const std::vector<int> read = fill_ranks(chart);
+    REQUIRE_FALSE(read.empty());
+    const int rank = read.front();
+    save_old(store, chart, {rank});
 
     Counter stopped;
     stopped.stop_at = 1;
     CHECK_FALSE(hydra::app::fill_saved_hardest(store, fill_settings(), stopped.fn()));
     CHECK(stopped.calls == 1);
     CHECK_FALSE(store.hardest_figure_filled(fill_settings().profile()));
-    CHECK_FALSE(figures_of(store, entry.md5)[0].has_value());
+    CHECK_FALSE(figures_of(store, entry.md5).at(rank_index(rank)).has_value());
 
-    // The next run goes on and finishes.
+    // The next run goes on and finishes, with the figure a fresh save holds.
     Counter next;
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), next.fn()));
     CHECK(next.charts_total == 1);
-    CHECK(figures_of(store, entry.md5)[0] == std::optional<double>(0.0));
+    REQUIRE(figures_of(store, entry.md5).at(rank_index(rank)).has_value());
+    CHECK(figures_of(store, entry.md5) == fresh_figures(chart));
     CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 
 TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes on") {
     // Two charts in one library, so save_as_old_build (which lists one chart
-    // as the whole library) is not used: Everlong's ranks 1 and 2 and Smash
-    // Mouth's rank 1 are saved with an empty figure.
+    // as the whole library) is not used: every row the fill reads on either
+    // chart is saved with an empty figure.
     RecordStore store(":memory:");
+    const hydra::store::Profile profile = fill_settings().profile();
     const CorpusChart throws = named_chart(kEverlong);
     const CorpusChart kept = named_chart(kSmashMouth);
+    const std::vector<int> throws_ranks = fill_ranks(throws);
+    const std::vector<int> kept_ranks = fill_ranks(kept);
+    REQUIRE_FALSE(throws_ranks.empty());
+    REQUIRE_FALSE(kept_ranks.empty());
     store.rebuild_chart_library({throws.entry, kept.entry});
     const auto save = [&](const CorpusChart& chart, const std::vector<int>& emptied) {
-        PreparedRecord prepared = hydra::store::prepare_record(
-            chart.entry.md5, fill_settings().profile(),
-            corpus::analyzed(chart.file, fill_settings().to_analysis_settings()));
-        for (int rank : emptied)
-            prepared.record.paths.at(static_cast<size_t>(rank - 1)).hardest_ms.reset();
+        PreparedRecord prepared = fresh_record(chart);
+        empty_ranks(prepared, emptied);
         store.save(prepared);
     };
-    save(throws, {1, 2});
-    save(kept, {1});
+    save(throws, throws_ranks);
+    save(kept, kept_ranks);
 
-    // The replay throws for Everlong's rank 1 text only. Its rank 2 would
-    // replay, but the whole chart is skipped.
-    const std::string throwing_text = "1 2 3+";
+    // The replay throws for the stored text of the first row the fill reads
+    // on Everlong, and only for it. Everlong's other rows would replay, but
+    // the whole chart is skipped. No Smash Mouth row has that text, so the
+    // throw stays on Everlong.
+    const std::string throwing_text = store.lookup_one(throws.entry.md5, profile)
+                                          .record.paths.at(rank_index(throws_ranks.front()))
+                                          .path;
+    const hydra::store::RecordLookup kept_saved = store.lookup_one(kept.entry.md5, profile);
+    for (const hydra::store::PathRow& p : kept_saved.record.paths) REQUIRE(p.path != throwing_text);
     int thrown = 0;
     const hydra::app::PathReplay replay = [&](const hydra::Song& song,
                                               const hydra::ScoreGraph& graph,
@@ -197,47 +278,55 @@ TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes o
         }
         return hydra::paths_from_pathstring_on_graph(song, graph, text);
     };
-    CHECK(store.lookup_one(throws.entry.md5, fill_settings().profile()).record.paths[0].path ==
-          throwing_text);
 
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}, replay));
     CHECK(thrown == 1);
     const std::vector<std::optional<double>> skipped = figures_of(store, throws.entry.md5);
-    CHECK_FALSE(skipped[0].has_value());
-    CHECK_FALSE(skipped[1].has_value());
-    CHECK(figures_of(store, kept.entry.md5)[0] == std::optional<double>(0.0));
-    CHECK(store.hardest_figure_filled(fill_settings().profile()));
+    for (int rank : throws_ranks) {
+        CAPTURE(rank);
+        CHECK_FALSE(skipped.at(rank_index(rank)).has_value());
+    }
+    CHECK(figures_of(store, kept.entry.md5) == fresh_figures(kept));
+    CHECK(store.hardest_figure_filled(profile));
 }
 
 TEST_CASE("the fill on several workers writes the same figures as on one") {
     // The first corpus charts, each its own chart, that have a row for the
     // fill to read once every rank's figure is emptied (the store's own
-    // answer, rows_missing_hardest), saved that way in one library.
+    // answer, rows_missing_hardest), saved that way in one library. A chart
+    // is passed over only for one of the reasons named below, each one
+    // reported by name; any other exception fails the case.
     const size_t want = 6;
-    const hydra::app::AnalysisSettings analysis = fill_settings().to_analysis_settings();
     std::vector<ChartLibraryEntry> entries;
     std::vector<PreparedRecord> saved;
+    std::vector<std::string> passed_over;
     std::set<std::string> ids;
     for (const std::string& file : corpus::chart_paths()) {
         if (saved.size() == want) break;
-        try {
-            const hydra::HydraRecord& record = corpus::analyzed(file, analysis);
-            if (record.paths.empty()) continue;
-            ChartLibraryEntry entry = corpus::scanned_entry(file, file);
-            if (!ids.insert(entry.md5).second) continue;
-            PreparedRecord prepared =
-                hydra::store::prepare_record(entry.md5, fill_settings().profile(), record);
-            for (auto& path : prepared.record.paths) path.hardest_ms.reset();
-            RecordStore probe(":memory:");
-            probe.rebuild_chart_library({entry});
-            probe.save(prepared);
-            if (probe.rows_missing_hardest(fill_settings().profile()).empty()) continue;
-            entries.push_back(std::move(entry));
-            saved.push_back(std::move(prepared));
-        } catch (const std::exception&) {
+        const hydra::HydraRecord* record = analyzed_or_refused(file);
+        if (!record) {
+            passed_over.push_back(file + ": the engine refused the chart");
             continue;
         }
+        if (record->paths.empty()) {
+            passed_over.push_back(file + ": no path");
+            continue;
+        }
+        const CorpusChart chart{file, corpus::scanned_entry(file, file)};
+        if (!ids.insert(chart.entry.md5).second) {
+            passed_over.push_back(file + ": the same chart as one before it");
+            continue;
+        }
+        if (fill_ranks(chart).empty()) {
+            passed_over.push_back(file + ": no row for the fill to read");
+            continue;
+        }
+        PreparedRecord prepared = fresh_record(chart);
+        empty_every_figure(prepared);
+        entries.push_back(chart.entry);
+        saved.push_back(std::move(prepared));
     }
+    for (const std::string& why : passed_over) MESSAGE(why);
     REQUIRE(saved.size() == want);
 
     // Every chart's figures, in `entries` order, after a fill on `workers`
@@ -283,32 +372,63 @@ TEST_CASE("the fill on several workers writes the same figures as on one") {
     CHECK(four_counter.charts_total == want);
 }
 
+// A row the fill reads holds a squeeze, or an E0 fill, and its figure is the largest
+// difficulty over its squeezes and E0 fills (engine_hardest_ms). So a figure
+// that needs no hitting (timing_needs_hitting is false) means a squeeze-in
+// itself needs none: it sits inside Star Power, before the SP end. The fill
+// writes that figure whole, sign included, and shown_timing shows no timing
+// for it. The case is the first corpus chart whose fresh save holds such a
+// figure on a row the fill reads.
 TEST_CASE("an inside-Star-Power squeeze-in fills a negative figure that shows as none") {
-    RecordStore store(":memory:");
-    const CorpusChart chart = named_chart(kEverlong);
-    const ChartLibraryEntry& entry = chart.entry;
-    save_old(store, chart, {1});
-    const hydra::store::RecordLookup saved = store.lookup_one(entry.md5, fill_settings().profile());
-    REQUIRE(saved.record.paths.size() >= 1);
-    CHECK(saved.record.paths[0].path == "1 2 3+");
-    CHECK(saved.record.paths[0].sqin_count == 1);
-    CHECK(saved.record.paths[0].sqout_count == 0);
+    std::optional<CorpusChart> found;
+    int found_rank = 0;
+    for (const std::string& file : corpus::chart_paths()) {
+        const hydra::HydraRecord* record = analyzed_or_refused(file);
+        if (!record || record->paths.empty()) continue;
+        CorpusChart candidate{file, corpus::scanned_entry(file, file)};
+        const std::vector<std::optional<double>> fresh = fresh_figures(candidate);
+        for (int rank : fill_ranks(candidate)) {
+            const std::optional<double>& f = fresh.at(rank_index(rank));
+            if (f && !hydra::timing_needs_hitting(*f)) {
+                found_rank = rank;
+                break;
+            }
+        }
+        if (found_rank != 0) {
+            found = std::move(candidate);
+            break;
+        }
+    }
+    REQUIRE_MESSAGE(found.has_value(),
+                    "no corpus chart's fresh save holds a figure that needs no hitting on a row "
+                    "the fill reads");
+    const CorpusChart& chart = *found;
+    CAPTURE(chart.file);
+    CAPTURE(found_rank);
+    const std::vector<std::optional<double>> fresh = fresh_figures(chart);
 
+    RecordStore store(":memory:");
+    save_old(store, chart, {found_rank});
+    REQUIRE_FALSE(figures_of(store, chart.entry.md5).at(rank_index(found_rank)).has_value());
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}));
-    const std::optional<double> figure = figures_of(store, entry.md5)[0];
+    const std::vector<std::optional<double>> after = figures_of(store, chart.entry.md5);
+    CHECK(after == fresh);
+    const std::optional<double> figure = after.at(rank_index(found_rank));
     REQUIRE(figure.has_value());
-    CHECK(*figure == -189.83750000002328);
+    CHECK_FALSE(hydra::timing_needs_hitting(*figure));
     CHECK_FALSE(hydra::shown_timing(figure).has_value());
 }
 
 // The fill reads one chart's rows on one graph: a replay that keeps the
 // address of the graph it is handed sees the same one for every row of the
-// chart. Smash Mouth's ranks 1 to 3 are the rows it reads, as in the first
-// case above.
-TEST_CASE("the fill hands every row of one chart the same graph") {
+// chart. Every row the fill reads on Smash Mouth is emptied, and it takes two
+// rows at least to compare.
+TEST_CASE("the fill hands every row of one chart a graph at one address") {
     RecordStore store(":memory:");
     const CorpusChart chart = named_chart(kSmashMouth);
-    save_old(store, chart, {1, 2, 3});
+    const std::vector<int> emptied = fill_ranks(chart);
+    REQUIRE(emptied.size() >= 2);
+    save_old(store, chart, emptied);
 
     // Both the graph's own address and the address of its first node are kept:
     // a graph rebuilt per row could reuse the stack slot of the one before it,
@@ -324,14 +444,13 @@ TEST_CASE("the fill hands every row of one chart the same graph") {
         return hydra::paths_from_pathstring_on_graph(song, graph, text);
     };
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}, replay, 1));
-    REQUIRE(seen.size() == 3);
-    CHECK(seen[1] == seen[0]);
-    CHECK(seen[2] == seen[0]);
-    CHECK(seen_start[1] == seen_start[0]);
-    CHECK(seen_start[2] == seen_start[0]);
-    // The figures are the ones the first case pins.
-    CHECK(figures_of(store, chart.entry.md5) ==
-          std::vector<std::optional<double>>{0.0, 0.0, 0.0, std::nullopt, 0.0});
+    // One replay for each row the fill reads.
+    REQUIRE(seen.size() == emptied.size());
+    for (size_t i = 1; i < seen.size(); ++i) {
+        CAPTURE(i);
+        CHECK(seen[i] == seen[0]);
+        CHECK(seen_start[i] == seen_start[0]);
+    }
 }
 
 // A result this build saves through the store's own save never leaves the
@@ -346,9 +465,7 @@ TEST_CASE("a result this build saves holds a saved figure on every path with a s
     const hydra::store::Profile profile = fill_settings().profile();
     int squeezed = 0;
     for (const CorpusChart* chart : {&smash, &everlong}) {
-        store.save(hydra::store::prepare_record(
-            chart->entry.md5, profile,
-            corpus::analyzed(chart->file, fill_settings().to_analysis_settings())));
+        store.save(fresh_record(*chart));
         const hydra::store::RecordLookup found = store.lookup_one(chart->entry.md5, profile);
         REQUIRE(found.status == hydra::store::RecordStatus::Ready);
         for (const hydra::store::PathRow& p : found.record.paths) {
@@ -364,29 +481,39 @@ TEST_CASE("a result this build saves holds a saved figure on every path with a s
 }
 
 // A row saved under a results stamp this build does not accept is never read
-// by the fill, even with an empty figure and a squeeze-in: the fill reads no
-// chart, calls neither the progress callback nor the replay, and the row is
-// as it was. Smash Mouth's ranks 1 to 3 are the rows the first case above
-// fills under the current stamp; here they sit under an older one.
+// by the fill, even with an empty figure the engine gives its path: the fill
+// reads no chart, calls neither the progress callback nor the replay, and the
+// row is as it was. The rows emptied are the ones the fill reads on Smash
+// Mouth under the current stamp; here they sit under an older one.
 TEST_CASE("a row under an older stamp is left alone by the fill") {
     const testtemp::ScopedFile db("older_stamp_fill", ".db");
     const CorpusChart chart = named_chart(kSmashMouth);
+    const std::vector<int> emptied = fill_ranks(chart);
+    REQUIRE_FALSE(emptied.empty());
+    // Only the emptied ranks are counted: a path the engine gives no figure
+    // is empty in a fresh save too.
+    std::string rank_list;
+    for (int rank : emptied) {
+        if (!rank_list.empty()) rank_list += ",";
+        rank_list += std::to_string(rank);
+    }
     const std::string empty_rows =
-        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND sqin_count > 0";
+        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND rank IN (" +
+        rank_list + ")";
+    int64_t empty_before = 0;
     int replays = 0;
     Counter counter;
     {
         RecordStore store(db.path);
         store.rebuild_chart_library({chart.entry});
-        PreparedRecord prepared = hydra::store::prepare_record(
-            chart.entry.md5, fill_settings().profile(),
-            corpus::analyzed(chart.file, fill_settings().to_analysis_settings()));
-        for (int rank : {1, 2, 3})
-            prepared.record.paths.at(static_cast<size_t>(rank - 1)).hardest_ms.reset();
+        PreparedRecord prepared = fresh_record(chart);
+        empty_ranks(prepared, emptied);
         hydra::test::save_old_build_record(store, prepared);
         REQUIRE(store.lookup_one(chart.entry.md5, fill_settings().profile()).status ==
                 hydra::store::RecordStatus::Stale);
-        REQUIRE(hydra::test::scalar_on_file(db.path, empty_rows) == 3);
+        empty_before = hydra::test::scalar_on_file(db.path, empty_rows);
+        // The older build's save keeps every emptied row empty.
+        REQUIRE(empty_before == static_cast<int64_t>(emptied.size()));
 
         const hydra::app::PathReplay replay = [&](const hydra::Song& song,
                                                   const hydra::ScoreGraph& graph,
@@ -400,5 +527,5 @@ TEST_CASE("a row under an older stamp is left alone by the fill") {
     }
     CHECK(counter.calls == 0);
     CHECK(replays == 0);
-    CHECK(hydra::test::scalar_on_file(db.path, empty_rows) == 3);
+    CHECK(hydra::test::scalar_on_file(db.path, empty_rows) == empty_before);
 }

@@ -5,6 +5,7 @@
 // check-5 files of the precheck self-test's fixture (tests/test_precheck.cpp).
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <sstream>
@@ -150,16 +151,41 @@ TEST_CASE("precheck check 5: the four second homes print F with their wording, t
         for (const std::string& l : lines) all += l + "\n";
         return all;
     }());
-    const std::string why =
-        "  -- a second home for an idea that already has one; name the concept it extends, or reuse it "
-        "(derive-once review, step 8)";
-    CHECK(lines == std::vector<std::string>{
-                       "F src/app/new_helpers.cpp:6  free function trim_label is also defined at "
-                       "src/core/old_helpers.cpp:6" + why,
-                       "F src/app/new_helpers.cpp:10  \"chart file is missing\" is also written at "
-                       "src/core/old_helpers.cpp:11" + why,
-                       "F src/app/new_types.h:7  struct LibraryRow shares 4 field names with struct SongEntry at "
-                       "src/core/old_types.h:7: album, artist, credit, title" + why,
-                       "F src/app/new_types.h:21  enum class Verdict is also defined at src/core/old_types.h:21" + why,
-                   });
+    // Each probe: where the second home is, then the names its item must give:
+    // the repeated thing and the first home it points back to.
+    struct Probe {
+        std::string at;
+        std::vector<std::string> names;
+    };
+    const std::vector<Probe> probes = {
+        {"src/app/new_helpers.cpp:6", {"trim_label", "src/core/old_helpers.cpp:6"}},
+        {"src/app/new_helpers.cpp:10", {"\"chart file is missing\"", "src/core/old_helpers.cpp:11"}},
+        {"src/app/new_types.h:7",
+         {"LibraryRow", "SongEntry", "src/core/old_types.h:7", "album", "artist", "credit", "title"}},
+        {"src/app/new_types.h:21", {"Verdict", "src/core/old_types.h:21"}},
+    };
+    // One item per probe and nothing for the near misses.
+    REQUIRE(lines.size() == probes.size());
+    // item_line (tools/precheck/items.cpp) writes "<kind> <file:line>  <what>  -- <why>".
+    const std::string why_mark = "  -- ";
+    std::string first_why;
+    for (const Probe& p : probes) {
+        CAPTURE(p.at);
+        const std::string head = "F " + p.at + "  ";
+        const auto it = std::find_if(lines.begin(), lines.end(),
+                                     [&](const std::string& l) { return l.rfind(head, 0) == 0; });
+        REQUIRE(it != lines.end());
+        const size_t mark = it->find(why_mark);
+        REQUIRE(mark != std::string::npos);
+        const std::string what = it->substr(head.size(), mark - head.size());
+        for (const std::string& name : p.names) {
+            CAPTURE(name);
+            CHECK(what.find(name) != std::string::npos);
+        }
+        // Every second home gives check 5's one reason.
+        const std::string why = it->substr(mark + why_mark.size());
+        CHECK_FALSE(why.empty());
+        if (first_why.empty()) first_why = why;
+        CHECK(why == first_why);
+    }
 }

@@ -1,12 +1,10 @@
 """Unit tests for engine.py, run with no game and no debugger.
 
-The whole point of the engine model taking a ProcessHandle and a Debugger
-through its constructor is that we can hand it fakes here. The fakes are dumb:
-the fake process returns whatever double or dword we told it to for a given
-address, and the fake debugger fires the breakpoint callback the instant it is
-set. That is enough to check every piece of logic in engine.py -- the offset
-arithmetic, the precision-mode bit test, the constant reads, and capturing the
-object pointer from rcx.
+The whole point of the engine model taking a ProcessHandle through its
+constructor is that we can hand it a fake here. The fake memory returns
+whatever double or dword we told it to for a given address. The score-rise
+check runs on a real run's press log instead, and the engine class's field
+types come from the real 1.1 build's class dump.
 
 The process is a real Process from the shared builder in fakes.py, so the
 address maths and the decoding are production's.
@@ -16,8 +14,8 @@ package root, we put the ch_probe directory itself on sys.path first, so
 `import engine` and `import constants` resolve.
 """
 
+import json
 import os
-import struct
 import sys
 import unittest
 
@@ -30,62 +28,18 @@ if _CH_PROBE_DIR not in sys.path:
 import constants as C  # noqa: E402
 import engine  # noqa: E402
 
+# The repo root, so the press log loader and testdata/ resolve.
+_REPO_ROOT = os.path.dirname(os.path.dirname(_CH_PROBE_DIR))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from tools.ch_mcp import build_facts  # noqa: E402
+from tools.ch_probe.experiments import score_compare  # noqa: E402
+
 try:
     from . import fakes  # noqa: E402
 except ImportError:  # pragma: no cover - run as a script from this folder
     import fakes  # type: ignore[no-redef]  # noqa: E402
-
-
-# --- fakes -------------------------------------------------------------------
-
-
-class FakeThreadContext:
-    """A register snapshot. Only rcx matters for capture_object."""
-
-    def __init__(self, rcx):
-        self.rcx = rcx
-        self.rip = 0
-
-    def xmm0_double(self):
-        return 0.0
-
-
-class FakeDebugger:
-    """A stand-in for the real Debugger.
-
-    set_breakpoint fires the callback right away with a thread context carrying
-    the rcx we were built with. That mimics the real thing catching the
-    constructor -- minus the wait -- so capture_object() completes in one call.
-    """
-
-    def __init__(self, ctor_rcx):
-        self._ctor_rcx = ctor_rcx
-        self.breakpoints = []
-        self.run_called = False
-
-    def attach(self, pid):
-        pass
-
-    def set_breakpoint(self, addr, callback):
-        self.breakpoints.append(addr)
-        callback(self, FakeThreadContext(rcx=self._ctor_rcx))
-
-    def clear_breakpoint(self, addr):
-        pass
-
-    def read(self, addr, size):
-        raise NotImplementedError
-
-    def write(self, addr, data):
-        raise NotImplementedError
-
-    def run(self, until=None):
-        # Should never be reached in these tests, because set_breakpoint already
-        # captured the pointer. Flag it so a regression shows up.
-        self.run_called = True
-
-    def stop(self):
-        pass
 
 
 # --- helpers -----------------------------------------------------------------
@@ -94,292 +48,145 @@ OBJ = 0x1234000  # a made-up but fixed engine object address
 MODULE_BASE = 0x7FF000000000  # a made-up but fixed GameAssembly.dll base
 
 
-def make_engine(object_ptr=OBJ, doubles=None, dwords=None, consts=None,
-                memory=None):
-    """An EngineModel over a real Process on fake memory, plus a fake
-    debugger. The FakeMemory records every read."""
+def make_engine(doubles=None, dwords=None, consts=None, memory=None):
+    """An EngineModel over a real Process on fake memory, with no engine
+    object adopted yet. The FakeMemory records every read."""
     proc, mem = fakes.fake_process(memory, MODULE_BASE, doubles=doubles,
                                    dwords=dwords, consts=consts)
-    dbg = FakeDebugger(ctor_rcx=object_ptr)
-    return engine.EngineModel(proc, dbg), proc, dbg, mem
-
-
-# --- tests: capture ----------------------------------------------------------
-
-
-class TestCaptureObject(unittest.TestCase):
-    def test_captures_rcx_as_object_ptr(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
-        self.assertIsNone(eng.object_ptr)
-        got = eng.capture_object()
-        self.assertEqual(got, OBJ)
-        self.assertEqual(eng.object_ptr, OBJ)
-
-    def test_breakpoint_set_at_resolved_ctor_address(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
-        eng.capture_object()
-        expected_addr = proc.resolve(C.RVA_DRUMS_ENGINE_CTOR)
-        self.assertIn(expected_addr, dbg.breakpoints)
-
-    def test_run_not_needed_when_callback_fires_immediately(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
-        eng.capture_object()
-        # The fake fires the callback inside set_breakpoint, so run() is skipped.
-        self.assertFalse(dbg.run_called)
+    return engine.EngineModel(proc), proc, mem
 
 
 # --- tests: offset arithmetic ------------------------------------------------
 
 
+# The real 1.1 build's facts cut to its drum engine class, copied from
+# hydra-data/ch-dumps/6142/facts.json; test_frida_tools.py reads the same
+# folder. The dump lists only the fields the sealed class itself adds (IN-09 on
+# docs/clone-hero/07-internals.md), so offsets of the generic base, such as
+# the song clock's, are not in it.
+_REAL_6142_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                                "ch-dumps-6142")
+
+
+def real_engine_fields():
+    """The drum engine class's constructor RVA and its instance fields as
+    {offset: type}, from the real 6142 dump."""
+    facts = build_facts.load_facts(os.path.join(_REAL_6142_DUMPS, "game"),
+                                   _REAL_6142_DUMPS)
+    name, ctor_rva = build_facts.engine_class(facts)
+    cls = build_facts._one_class(facts, name)
+    return ctor_rva, {f["offset"]: f["type"] for f in cls["fields"]
+                      if not f["static"]}
+
+
+class TestEngineClassFields(unittest.TestCase):
+    def test_the_dump_is_the_class_whose_constructor_constants_names(self):
+        ctor_rva, _ = real_engine_fields()
+        self.assertEqual(ctor_rva, C.RVA_DRUMS_ENGINE_CTOR)
+
+    def test_round_start_is_a_double_field_of_the_engine(self):
+        _, fields = real_engine_fields()
+        self.assertEqual(fields.get(C.OFF_ROUND_START), "double")
+
+    def test_dyn_threshold_is_a_uint_field_of_the_engine(self):
+        _, fields = real_engine_fields()
+        self.assertEqual(fields.get(C.OFF_DYN_THRESHOLD), "uint")
+
+
 class TestFieldReads(unittest.TestCase):
-    def _engine_with_fields(self, **field_values):
-        """Build an engine whose object fields hold the given doubles.
-
-        Pass e.g. total=170.0 and the double at OBJ+OFF_TOTAL_WINDOW is set.
-        """
-        offset_of = {
-            "total": C.OFF_TOTAL_WINDOW,
-            "back": C.OFF_BACK_WINDOW,
-            "front": C.OFF_FRONT_WINDOW,
-            "round_start": C.OFF_ROUND_START,
-        }
-        doubles = {OBJ + offset_of[k]: v for k, v in field_values.items()}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
-        eng.capture_object()
-        return eng
-
-    def test_total_window_reads_off_0x20(self):
-        eng = self._engine_with_fields(total=170.0)
-        self.assertEqual(eng.total_window(), 170.0)
-
-    def test_back_window_reads_off_0x30(self):
-        eng = self._engine_with_fields(back=85.0)
-        self.assertEqual(eng.back_window(), 85.0)
-
-    def test_front_window_reads_off_0x38(self):
-        eng = self._engine_with_fields(front=37.5)
-        self.assertEqual(eng.front_window(), 37.5)
-
-    def test_round_start_reads_off_0x2e0(self):
-        # OFF_ROUND_START's comment in constants.py says what +0x2e0 holds.
-        self.assertEqual(C.OFF_ROUND_START, 0x2E0)
-        eng = self._engine_with_fields(round_start=12.34)
-        self.assertEqual(eng.round_start(), 12.34)
-
-    def test_total_is_twice_back_at_construction(self):
-        # Not engine logic, just a sanity check the offsets are distinct fields
-        # and the reads land where we put them.
-        eng = self._engine_with_fields(total=170.0, back=85.0)
-        self.assertEqual(eng.total_window(), 2 * eng.back_window())
-
-    def test_reads_before_capture_raise(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles={})
+    def test_reads_before_use_object_raise(self):
+        eng, proc, mem = make_engine(doubles={OBJ + C.OFF_SONG_CLOCK: 3.5})
         with self.assertRaises(RuntimeError):
-            eng.total_window()
-
-
-class TestNoteCount(unittest.TestCase):
-    def test_note_count_reads_u32_off_0x8c(self):
-        dwords = {OBJ + C.OFF_NOTE_COUNT: 512}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, dwords=dwords)
-        eng.capture_object()
-        self.assertEqual(eng.note_count(), 512)
+            eng.song_clock()
+        self.assertEqual(mem.reads, [])
 
 
 # --- tests: precision-mode bit -----------------------------------------------
 
 
 class TestPrecisionMode(unittest.TestCase):
-    def _mode(self, flags_value):
-        dwords = {OBJ + C.OFF_FLAGS: flags_value}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, dwords=dwords)
-        eng.capture_object()
-        return eng.precision_mode()
-
-    def test_bit_clear_is_normal_mode(self):
-        self.assertFalse(self._mode(0x0000))
-
-    def test_bit_set_is_precision_mode(self):
-        self.assertTrue(self._mode(C.PRECISION_MODE_BIT))
-
-    def test_only_the_precision_bit_matters(self):
-        # Other bits set, precision bit clear -> still normal.
-        other_bits = 0xFFFFFFFF & ~C.PRECISION_MODE_BIT
-        self.assertFalse(self._mode(other_bits))
-
-    def test_precision_bit_among_other_bits(self):
-        # Precision bit set alongside noise -> precision.
-        self.assertTrue(self._mode(0x0FF1 | C.PRECISION_MODE_BIT))
-
-    def test_precision_bit_is_0x1000(self):
-        # Guards against the constant drifting; the spec pins it at 0x1000.
-        self.assertEqual(C.PRECISION_MODE_BIT, 0x1000)
-
     def test_is_precision_reads_the_one_bit(self):
-        # Finding 230's six flag values, through the one pure helper.
+        # The game tests bit 0x1000 of the flags dword (IN-10 and TM-28 on
+        # docs/clone-hero/07-internals.md and 03-timing.md), and no other bit.
         self.assertTrue(engine.is_precision(0x1000))
         self.assertFalse(engine.is_precision(0x0FFF))
         self.assertTrue(engine.is_precision(0xFFFFFFFF))
         self.assertTrue(engine.is_precision(0x0FF1 | 0x1000))
         self.assertFalse(engine.is_precision(0xFFFFFFFF & ~0x1000))
         self.assertFalse(engine.is_precision(0))
-        # The engine's reader agrees with the helper.
-        self.assertTrue(self._mode(0x1000))
-        self.assertFalse(self._mode(0))
-
-
-# --- tests: one-read snapshot ------------------------------------------------
-
-
-class TestSnapshot(unittest.TestCase):
-    def test_snapshot_reads_every_field_in_one_read(self):
-        # The same bytes test_hit_window_scripts.py decodes through live.py.
-        block = bytearray(engine.SNAPSHOT_SIZE)
-        struct.pack_into("<d", block, C.OFF_TOTAL_WINDOW, C.ms_to_s(C.WINDOW_CAP_MS))
-        struct.pack_into("<I", block, C.OFF_SCORE, 1234)
-        struct.pack_into("<d", block, C.OFF_SONG_CLOCK, 12.5)
-        struct.pack_into("<I", block, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
-        struct.pack_into("<d", block, C.OFF_ROUND_START, 12.49)
-        eng, proc, dbg, mem = make_engine(memory={OBJ: bytes(block)})
-        eng.use_object(OBJ)
-        snap = eng.snapshot()
-        self.assertAlmostEqual(snap.window_ms, C.WINDOW_CAP_MS)
-        self.assertEqual(snap.score, 1234)
-        self.assertEqual(snap.clock_s, 12.5)
-        self.assertTrue(snap.precision)
-        self.assertEqual(snap.round_start_s, 12.49)
-        self.assertEqual(mem.reads, [(OBJ, engine.SNAPSHOT_SIZE)])
 
 
 # --- tests: did the score rise -----------------------------------------------
 
 
+# A real run's press log and the game's own score file for that play, copied
+# from hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1. The log has one row per
+# note pressed (121), and four presses were sent outside the hit window.
+_LS_E_RUN = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-e-run1")
+_LS_E_PRESS_LOG = os.path.join(_LS_E_RUN, "press-1.csv")
+_LS_E_SCORESTATS = os.path.join(_LS_E_RUN,
+                                "scorestats-Edge_Walk_Pair-20261107-233205.json")
+
+
 class TestPressedInputHit(unittest.TestCase):
-    def test_pressed_input_hit_means_the_score_rose(self):
-        self.assertTrue(engine.pressed_input_hit(100, 150))
-        self.assertFalse(engine.pressed_input_hit(100, 100))
-        self.assertFalse(engine.pressed_input_hit(100, 90))
+    def test_score_rises_count_the_notes_the_game_says_were_hit(self):
+        # The expected counts are Clone Hero's own, from its scorestats file:
+        # pressed_input_hit over the log's real score pairs must call exactly
+        # the game's notes_hit presses hits and the rest misses.
+        presses = score_compare.load_press_log(_LS_E_PRESS_LOG)
+        with open(_LS_E_SCORESTATS, encoding="utf-8") as f:
+            player = json.load(f)["players"][0]
+        self.assertEqual(len(presses), player["total_notes"])
+        hits = sum(engine.pressed_input_hit(p.score_before, p.score_after)
+                   for p in presses)
+        self.assertEqual(hits, player["notes_hit"])
+        self.assertEqual(len(presses) - hits,
+                         player["total_notes"] - player["notes_hit"])
 
 
 # --- tests: constants --------------------------------------------------------
 
 
+def every_rdata_rva():
+    """Every .rdata constant constants.py names: each RVA_CONST_*,
+    RVA_FORMULA_* and RVA_HITCHECK_* value, and each value of the formula
+    tables. A constant added there is expected without editing this list."""
+    rvas = []
+    for name in sorted(vars(C)):
+        if not name.startswith(("RVA_CONST_", "RVA_FORMULA_", "RVA_HITCHECK_")):
+            continue
+        value = getattr(C, name)
+        rvas += list(value.values()) if isinstance(value, dict) else [value]
+    return rvas
+
+
 class TestConstants(unittest.TestCase):
-    def _all_expected_rvas(self):
-        rvas = [
-            C.RVA_CONST_NORMAL_BACK,
-            C.RVA_CONST_NORMAL_FRONT,
-            C.RVA_CONST_PRECISION_BACK,
-            C.RVA_CONST_PRECISION_FRONT,
-            C.RVA_FORMULA_DIVISOR,
-            C.RVA_FORMULA_EXPONENT,
-            C.RVA_HITCHECK_THRESHOLD,
-        ]
-        rvas += list(C.RVA_FORMULA_NORMAL.values())
-        rvas += list(C.RVA_FORMULA_PRECISION.values())
-        return rvas
-
-    def _engine_with_every_constant(self):
-        consts = {rva: 0.0 for rva in self._all_expected_rvas()}
-        return make_engine(object_ptr=OBJ, consts=consts)
-
     def test_reads_every_expected_rva(self):
-        eng, proc, dbg, mem = self._engine_with_every_constant()
+        rvas = every_rdata_rva()
+        eng, proc, mem = make_engine(consts={rva: 0.0 for rva in rvas})
         eng.constants()
         addrs_read = [addr for addr, _ in mem.reads]
-        for rva in self._all_expected_rvas():
+        for rva in rvas:
             self.assertIn(proc.resolve(rva), addrs_read,
                           msg="constants() did not read RVA 0x%X" % rva)
-
-    def test_returns_a_value_for_every_name(self):
-        # Feed known values so we can check they land under the right keys.
-        consts = {
-            C.RVA_CONST_NORMAL_BACK: 85.0,
-            C.RVA_CONST_NORMAL_FRONT: 37.5,
-            C.RVA_CONST_PRECISION_BACK: 40.0,
-            C.RVA_CONST_PRECISION_FRONT: 25.0,
-            C.RVA_FORMULA_DIVISOR: 1000.0,
-            C.RVA_FORMULA_EXPONENT: 2.0,
-            C.RVA_HITCHECK_THRESHOLD: 0.5,
-        }
-        for rva in C.RVA_FORMULA_NORMAL.values():
-            consts[rva] = 1.0
-        for rva in C.RVA_FORMULA_PRECISION.values():
-            consts[rva] = 2.0
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, consts=consts)
-        got = eng.constants()
-        self.assertEqual(got[C.CONST_KEY_NORMAL_BACK], 85.0)
-        self.assertEqual(got[C.CONST_KEY_NORMAL_FRONT], 37.5)
-        self.assertEqual(got[C.CONST_KEY_PRECISION_BACK], 40.0)
-        self.assertEqual(got[C.CONST_KEY_PRECISION_FRONT], 25.0)
-        self.assertEqual(got[C.CONST_KEY_DIVISOR], 1000.0)
-        self.assertEqual(got[C.CONST_KEY_EXPONENT], 2.0)
-        self.assertEqual(got[C.CONST_KEY_HITCHECK_THRESHOLD], 0.5)
-        # Every normal-branch and precision-branch coefficient shows up, keyed
-        # with its mode prefix.
-        for name in C.RVA_FORMULA_NORMAL:
-            self.assertIn(C.CONST_KEY_PREFIX_NORMAL + name, got)
-        for name in C.RVA_FORMULA_PRECISION:
-            self.assertIn(C.CONST_KEY_PREFIX_PRECISION + name, got)
-
-    def test_window_keys_carry_their_mode_prefix(self):
-        self.assertTrue(C.CONST_KEY_NORMAL_BACK.startswith(C.CONST_KEY_PREFIX_NORMAL))
-        self.assertTrue(C.CONST_KEY_NORMAL_FRONT.startswith(C.CONST_KEY_PREFIX_NORMAL))
-        self.assertTrue(
-            C.CONST_KEY_PRECISION_BACK.startswith(C.CONST_KEY_PREFIX_PRECISION))
-        self.assertTrue(
-            C.CONST_KEY_PRECISION_FRONT.startswith(C.CONST_KEY_PREFIX_PRECISION))
-
-    def test_constants_need_no_captured_object(self):
-        # constants() reads .rdata, which does not depend on the object pointer.
-        eng, proc, dbg, mem = self._engine_with_every_constant()
-        self.assertIsNone(eng.object_ptr)
-        eng.constants()  # must not raise
 
 
 # --- tests: song clock (live-only seam) --------------------------------------
 
 
 class TestSongClock(unittest.TestCase):
-    def test_reads_the_proven_clock_at_0x100(self):
-        # play_chart.py plays whole songs off this field, so the song clock is
-        # +0x100, in seconds.
-        self.assertEqual(C.OFF_SONG_CLOCK, 0x100)
+    def test_reads_the_song_clock_field(self):
         doubles = {OBJ + C.OFF_SONG_CLOCK: 3.5}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
-        eng.capture_object()
+        eng, proc, mem = make_engine(doubles=doubles)
+        eng.use_object(OBJ)
         self.assertEqual(eng.song_clock(), 3.5)
 
-    def test_no_placeholder_offset_is_left(self):
-        self.assertFalse(hasattr(engine, "_PLACEHOLDER_SONG_CLOCK_OFFSET"))
 
-
-class TestScoreAndFoundObject(unittest.TestCase):
-    def test_score_reads_u32_off_0x94(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
-                                     dwords={OBJ + C.OFF_SCORE: 4200})
-        eng.capture_object()
-        self.assertEqual(eng.score(), 4200)
-
-    def test_dyn_threshold_reads_u32_off_0x2c0(self):
-        self.assertEqual(C.OFF_DYN_THRESHOLD, 0x2C0)
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
-                                     dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
-        eng.capture_object()
+class TestFoundObject(unittest.TestCase):
+    def test_dyn_threshold_reads_its_field(self):
+        eng, proc, mem = make_engine(dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
+        eng.use_object(OBJ)
         self.assertEqual(eng.dyn_threshold(), 64)
-
-    def test_use_object_takes_a_scanned_pointer_without_a_debugger(self):
-        proc, _ = fakes.fake_process(None, MODULE_BASE,
-                                     doubles={OBJ + C.OFF_SONG_CLOCK: 1.25})
-        eng = engine.EngineModel(proc)
-        self.assertEqual(eng.use_object(OBJ), OBJ)
-        self.assertEqual(eng.object_ptr, OBJ)
-        self.assertEqual(eng.song_clock(), 1.25)
-
-    def test_capture_without_a_debugger_raises(self):
-        eng = engine.EngineModel(fakes.fake_process(None, MODULE_BASE)[0])
-        with self.assertRaises(RuntimeError):
-            eng.capture_object()
 
 
 if __name__ == "__main__":

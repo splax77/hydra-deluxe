@@ -1,0 +1,992 @@
+{
+ "activations": [
+  {
+   "act_tick": 24430,
+   "chord": 2,
+   "deact_ms": 32110.0,
+   "deact_tick": 32110,
+   "end_ratio": {
+    "early": 1.0,
+    "late": 1.0
+   },
+   "index": 0,
+   "nominal_end_ms": 32110.0,
+   "nominal_end_tick": 32110,
+   "read_end_after": 2,
+   "read_end_after_tick": 24430,
+   "skipped_fill_ticks": [],
+   "sp_end_steps": [
+    {
+     "anchor_chord": 2,
+     "anchor_tick": 24430,
+     "chord": 2,
+     "end_ms": 32110.0,
+     "end_tick": 32110,
+     "kind": "activation",
+     "tick": 24430
+    }
+   ],
+   "sp_ready_ms": 22000.0,
+   "sp_ready_tick": 22000,
+   "squeezes": []
+  },
+  {
+   "act_tick": 46800,
+   "chord": 6,
+   "deact_ms": 54480.0,
+   "deact_tick": 54480,
+   "end_ratio": {
+    "early": 1.0,
+    "late": 1.0
+   },
+   "index": 1,
+   "nominal_end_ms": 54480.0,
+   "nominal_end_tick": 54480,
+   "read_end_after": 6,
+   "read_end_after_tick": 46800,
+   "skipped_fill_ticks": [],
+   "sp_end_steps": [
+    {
+     "anchor_chord": 6,
+     "anchor_tick": 46800,
+     "chord": 6,
+     "end_ms": 54480.0,
+     "end_tick": 54480,
+     "kind": "activation",
+     "tick": 46800
+    }
+   ],
+   "sp_ready_ms": 44430.0,
+   "sp_ready_tick": 44430,
+   "squeezes": []
+  },
+  {
+   "act_tick": 69140,
+   "chord": 10,
+   "deact_ms": 76820.0,
+   "deact_tick": 76820,
+   "end_ratio": {
+    "early": 1.0,
+    "late": 1.0
+   },
+   "index": 2,
+   "nominal_end_ms": 76820.0,
+   "nominal_end_tick": 76820,
+   "read_end_after": 10,
+   "read_end_after_tick": 69140,
+   "skipped_fill_ticks": [],
+   "sp_end_steps": [
+    {
+     "anchor_chord": 10,
+     "anchor_tick": 69140,
+     "chord": 10,
+     "end_ms": 76820.0,
+     "end_tick": 76820,
+     "kind": "activation",
+     "tick": 69140
+    }
+   ],
+   "sp_ready_ms": 66800.0,
+   "sp_ready_tick": 66800,
+   "squeezes": []
+  },
+  {
+   "act_tick": 91470,
+   "chord": 14,
+   "deact_ms": 99150.0,
+   "deact_tick": 99150,
+   "end_ratio": {
+    "early": 1.0,
+    "late": 1.0
+   },
+   "index": 3,
+   "nominal_end_ms": 99150.0,
+   "nominal_end_tick": 99150,
+   "read_end_after": 14,
+   "read_end_after_tick": 91470,
+   "skipped_fill_ticks": [],
+   "sp_end_steps": [
+    {
+     "anchor_chord": 14,
+     "anchor_tick": 91470,
+     "chord": 14,
+     "end_ms": 99150.0,
+     "end_tick": 99150,
+     "kind": "activation",
+     "tick": 91470
+    }
+   ],
+   "sp_ready_ms": 89140.0,
+   "sp_ready_tick": 89140,
+   "squeezes": []
+  },
+  {
+   "act_tick": 113792,
+   "chord": 18,
+   "deact_ms": 121472.0,
+   "deact_tick": 121472,
+   "end_ratio": {
+    "early": 1.0,
+    "late": 1.0
+   },
+   "index": 4,
+   "nominal_end_ms": 121472.0,
+   "nominal_end_tick": 121472,
+   "read_end_after": 18,
+   "read_end_after_tick": 113792,
+   "skipped_fill_ticks": [],
+   "sp_end_steps": [
+    {
+     "anchor_chord": 18,
+     "anchor_tick": 113792,
+     "chord": 18,
+     "end_ms": 121472.0,
+     "end_tick": 121472,
+     "kind": "activation",
+     "tick": 113792
+    }
+   ],
+   "sp_ready_ms": 111470.0,
+   "sp_ready_tick": 111470,
+   "squeezes": []
+  }
+ ],
+ "chart": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-data\\ch-mcp-runs\\2026-11-12\\efl-prep\\Early Fill Walk\\notes.chart",
+ "chartmode": "Expert Pro Drums, 2x Bass",
+ "chords": [
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 0,
+   "ms": 20000.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 20000
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 1,
+   "ms": 22000.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 22000
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 2,
+   "ms": 24430.0,
+   "paid_by": [
+    {
+     "act_tick": 24430,
+     "activation": 0,
+     "offset_ms": -7680.0
+    }
+   ],
+   "reads": [
+    {
+     "activation": 0,
+     "planned_end_ms": 32111.0,
+     "stored_end_ms": 32110.0
+    }
+   ],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 24430
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 3,
+   "ms": 30430.0,
+   "paid_by": [
+    {
+     "act_tick": 24430,
+     "activation": 0,
+     "offset_ms": -1680.0
+    }
+   ],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 30430
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 4,
+   "ms": 42430.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 42430
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 5,
+   "ms": 44430.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 44430
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 6,
+   "ms": 46800.0,
+   "paid_by": [
+    {
+     "act_tick": 46800,
+     "activation": 1,
+     "offset_ms": -7680.0
+    }
+   ],
+   "reads": [
+    {
+     "activation": 1,
+     "planned_end_ms": 54481.0,
+     "stored_end_ms": 54480.0
+    }
+   ],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 46800
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 7,
+   "ms": 52800.0,
+   "paid_by": [
+    {
+     "act_tick": 46800,
+     "activation": 1,
+     "offset_ms": -1680.0
+    }
+   ],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 52800
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "place": 0,
+     "sp_points": 50
+    }
+   ],
+   "index": 8,
+   "ms": 64800.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 64800
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 9,
+   "ms": 66800.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 66800
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 10,
+   "ms": 69140.0,
+   "paid_by": [
+    {
+     "act_tick": 69140,
+     "activation": 2,
+     "offset_ms": -7680.0
+    }
+   ],
+   "reads": [
+    {
+     "activation": 2,
+     "planned_end_ms": 76821.0,
+     "stored_end_ms": 76820.0
+    }
+   ],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 69140
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 11,
+   "ms": 75140.0,
+   "paid_by": [
+    {
+     "act_tick": 69140,
+     "activation": 2,
+     "offset_ms": -1680.0
+    }
+   ],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 75140
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 12,
+   "ms": 87140.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 87140
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 13,
+   "ms": 89140.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 89140
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 14,
+   "ms": 91470.0,
+   "paid_by": [
+    {
+     "act_tick": 91470,
+     "activation": 3,
+     "offset_ms": -7680.0
+    }
+   ],
+   "reads": [
+    {
+     "activation": 3,
+     "planned_end_ms": 99151.0,
+     "stored_end_ms": 99150.0
+    }
+   ],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 91470
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 15,
+   "ms": 97470.0,
+   "paid_by": [
+    {
+     "act_tick": 91470,
+     "activation": 3,
+     "offset_ms": -1680.0
+    }
+   ],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 97470
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 16,
+   "ms": 109470.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 109470
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 17,
+   "ms": 111470.0,
+   "paid_by": [],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 111470
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "place": 0,
+     "sp_points": 100
+    }
+   ],
+   "index": 18,
+   "ms": 113792.0,
+   "paid_by": [
+    {
+     "act_tick": 113792,
+     "activation": 4,
+     "offset_ms": -7680.0
+    }
+   ],
+   "reads": [
+    {
+     "activation": 4,
+     "planned_end_ms": 121473.0,
+     "stored_end_ms": 121472.0
+    }
+   ],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 113792
+  },
+  {
+   "declined": false,
+   "ends_sp": false,
+   "gems": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 3,
+     "place": 0,
+     "sp_points": 150
+    }
+   ],
+   "index": 19,
+   "ms": 119792.0,
+   "paid_by": [
+    {
+     "act_tick": 113792,
+     "activation": 4,
+     "offset_ms": -1680.0
+    }
+   ],
+   "reads": [],
+   "refused": false,
+   "side_ms": 85.71565375071405,
+   "tick": 119792
+  }
+ ],
+ "constants": {
+  "chord_order_gap_ms": 8.0,
+  "formula_linear": 0.0110924369747899,
+  "formula_offset_ms": 20.0,
+  "formula_scale": 170.0,
+  "formula_square": 2.628539e-05,
+  "frame_ms": 3.0,
+  "judge_early_ms": 3.0,
+  "press_lead_ms": 2.0,
+  "room_margin_ms": 3.0,
+  "sp_end_lead_ms": 15.0,
+  "sp_out_lag_ms": 15.0,
+  "window_back_ms": 85.0,
+  "window_front_ms": 37.5
+ },
+ "hydra_replay_build": "Nov 12 2026 18:02:42",
+ "path_source": {
+  "file": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-data\\ch-mcp-runs\\2026-11-12\\efl-prep\\dump.json",
+  "index": 1
+ },
+ "presses": [
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 0,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 20082.715653750714,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 1,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 22082.715653750714,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 2,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 24512.715653750714,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 3,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 30512.715653750714,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 4,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 42512.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 5,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 44512.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 6,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 46882.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 7,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 52882.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 8,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 64882.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 9,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 66882.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 10,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 69222.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 11,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 75222.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 12,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 87222.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 13,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 89222.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 14,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 91552.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 15,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 97552.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 16,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 109552.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 17,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 111552.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 18,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 113874.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  },
+  {
+   "after_ms": null,
+   "aim_end_ms": null,
+   "aim_ms": -2.0,
+   "chord": 19,
+   "end_read_after": null,
+   "gems": [
+    0
+   ],
+   "last_send_ms": 119874.71565375071,
+   "room_ms": 83.71565375071405,
+   "rule": "plain",
+   "timed_from_end": null
+  }
+ ],
+ "refusals": [],
+ "song_length_ms": 120792.0
+}

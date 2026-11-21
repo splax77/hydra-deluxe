@@ -27,6 +27,8 @@ from tools.ch_mcp import game_files
 # averaged over, and how young a build folder's newest file must be to count as
 # a build at work.
 QUIET_CPU_PCT = 30
+# QUIET_SAMPLE_S and BUILD_RECENT_S are engineering choices; no rule or ruling
+# names them.
 QUIET_SAMPLE_S = 5
 BUILD_RECENT_S = 60
 
@@ -53,6 +55,9 @@ _HOME = os.path.expanduser("~")
 # worktrees' are the ones scanned. The home folder's .claude\worktrees stays out
 # by the same ruling: hooks write there, and no worktree there has a build folder.
 _CHECKOUT = ("Downloads", "Hydra", "hydra-test")
+# The checkout's two worktree folders, each under the checkout: the one
+# Claude Code cuts worktrees in, and the one sessions cut them in by hand.
+_WORKTREE_FOLDERS = ((".claude", "worktrees"), ("worktrees",))
 _BUILD_FOLDER = "build-cpp"
 
 _READ_ERRORS = (OSError, ValueError, subprocess.SubprocessError)
@@ -235,13 +240,16 @@ def refusal_text(report: QuietReport) -> str:
 
 
 def _build_folders(home: str) -> List[str]:
-    """The build folders that exist: the main checkout's, then its worktrees'."""
+    """The build folders that exist: the main checkout's, then its worktrees',
+    one worktree folder at a time in _WORKTREE_FOLDERS order."""
     checkout = os.path.join(home, *_CHECKOUT)
-    try:
-        with os.scandir(os.path.join(checkout, ".claude", "worktrees")) as listing:
-            worktrees = sorted(e.path for e in listing if e.is_dir())
-    except FileNotFoundError:
-        worktrees = []
+    worktrees: List[str] = []
+    for parts in _WORKTREE_FOLDERS:
+        try:
+            with os.scandir(os.path.join(checkout, *parts)) as listing:
+                worktrees.extend(sorted(e.path for e in listing if e.is_dir()))
+        except FileNotFoundError:
+            pass
     folders = (os.path.join(tree, _BUILD_FOLDER) for tree in [checkout, *worktrees])
     return [folder for folder in folders if os.path.isdir(folder)]
 

@@ -63,7 +63,7 @@ These counts were taken from the pages on 2026-11-12, by counting their `###` he
 | 07 internals | 93 | 63 | 18 | 0 | 12 |
 | All pages | 408 | 275 | 57 | 30 | 46 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
 
 ## Names in obfuscated code
 
@@ -81,11 +81,11 @@ A session or agent that learns a Clone Hero fact (a game address, a field, a rul
 
 ## How the pages are checked
 
-The docs test, tests/test_docs_match_code.cpp, reads every page in this folder at every merge to `main`. It checks four things.
+A page's writer and its reviewer hold it to four things.
 
 Every backticked Hydra name, such as a function, a constant or a file's underscored name, must exist in Hydra's code or under `tools/`.
 
-Every game fact must have a row in the facts table for its build: `code/facts-6142.tsv` for 1.1 and `code/facts-4045.tsv` for 1.0. A game fact is a backticked address, a class and member name joined by a dot, or a member or offset of a class known only by its index number. The test also checks that every method address and field offset named in `tools/ch_probe/constants.py` has a row in the 1.1 table, so the two homes cannot drift apart.
+Every game fact must have a row in the facts table for its build: `code/facts-6142.tsv` for 1.1 and `code/facts-4045.tsv` for 1.0. A game fact is a backticked address, a class and member name joined by a dot, or a member or offset of a class known only by its index number. Every method address and field offset named in `tools/ch_probe/constants.py` also needs a row in the 1.1 table, so the two homes cannot drift apart.
 
 Every block on an area page must have its seven lines in order, with one of the four labels. Every listing path a block cites must exist, and every listing under `code/6142/` must have its `.md` explanation beside it.
 
@@ -99,17 +99,17 @@ Enum values and _TypeInfo addresses are not checked. A page cites them by name a
 
 The hex values of the game's read-only constants are not checked either. Their one home is `tools/ch_probe/constants.py`, and a page writes such a constant only by its name there.
 
-A real address cited under the wrong rule passes every test, because the test proves only that the fact exists in the game. Catching that is the reviewer's job and the annotated listing's, since the listing shows the instructions that decide the rule.
+A real address cited under the wrong rule still has its row in the facts table, because the table proves only that the fact exists in the game. Catching that is the reviewer's job and the annotated listing's, since the listing shows the instructions that decide the rule.
 
 The 1.0 facts are checked by name only, because the 1.0 dump holds no addresses.
 
 ## Page rules
 
-This section is the home of the rules a page is written to. The docs test (tests/test_docs_match_code.cpp, check 5) and tools/ch_mcp/dump_facts.py hold the pages to them. They were set in the plan that built this reference, and were copied here, mostly word for word, when that plan left the repo.
+This section is the home of the rules a page is written to. A page's reviewer and tools/ch_mcp/dump_facts.py hold the pages to them. They were set in the plan that built this reference, and were copied here, mostly word for word, when that plan left the repo.
 
 ### The page template
 
-Every rule is one block with a stable id, so a card, a test or a pointer can name it. The block is a `###` heading and seven fixed lines, in this order, because a fixed shape is what the test and the card writer can grep for.
+Every rule is one block with a stable id, so a card, a test or a pointer can name it. The block is a `###` heading and seven fixed lines, in this order, because a fixed shape is what a reviewer and the card writer can grep for.
 
 ```
 ### SP-07 Star Power ends when the meter reaches zero, checked per frame
@@ -125,7 +125,7 @@ Found: <date>, session <id>
 
 The `Found:` line names sessions only, as "What a block may cite" says. A fact put together from several sessions names each of them.
 
-Game names are written as the dump writes them, Class.member, never `Class::member` or `method()`, because the docs test treats a span with `::` or `()` as a Hydra name and would fail it. An obfuscated class is written `#<TypeDefIndex>.member`, or `#<TypeDefIndex>+0x<offset>` when only the offset is known. An RVA is always backticked `0x` plus at least five hex digits. A `.rdata` constant is written by its `constants.py` name, never as hex. A 1.0 fact writes `Game code (4045): Class.Method, code/4045/<file>.cs lines ...` with no RVA. Hydra names are the ones the C++ or Python code holds: write `kLegacyFillsFlag`, not `legacy_fills`, and never a name that lives only in a `.js` agent file, which the docs test does not walk.
+Game names are written as the dump writes them, Class.member, never `Class::member` or `method()`, because a span with `::` or `()` reads as a Hydra name. An obfuscated class is written `#<TypeDefIndex>.member`, or `#<TypeDefIndex>+0x<offset>` when only the offset is known. An RVA is always backticked `0x` plus at least five hex digits. A `.rdata` constant is written by its `constants.py` name, never as hex. A 1.0 fact writes `Game code (4045): Class.Method, code/4045/<file>.cs lines ...` with no RVA. Hydra names are the ones the C++ or Python code holds: write `kLegacyFillsFlag`, not `legacy_fills`, and never a name that lives only in a `.js` agent file.
 
 Each page opens with three lines: what the page covers, which build it describes, and the date of the last write-back. Then the rule blocks, grouped under `##` headings. Each page ends with "Rows waiting on a live run" (ids only, pointing at the live-checks page) and "Open splits" (ids only, pointing at the questions page).
 
@@ -133,7 +133,7 @@ Each page opens with three lines: what the page covers, which build it describes
 
 Each game fact has one home. Method addresses and field offsets that the tools use live in `tools/ch_probe/constants.py`; everything else lives in the game's dumps, outside the repo. A page's copy of a fact is checked against the facts table for its build, which holds only the facts the pages cite.
 
-What each kind of fact looks like on a page, and how it is checked. A page writes each one in backticks; the examples sit in a code block here only so the docs test does not look them up.
+What each kind of fact looks like on a page, and how it is checked. A page writes each one in backticks; the examples sit in a code block here only so dump_facts.py does not read them as facts this page cites.
 
 ```
 GameManager.songTime    a method or field of a readable class, checked by name
@@ -143,10 +143,10 @@ GameManager.songTime    a method or field of a readable class, checked by name
 RVA_CONST_NORMAL_BACK   a .rdata constant, by its constants.py name; the hex is never written on a page
 ```
 
-The docs test already checks a `.rdata` constant's name against `tools/`, because it has an underscore. Of the `RVA_*` names in `constants.py`, `RVA_CONST_*`, `RVA_FORMULA_*` and `RVA_HITCHECK_THRESHOLD` are data addresses in the DLL's `.rdata` section (read-only constants), not methods, so no dump line names them. Every other `RVA_*` name there is a method, and every method address and `OFF_*` offset there must have a row in the 6142 table.
+Of the `RVA_*` names in `constants.py`, `RVA_CONST_*`, `RVA_FORMULA_*` and `RVA_HITCHECK_THRESHOLD` are data addresses in the DLL's `.rdata` section (read-only constants), not methods, so no dump line names them. Every other `RVA_*` name there is a method, and every method address and `OFF_*` offset there must have a row in the 6142 table.
 
-The facts tables are `code/facts-6142.tsv` and `code/facts-4045.tsv`. One row per fact: build, kind (method, field, class, enum), TypeDefIndex, class name (blank when obfuscated), member, RVA (blank for 4045, whose dump has no addresses), field offset. `dump_facts.py` adds one more column, the span as the page writes it, which is what the test matches a page span by (its `TABLE_COLUMNS` are the columns). The header carries the build's version string and the MD5 of `GameAssembly.dll` computed from the file on disk when the table is written (not copied from a log).
+The facts tables are `code/facts-6142.tsv` and `code/facts-4045.tsv`. One row per fact: build, kind (method, field, class, enum), TypeDefIndex, class name (blank when obfuscated), member, RVA (blank for 4045, whose dump has no addresses), field offset. `dump_facts.py` adds one more column, the span as the page writes it, which is how a page span finds its row (its `TABLE_COLUMNS` are the columns). The header carries the build's version string and the MD5 of `GameAssembly.dll` computed from the file on disk when the table is written (not copied from a log).
 
-A span is looked up in one build's table. A file under `code/<build>/` takes that build for every span in it. Otherwise a span in a block takes the build its block's `Game code (<build>)` line names. A span outside any block, or in a block with no such line, takes the build of the nearest heading above it that names one, such as page 4's "Build 1.0.0.4045" heading, and 1.1 when no heading does. The test's `scan_page` and the tool's `span_builds` own the exact pick, and they must agree.
+A span is looked up in one build's table. A file under `code/<build>/` takes that build for every span in it. Otherwise a span in a block takes the build its block's `Game code (<build>)` line names. A span outside any block, or in a block with no such line, takes the build of the nearest heading above it that names one, such as page 4's "Build 1.0.0.4045" heading, and 1.1 when no heading does. The tool's `span_builds` owns the exact pick.
 
 What stays unchecked, and why, is in "What stays unchecked" above.

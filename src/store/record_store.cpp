@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <limits>
@@ -1112,7 +1113,10 @@ RecordStore::BatchWrites::~BatchWrites() {
     std::lock_guard<std::recursive_mutex> lock(store_.writer_.mutex);
     sqlite3_exec(store_.writer_.db, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
     // SQLite's own default threshold (D86 item 3).
-    sqlite3_exec(store_.writer_.db, "PRAGMA wal_autocheckpoint=1000", nullptr, nullptr, nullptr);
+    char restore[48];
+    std::snprintf(restore, sizeof(restore), "PRAGMA wal_autocheckpoint=%d",
+                  kSqliteWalAutocheckpointPages);
+    sqlite3_exec(store_.writer_.db, restore, nullptr, nullptr, nullptr);
 }
 
 int RecordStore::wal_autocheckpoint_for_test() {
@@ -1173,6 +1177,7 @@ void RecordStore::in_save_frame(F work) {
         ctl("BEGIN");
     }
     try {
+        after_save_step();
         work();
         ctl(grouped ? "RELEASE chart" : "COMMIT");
     } catch (...) {
@@ -1188,6 +1193,18 @@ void RecordStore::in_save_frame(F work) {
         }
         throw;
     }
+    // Still under the lock: the step after COMMIT or RELEASE.
+    after_save_step();
+}
+
+void RecordStore::after_save_step() {
+    if (after_save_step_for_test_) after_save_step_for_test_();
+}
+
+bool RecordStore::writer_lock_held_by_other_thread_for_test() {
+    if (!writer_.mutex.try_lock()) return true;
+    writer_.mutex.unlock();
+    return false;
 }
 
 void RecordStore::save(const PreparedRecord& prepared) {
@@ -1258,6 +1275,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
             sqlite3_bind_int64(s, 2, profile_id);
         },
         "replacing a record");
+    after_save_step();
     {
         CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO records (song_id, profile_id, ") + kRecordColumnList +
@@ -1281,6 +1299,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         }
         step_done(s, "saving a record");
     }
+    after_save_step();
     for (const PathRow& p : record.paths) {
         CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO record_paths (song_id, profile_id, rank, ") +
@@ -1300,6 +1319,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         sqlite3_bind_int(s, 12, p.sqout_count);
         sqlite3_bind_int(s, 13, p.optimal ? 1 : 0);
         step_done(s, "saving a record's path");
+        after_save_step();
     }
 }
 
@@ -1339,9 +1359,12 @@ void RecordStore::file_record(const Profile& profile, const std::string& hyversi
             bind_readable_params(s, 2);
         },
         "unreadable purge");
+    after_save_step();
 
     // (2) The record, replacing the chart's record under the same profile.
-    write_record(profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp)), record);
+    const int64_t profile_id = profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp));
+    after_save_step();
+    write_record(profile_id, record);
     // A profile the purge emptied stays until the next open
     // (drop_empty_profiles, from set_up_schema).
 }
@@ -1546,35 +1569,6 @@ std::unique_ptr<OwnReader> RecordStore::open_own_reader() {
     return std::unique_ptr<OwnReader>(new OwnReader(*this, shared_file_));
 }
 
-std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
-    // settled_song_ids' Ready charts, so both read one lookup.
-    std::unordered_set<std::string> out;
-    for (const auto& [id, status] : settled_song_ids(want))
-        if (status == RecordStatus::Ready) out.insert(id);
-    return out;
-}
-
-std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
-    std::vector<RecordRow> out;
-    {
-        // As ready_song_ids: one lock over both reads.
-        std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-        const std::vector<std::string> candidates = candidate_song_ids(writer_, want);
-        for (RecordLookup& found : lookup(candidates, want))
-            if (found.status == RecordStatus::Ready) out.push_back(std::move(found.record));
-    }
-    // Best score first; a record that kept no paths has no score and goes
-    // last. Equal scores keep the song id's order, so a listing never
-    // shuffles between two reads.
-    std::sort(out.begin(), out.end(), [](const RecordRow& a, const RecordRow& b) {
-        if (a.paths.empty() != b.paths.empty()) return b.paths.empty();
-        if (!a.paths.empty() && a.paths.front().score != b.paths.front().score)
-            return a.paths.front().score > b.paths.front().score;
-        return a.song_id < b.song_id;
-    });
-    return out;
-}
-
 namespace {
 
 // RecordStore::record_count, read on the connection `db`. Every connection's
@@ -1635,10 +1629,16 @@ std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& 
     // Which charts the library lists, and the copy that names each, are
     // ChartIndex's answers.
     const ChartIndex library = chart_index();
+    // A row needs the figure when its own columns say the path holds one of
+    // the things engine_hardest_ms reads. path_row_of writes those columns
+    // from the same walk, so this picks a row exactly when the engine would
+    // give its path a figure, and replays no path that has none.
     const std::string sql =
         "SELECT song_id, profile_id, rank, path, score, sqin_count, sqout_count"
         " FROM record_paths WHERE profile_id IN (" + placeholders(ids.size()) +
-        ") AND hardest_ms IS NULL AND sqin_count > 0 ORDER BY song_id, profile_id, rank";
+        ") AND hardest_ms IS NULL"
+        " AND (sqin_count > 0 OR sqout_count > 0 OR hardest_efill IS NOT NULL)"
+        " ORDER BY song_id, profile_id, rank";
     Stmt s = prepare_read(writer_.db, sql.c_str());
     for (size_t i = 0; i < ids.size(); ++i) sqlite3_bind_int64(s, static_cast<int>(i + 1), ids[i]);
     while (step_row(s)) {

@@ -232,7 +232,7 @@ void render_search_box(AppState& app) {
     const float line_left = ImGui::GetCursorScreenPos().x;
     const float pane_w = ImGui::GetContentRegionAvail().x;
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(kNewSongColor, "Type any words, or narrow it down.");
+    ImGui::TextColored(kNewSongColor, "%s", kSearchLineText);
     ImGui::PopTextWrapPos();
     render_search_tips(line_left, pane_w);
     ImGui::PushTextWrapPos(0.0f);

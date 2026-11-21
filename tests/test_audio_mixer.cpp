@@ -17,6 +17,7 @@
 
 using namespace hydra::audio;
 using testaudio::estimate_freq_hz;
+using testaudio::mix_stems;
 
 namespace {
 
@@ -86,18 +87,42 @@ TEST_CASE("mix_stems of no stems is empty at the requested format") {
 }
 
 TEST_CASE("mix_stems resamples to the output rate and unifies channels") {
-    DecodedAudio mono24k = synth_tone(300.0, 24000, 1.0);  // 24000 frames, mono
+    const double tone_hz = 300.0;
+    DecodedAudio mono24k = synth_tone(tone_hz, 24000, 1.0);  // 24000 frames, mono
 
     DecodedAudio out = mix_stems({mono24k}, 48000, 2);
 
     CHECK(out.channels == 2);
     CHECK(out.sample_rate == 48000);
-    // Resampled 24k -> 48k over ~1 s lands near 48000 frames (resampler latency
-    // trims a few).
-    CHECK(static_cast<double>(out.frames()) == doctest::Approx(48000).epsilon(0.02));
-    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(300.0).epsilon(0.05));
-    // A mono stem upmixed to stereo puts the same signal in both channels.
-    for (int64_t i = 100; i < out.frames() - 100; i += 977) {
+
+    // Doubling the rate doubles the frames, give or take the resampler's own
+    // latency, read from a converter built with the mixer's settings.
+    const StemConverter sc = stem_converter_config(24000, 1, 48000, 2);
+    REQUIRE_FALSE(sc.passthrough);
+    ma_data_converter conv;
+    REQUIRE(ma_data_converter_init(&sc.config, nullptr, &conv) == MA_SUCCESS);
+    const int64_t latency = static_cast<int64_t>(ma_data_converter_get_output_latency(&conv));
+    ma_data_converter_uninit(&conv, nullptr);
+    const int64_t doubled = mono24k.frames() * 2;
+    CAPTURE(latency);
+    CHECK(out.frames() >= doubled - latency);
+    CHECK(out.frames() <= doubled + latency);
+
+    // estimate_freq_hz counts zero crossings over the middle half of the
+    // frames and divides by that window's T seconds. A 300 Hz tone crosses
+    // 2 * 300 * T times in T, and the count is short or over by under one,
+    // plus the crossings of the one frame at the window's end it leaves out.
+    // So the estimate may miss by that many crossings over 2 * T.
+    const int64_t quarter = out.frames() / 4;
+    const double window_s = static_cast<double>(out.frames() - 2 * quarter) / out.sample_rate;
+    const double slack_crossings = 1.0 + 2.0 * tone_hz / out.sample_rate;
+    const double allowed_hz = slack_crossings / (2.0 * window_s);
+    CAPTURE(allowed_hz);
+    CHECK(std::abs(estimate_freq_hz(out, 0) - tone_hz) <= allowed_hz);
+
+    // A mono stem upmixed to stereo puts the same signal in both channels, on
+    // every frame.
+    for (int64_t i = 0; i < out.frames(); ++i) {
         CHECK(out.samples[static_cast<size_t>(i) * 2] ==
               doctest::Approx(out.samples[static_cast<size_t>(i) * 2 + 1]));
     }

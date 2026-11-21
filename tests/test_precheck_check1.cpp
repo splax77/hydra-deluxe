@@ -5,6 +5,7 @@
 // folder, with the other checks turned off.
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <regex>
@@ -14,9 +15,11 @@
 
 #include "core/winstr.h"
 #include "precheck/braces.h"
+#include "precheck/check_1_text.h"
 #include "precheck/checks.h"
 #include "precheck/definitions.h"
 #include "precheck/git_text.h"
+#include "precheck/items.h"
 #include "precheck/views.h"
 #include "precheck_fixture.h"
 #include "temp_util.h"
@@ -57,7 +60,10 @@ std::string factorial(const std::string& fn, const std::string& n, const std::st
            "}\n";
 }
 
-std::string long_comment() { return "// " + std::string(250, 'x') + "\n"; }
+// A comment line between a namespace's name and its "{", as a long note on
+// what the namespace holds would sit. The line alone is longer than the
+// finder's look-back, so the window before the "{" holds no part of the head.
+std::string comment_past_look_back() { return "// " + std::string(kNamespaceLookBack, 'x') + "\n"; }
 
 // main holds sum_values and a short helper; feature adds the copies.
 struct Fixture {
@@ -82,7 +88,7 @@ struct Fixture {
         // A namespace whose head is longer than the look-back: not seen as a
         // namespace, so its function is not a helper.
         write_fixture_file(dir, "tests/far_ns.cpp",
-                   "#include <vector>\n\nnamespace far\n" + long_comment() + "{\n" +
+                   "#include <vector>\n\nnamespace far\n" + comment_past_look_back() + "{\n" +
                        summing("far_sum", "zs", "s", "z") + "}\n");
         // Two copies inside one file: not two files.
         write_fixture_file(dir, "tests/one_file.cpp", factorial("first_copy", "n", "p") + factorial("second_copy", "m", "q"));
@@ -108,6 +114,40 @@ int count_matching(const std::vector<std::string>& lines, const std::string& pat
     for (const std::string& l : lines)
         if (std::regex_search(l, rx)) ++n;
     return n;
+}
+
+// The what and why of each printed item of `kind` at file:line. The line is
+// split by the form item_line() prints, read from item_line() itself.
+struct WhatWhy {
+    std::string what;
+    std::string why;
+};
+std::vector<WhatWhy> items_at(const std::vector<std::string>& lines, const std::string& kind,
+                              const std::string& file, int line) {
+    Item marks;
+    marks.kind = kind;
+    marks.file = file;
+    marks.line = line;
+    marks.what = "\x01";
+    marks.why = "\x02";
+    const std::string form = item_line(marks);
+    const size_t what_at = form.find('\x01');
+    const size_t why_at = form.find('\x02');
+    REQUIRE(what_at != std::string::npos);
+    REQUIRE(why_at != std::string::npos);
+    const std::string head = form.substr(0, what_at);
+    const std::string between = form.substr(what_at + 1, why_at - what_at - 1);
+    std::vector<WhatWhy> out;
+    for (const std::string& l : lines) {
+        if (l.rfind(head, 0) != 0) continue;
+        const size_t sep = l.find(between, head.size());
+        if (sep == std::string::npos) continue;
+        WhatWhy item;
+        item.what = l.substr(head.size(), sep - head.size());
+        item.why = l.substr(sep + between.size());
+        out.push_back(item);
+    }
+    return out;
 }
 
 std::vector<std::string> names_of(const std::vector<Definition>& defs) {
@@ -184,7 +224,7 @@ TEST_CASE("precheck definitions: a namespace head is found only within the look-
     const std::string body = summing("f", "a", "b", "c");
     // ("near" and "far" are Windows macros.)
     const std::string close_head = "namespace n\n// short\n{\n" + body + "}\n";
-    const std::string distant_head = "namespace n\n" + long_comment() + "{\n" + body + "}\n";
+    const std::string distant_head = "namespace n\n" + comment_past_look_back() + "{\n" + body + "}\n";
     const std::vector<Definition> found = definitions(make_view(close_head, codelex::Lang::Cpp), "tests/x.cpp");
     CHECK(names_of(found) == std::vector<std::string>{"f"});
     CHECK(definitions(make_view(distant_head, codelex::Lang::Cpp), "tests/x.cpp").empty());
@@ -201,9 +241,35 @@ TEST_CASE("precheck check 1: a helper copied under new names prints C, the near 
         for (const std::string& l : lines) all += l + "\n";
         return all;
     }());
-    CHECK(count_matching(lines, R"(^C tests/helpers_b\.cpp:5  helper add_up has the same body, names changed, as sum_values at tests/helpers_a\.cpp:6  -- a test helper written in two files; keep one in a shared header$)") == 1);
-    CHECK(count_matching(lines, R"(^C tests/short_c\.cpp:1  helper tiny_a is also defined as tiny_a at tests/short_a\.cpp:1 \(bodies differ\)  -- )") == 1);
-    CHECK(count_matching(lines, R"(^C tests/varlen\.cpp:2  a MIDI variable-length delta encoded by hand: out\.push_back\(0x80 \| \(d >> 7\)\);  -- the varlen writer belongs in tests/midi_util\.h$)") == 1);
+    const std::vector<WhatWhy> copied = items_at(lines, "C", "tests/helpers_b.cpp", 5);
+    const std::vector<WhatWhy> same_name = items_at(lines, "C", "tests/short_c.cpp", 1);
+    const std::vector<WhatWhy> varlen = items_at(lines, "C", "tests/varlen.cpp", 2);
+    REQUIRE(copied.size() == 1);
+    REQUIRE(same_name.size() == 1);
+    REQUIRE(varlen.size() == 1);
+    // The renamed copy names itself, and the helper it copies with its place.
+    CHECK(copied[0].what.find("add_up") != std::string::npos);
+    CHECK(copied[0].what.find("sum_values") != std::string::npos);
+    CHECK(copied[0].what.find("tests/helpers_a.cpp:6") != std::string::npos);
+    // The same name with another body names the first definition's place.
+    CHECK(same_name[0].what.find("tiny_a") != std::string::npos);
+    CHECK(same_name[0].what.find("tests/short_a.cpp:1") != std::string::npos);
+    // Both helper items give check 1's helper reason; no fixture line is a
+    // known copy, so no note follows it.
+    CHECK(copied[0].why == kHelperWhy);
+    CHECK(same_name[0].why == kHelperWhy);
+    // The hand-typed delta gives the varlen spelling's description and
+    // reason, quotes its line, read from the fixture file, and names the
+    // header that owns it.
+    CHECK(varlen[0].why == kVarlenWhy);
+    CHECK(varlen[0].what.rfind(std::string(kVarlenWhat) + ": ", 0) == 0);
+    const View varlen_file = make_view(hydra::read_file_text(fx.dir + "/tests/varlen.cpp"), codelex::Lang::Cpp);
+    const std::string varlen_line = varlen_file.line(varlen_file.raw, 2);
+    const std::string quoted =
+        varlen_line.substr((std::min)(varlen_line.find_first_not_of(' '), varlen_line.size()));
+    REQUIRE_FALSE(quoted.empty());
+    CHECK(varlen[0].what.find(quoted) != std::string::npos);
+    CHECK(varlen[0].why.find(kVarlenOwner) != std::string::npos);
     CHECK(count_matching(lines, "total_of|far_sum|first_copy|second_copy|tiny_b|TEST_CASE|midi_util\\.h:") == 0);
     CHECK(count_matching(lines, "^C tests/helpers_a\\.cpp:") == 0);
     CHECK(lines.size() == 3);

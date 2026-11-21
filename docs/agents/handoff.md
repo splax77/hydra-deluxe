@@ -34,7 +34,7 @@ A row whose check fails is wrong until someone fixes the handoff.
 
 Write every hash in full, all 40 characters. Never abbreviate one: a short hash can stop being unique, and the checker marks it `missing`.
 
-Name no scratch path. A scratch folder is cleaned up and is not in the repo, so the next session cannot check a claim that points there. Put what matters into the handoff itself, or into a committed file it names. (The docs test's scratch-path check skips `docs/handoffs/`, so this rule holds by instruction there, not by a test.)
+Name no scratch path. A scratch folder is cleaned up and is not in the repo, so the next session cannot check a claim that points there. Put what matters into the handoff itself, or into a committed file it names.
 
 The checker does not judge the Claim column, and it leaves the `test`, `ruling` and `state` rows to the session (it marks them `manual`). The session reads those against the code and runs the tests itself.
 

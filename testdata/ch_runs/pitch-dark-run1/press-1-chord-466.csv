@@ -1,0 +1,2 @@
+index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,end_read_ms,probe,retimed,wait_read_max_ms,wait_oversleep_max_ms,press_took_ms,reply_check_took_ms,end_read_took_ms,score_read_took_ms,prev_handoff_took_ms,frame_gap_ms,agent_note
+466,143224.26549999995,143250.17190480593,187265,187665,sent,47732,47734,1794542696561,1794542696567,1794542696.561,1794542696.567,0,158268.98810231805,,,,,,,,,,3,

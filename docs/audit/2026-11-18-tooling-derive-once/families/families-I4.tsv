@@ -1,0 +1,124 @@
+id	family	question	note
+I4-001	F3	Which plan is behind the cards
+I4-002	F5	Who reads the cards
+I4-003	F6	May a card hold a secret
+I4-004	F6	How a card names files	file paths named in cards also touch F3
+I4-005	F6	May a card cite a transcript
+I4-006	F6	How a session not about the project is handled	local-card placement also touches F3
+I4-007	F6	May a card hold money or token totals
+I4-008	F6	How a security finding is worded
+I4-009	F6	How game-audio sessions are worded
+I4-010	F3	Where the card data lives
+I4-011	F3	Where the batch file goes and its line shape	line shape is F6
+I4-012	F6	Which per-session evidence files are written	folder location is F3
+I4-013	F3	Where the tag list file lives
+I4-014	F3	Where the memory index path is
+I4-015	F3	Where the decision log is and its entry shape	entry shape is F6
+I4-016	F3	Where a writer puts a card
+I4-017	F3	Where a passing card ends up
+I4-018	F2	Which tools a card writer may use
+I4-019	F6	The card shape: title, header line, six headings
+I4-020	F6	What the Roadblocks line looks like
+I4-021	F6	Format of the user's-words lines
+I4-022	F6	Which heading name new cards use
+I4-023	F6	How repeated stretches in resumed sessions are treated
+I4-024	F1	Line limits and header shape for a card	header shape is F6
+I4-025	F6	How exact quotes must be
+I4-026	F6	Rules for chose lines
+I4-027	F6	Tag rules and the proposed-tags line	the tag count of 2 to 6 is F1
+I4-028	F6	When a D-number may appear in a card
+I4-029	F6	Which commit hashes a card may name
+I4-030	F6	How a roadblock must end
+I4-031	F7	Who may be named as catcher of a stuck agent
+I4-032	F6	Write-back line rules
+I4-033	F6	What counts as a decision to quote
+I4-034	F6	Which memory files the memory line may name	memory folder location is F3
+I4-035	F1	Writer work limits and status line cadence
+I4-036	F3	Home folder base for the scripts
+I4-037	F3	Project folder name the scripts use
+I4-038	F3	Card data root folder
+I4-039	F3	Hydra repo path the scripts use
+I4-040	F3	Where the plan behind the spec lives
+I4-041	F3	Where published cards live
+I4-042	F3	Decision-log file the scripts use
+I4-043	F3	.claude repo path and Hydra tag file path
+I4-044	F3	Card index file name
+I4-045	F6	Local-card field name and allowed values
+I4-046	F3	Where local-only cards live
+I4-047	F6	The card headings, in order
+I4-048	F6	Names of the user's-words section
+I4-049	F6	Decision entry and D-number shape
+I4-050	F6	Card file name shape	the name is also a place, F3
+I4-051	F6	Ruling and chose-line shapes
+I4-052	F6	What looks like a commit hash
+I4-053	F6	What counts as the user's exact words
+I4-054	F6	Which transcript user lines are human words
+I4-055	F6	Which Claude Code refusal text counts as user comment
+I4-056	F6	Which words typed while busy count as user words
+I4-057	F6	Which pasted secret shapes get masked
+I4-058	F1	How long the manifest lock waits and goes stale
+I4-059	F3	Manifest, backup and lock file names
+I4-059b	F3	Evidence sub-folder names
+I4-065	F1	Longest allowed card in lines
+I4-066	F6	Words a roadblock may end with
+I4-067	F6	Card file name shape the checker accepts
+I4-068	F7	Who may be named as having caught a stuck agent
+I4-069	F6	Write-back page prefix and tag
+I4-070	F6	Header keys every card must have
+I4-071	F6	Lines ignored when reading a card
+I4-072	F6	When the card's file date must match its start
+I4-073	F3	Where a passing card goes and what it replaces	also removes a superseded published copy, F8
+I4-074	F6	Rule for chose lines in the checker
+I4-075	F6	Rule for D-numbers and commit hashes in cards
+I4-076	F6	Roadblock line shape the checker accepts
+I4-077	F6	Write-back checks
+I4-078	F8	Which cards a bare check run covers
+I4-079	F3	Default repos for the commit lookup
+I4-079b	F6	What the checker writes to the manifest
+I4-080	F1	How long a transcript counts as still running
+I4-081	F1	Longest TOOLS lines kept in evidence
+I4-082	F6	Evidence layout version number
+I4-083	F6	Which tools mean a file was edited
+I4-084	F6	Condensed header keys, in order
+I4-085	F2	How a card's agents number is counted
+I4-086	F2	Which tool names count as launching a subagent
+I4-087	F2	How a workflow's agent count is chosen
+I4-088	F6	What counts as unsent typed text
+I4-089	F6	How the tag list is built
+I4-090	F3	Which transcripts are in scope for condensing
+I4-091	F1	When a checked or failed card goes stale
+I4-092	F3	Default CONTEXT.md path
+I4-093	F6	When secrets are masked before writing
+I4-094	F6	What an index line holds
+I4-095	F6	What the index says about local sessions
+I4-096	F6	Where the Sessions line goes in memory files
+I4-097	F6	Which cards link to which memory file
+I4-098	F1	Batch size and wave size
+I4-099	F1	Batch file names and the retry rule	file names are F3
+I4-100	F6	Highest D-number below the cutoff
+I4-101	F6	First day rulings are numbered
+I4-102	F6	How a numbered ruling is written into the log
+I4-103	F6	Rulings candidate id and store file
+I4-104	F8	What migrate drops from old cards
+I4-105	F3	Old-card folder and old index location
+I4-106	F8	Folders the prune list never lists
+I4-107	F8	When a session may be listed for deletion
+I4-108	F8	Which paths may be written to the prune list
+I4-110	F6	Secret-masking shapes the tests pin
+I4-111	F6	Tag count in the hand list pinned
+I4-112	F6	A good card's shape pinned by tests
+I4-113	F1	Line limit pinned by tests
+I4-114	F6	Old Sources tail pinned by tests
+I4-115	F1	Two-hour cutoff pinned by tests
+I4-116	F6	Format bump pinned by tests
+I4-117	F6	Parenthetical depth pinned by tests
+I4-118	F6	Number-start rule pinned by tests
+I4-119	F2	Agent count pinned by tests
+I4-120	F6	Roadblock shape pinned by tests
+I4-121	F6	Write-back rules pinned by tests
+I4-122	F7	Catcher set pinned by tests
+I4-123	F6	Index text pinned by tests
+I4-124	F6	Index line shape pinned by tests
+I4-125	F6	Link line pinned by tests
+I4-126	F1	Lock test numbers
+I4-127	F6	Migrate output line pinned by tests

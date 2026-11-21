@@ -51,7 +51,7 @@ constexpr size_t kSignatureBytes = 64;
 
 Sha256 sha256_bytes(const std::string& path) {
     FILE* f = fopen_utf8(path, L"rb");
-    if (f == nullptr) throw KindedError(ErrorKind::HashFailed, "cannot open file: " + path);
+    if (f == nullptr) throw KindedError(ErrorKind::HashFailed, cannot_open_file_text(path));
     std::unique_ptr<FILE, int (*)(FILE*)> closer(f, &std::fclose);
 
     Provider alg(BCRYPT_SHA256_ALGORITHM);

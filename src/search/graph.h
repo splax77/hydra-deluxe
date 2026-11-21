@@ -31,8 +31,8 @@ namespace hydra {
 //   * Ch11 — Clone Hero 1.1 and later: a flat lead in beats before the fill
 //     starts (kCh11FillLeadBeats). This is Hydra's normal rule and the
 //     default everywhere.
-//   * Ch10 — Clone Hero 1.0, as Python Hydra 1.2 modelled it: roughly one
-//     fill-length of lead time, clamped (activation_fill_deadline_ms).
+//   * Ch10 — Clone Hero 1.0, from the game's code: about one fill-length of
+//     lead time, clamped (activation_fill_deadline_ms).
 //
 // Ch10 answers "what could a 1.0 player have reached?": the app's "1.0 fills"
 // setting and hydra_batch --legacy-fills. A stored result carries the rule it
@@ -69,6 +69,18 @@ inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style
 // meter must already be full. activation_fill_deadline_ms computes with it
 // and fill_rule_description words it.
 inline constexpr int kCh11FillLeadBeats = 4;
+
+// Clone Hero 1.0's fill lead is held between these two times, in ms: the
+// game's 0.25 s floor and 10 s ceiling (docs/clone-hero/04-fills.md FL-42,
+// code/4045/fill_deadline.cs lines 21 to 29). activation_fill_deadline_ms
+// clamps with them.
+inline constexpr double kCh10FillLeadFloorMs = 250.0;
+inline constexpr double kCh10FillLeadCeilingMs = 10000.0;
+
+// Clone Hero 1.0's 64th note, in whole ticks at chart resolution
+// `resolution`: how far past its activation chord a 1.0 fill's length runs
+// (FL-42). activation_fill_deadline_ms reads it.
+int64_t ch10_sixty_fourth_ticks(int64_t resolution);
 
 // One sentence saying when each rule's fill deadline falls. The "1.0 fills"
 // tooltip and the fill comparison report's footer both print it.

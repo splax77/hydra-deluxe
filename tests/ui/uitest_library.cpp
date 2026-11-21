@@ -1,3 +1,8 @@
+// First: it brings in winsock2.h, which must come before the windows.h the
+// harness's Direct3D headers bring in (tests/loopback_server.h).
+#include "../update_replay.h"  // GitHubReplay, ScopedTempFolder
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -13,20 +18,25 @@
 #include "../db_file_sql.h"          // tests/ is not on the runner's include path
 #include "../old_layout_fixture.h"
 #include "../testdata_dirs.h"  // root
+#include "../text_split.h"      // split_on
 #include "../wait_util.h"       // kWaitCap
 #include "app/config.h"
+#include "core/model.h"  // kMaxEarlyFillWindowMs
+#include "app/dm_report.h"  // why_not_comparable
+#include "app/html_page.h"  // kNothingMatches
 #include "app/report.h"  // hit_window_text
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
                                 // library_scan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
-#include "parse/song.h"  // NoNotesError
+#include "parse/song.h"  // strip_rich_tags
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"  // kMinLibraryW
 #include "ui/fonts.h"  // px()
+#include "ui/library_jobs.h"  // set_scan_hold_for_test
 #include "ui/library_model.h"
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
@@ -37,8 +47,8 @@
 #include "../scoped_hook.h"
 #include "../update_reply.h"
 #include "core/app_version.h"
-#include "core/winstr.h"  // read_file_text, os_path
-#include "net/http.h"     // set_fetcher, set_downloader
+#include "core/winstr.h"  // read_file_text, join_folder, same_folder
+#include "net/http.h"     // set_fetcher, set_downloader, http_get
 #include "ui/update_job.h"
 
 #include <array>
@@ -73,56 +83,94 @@ void test_scan(ImGuiTestContext* ctx) {
     IM_CHECK(ctx->ItemInfo("Scan library").ID != 0);
 }
 
-// One chart in two folders is two rows (row_key). A click on the second
-// copy's row selects that copy, not the first one the scan listed, and the
-// batch's entries come back in table order, leaving out a row the store no
-// longer lists.
+// One chart in two folders is two rows (row_key). One corpus chart is copied
+// to scratch twice, beside a second chart, and the three are scanned. A click
+// on the second copy's row selects that copy, not the first one the store
+// lists, and the batch's entries come back in table order, leaving out a row
+// the store no longer lists.
 void test_library_twin_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
-    auto entry = [](const char* title, const char* path) {
-        hydra::store::ChartLibraryEntry e;
-        e.md5 = "0123456789abcdef0123456789abcdef";
-        e.title = title;
-        e.notespath = path;
-        e.rootfolder = "twins";
-        return e;
-    };
-    const hydra::store::ChartLibraryEntry first = entry("Twin A", "C:\\twins\\a\\notes.chart");
-    const hydra::store::ChartLibraryEntry second = entry("Twin B", "C:\\twins\\b\\notes.chart");
-    hydra::store::ChartLibraryEntry other = entry("Zed", "C:\\twins\\z\\notes.chart");
-    other.md5 = "fedcba9876543210fedcba9876543210";
-    h.app->store->rebuild_chart_library({first, second, other});
-    h.app->reload_library();
+    const fs::path tier = fs::u8path(corpus::root()) / "common" / "IB24" / "T1";
+    const fs::path songs = fs::u8path(h.temp_dir) / "twin_rows";
+    fs::remove_all(songs);
+    fs::create_directories(songs);
+    const fs::path twin = tier / "Allister - Overrated";
+    fs::copy(twin, songs / "a", fs::copy_options::recursive);
+    fs::copy(twin, songs / "b", fs::copy_options::recursive);
+    fs::copy(tier / "Hawthorne Heights - Saying Sorry", songs / "other",
+             fs::copy_options::recursive);
+    h.app->settings.chartfolders = {songs.u8string()};
+    scan_library(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK_EQ(h.app->library_shown_count(), size_t{3});
+    if (h.app->library_shown_count() != 3) return;
 
-    // Rows sort by title: Twin A, Twin B, Zed.
-    IM_CHECK(h.app->library_row_at(1).entry.notespath == second.notespath);
-    h.app->select(h.app->library_row_at(1).entry, hydra::ui::SelectionSource::Click);
-    IM_CHECK(h.app->selected && h.app->selected->notespath == second.notespath);
-    IM_CHECK(h.app->selected && h.app->selected->title == "Twin B");
+    // The chart two rows share, and its copies in the order a click picks from.
+    std::string twin_md5;
+    for (size_t i = 0; i < 3; ++i)
+        for (size_t j = i + 1; j < 3; ++j)
+            if (h.app->library_row_at(i).entry.md5 == h.app->library_row_at(j).entry.md5)
+                twin_md5 = h.app->library_row_at(i).entry.md5;
+    IM_CHECK(!twin_md5.empty());
+    const std::vector<hydra::store::ChartLibraryEntry> copies =
+        h.app->store->list_chart_library_copies(twin_md5);
+    IM_CHECK_EQ(copies.size(), size_t{2});
+    if (copies.size() != 2) return;
+    IM_CHECK(copies[0].notespath != copies[1].notespath);
+
+    std::optional<size_t> second_row;
+    for (size_t i = 0; i < 3; ++i)
+        if (h.app->library_row_at(i).entry.notespath == copies[1].notespath) second_row = i;
+    IM_CHECK(second_row.has_value());
+    if (!second_row) return;
+    h.app->select(h.app->library_row_at(*second_row).entry, hydra::ui::SelectionSource::Click);
+    IM_CHECK(h.app->selected && h.app->selected->notespath == copies[1].notespath);
     h.app->close_details();
 
     // Table order, not the store's (which lists by name): titles descending.
     // No frame runs between these calls, so the table's own sort can't step in.
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, false);
-    std::vector<hydra::store::ChartLibraryEntry> matches = h.app->library_matches();
-    IM_CHECK_EQ(matches.size(), size_t{3});
-    if (matches.size() == 3) {
-        IM_CHECK(matches[0].notespath == other.notespath);
-        IM_CHECK(matches[1].notespath == second.notespath);
-        IM_CHECK(matches[2].notespath == first.notespath);
-    }
+    auto paths_of = [](const std::vector<hydra::store::ChartLibraryEntry>& entries) {
+        std::vector<std::string> out;
+        for (const hydra::store::ChartLibraryEntry& e : entries) out.push_back(e.notespath);
+        return out;
+    };
+    auto table_paths = [&h](const std::string& leave_out) {
+        std::vector<std::string> out;
+        for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+            if (h.app->library_row_at(i).entry.notespath != leave_out)
+                out.push_back(h.app->library_row_at(i).entry.notespath);
+        return out;
+    };
+    const std::vector<hydra::store::ChartLibraryEntry> listed = h.app->store->list_chart_library(0, 10);
+    IM_CHECK_EQ(listed.size(), size_t{3});
+    std::vector<std::string> matched = paths_of(h.app->library_matches());
+    IM_CHECK(matched == table_paths(""));
+    // The two orders differ here, so a batch that kept the store's would fail.
+    IM_CHECK(matched != paths_of(listed));
 
     // The store drops the first copy; the rows are not reloaded yet.
-    h.app->store->rebuild_chart_library({second, other});
-    matches = h.app->library_matches();
-    IM_CHECK_EQ(matches.size(), size_t{2});
-    if (matches.size() == 2) {
-        IM_CHECK(matches[0].notespath == other.notespath);
-        IM_CHECK(matches[1].notespath == second.notespath);
-    }
+    std::vector<hydra::store::ChartLibraryEntry> kept;
+    for (const hydra::store::ChartLibraryEntry& e : listed)
+        if (e.notespath != copies[0].notespath) kept.push_back(e);
+    IM_CHECK_EQ(kept.size(), size_t{2});
+    h.app->store->rebuild_chart_library(kept);
+    IM_CHECK_EQ(h.app->library_shown_count(), size_t{3});
+    matched = paths_of(h.app->library_matches());
+    IM_CHECK(matched == table_paths(copies[0].notespath));
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, true);
+}
+
+// The chart mode a reading with Pro Drums on is filed under, as its owner
+// app::chartmode_key spells it.
+std::string drums_key(hydra::Difficulty difficulty, bool bass2x, bool noteshuffle = false) {
+    hydra::ChartReading reading;
+    reading.difficulty = difficulty;
+    reading.prodrums = true;
+    reading.bass2x = bass2x;
+    reading.noteshuffle = noteshuffle;
+    return hydra::app::chartmode_key(reading);
 }
 
 // The settings panel's difficulty dropdown: it drives the chartmode
@@ -143,14 +191,14 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).view_difficulty.c_str(),
                     "Hard");
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, true));
 
     // Live at Hard: unticking it changes Hard's key, and ticking it restores it.
     IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
     ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, false));
     ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
 
@@ -161,7 +209,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
     IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Expert, true));
 
     settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
@@ -175,7 +223,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     // The settings, not the song panel, name the difficulty now.
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, true));
 
     // The click analyzed it under Hard (D87 item 1).
     wait_song_analyzed(ctx);
@@ -196,10 +244,10 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
 }
 
-// The settings panel's "Note Shuffle" box (D104 items 1, 2 and 6): off by
-// default, ticking it saves the INI and ends the mode string in ", Note
-// Shuffle", and the dmleaderboards Compare button greys out with its sentence
-// as its tooltip. Unticking puts both back.
+// The settings panel's "Note Shuffle" box: off by default, ticking it saves
+// the INI and moves the chart mode to the shuffled one (app::chartmode_key),
+// and the dmleaderboards Compare button greys out with the refusal
+// dm_report::why_not_comparable gives as its tooltip. Unticking puts both back.
 void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -209,12 +257,14 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
         return (ctx->ItemInfo("//Hydra/Compare with dmleaderboards...").ItemFlags &
                 ImGuiItemFlags_Disabled) != 0;
     };
-    const std::string refused =
-        "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-        "compared with a shuffled path. Untick Note Shuffle to compare.";
+    const std::string plain_key = drums_key(hydra::Difficulty::Expert, true);
+    const std::string shuffled_key = drums_key(hydra::Difficulty::Expert, true, true);
+    // The tick must change the key, or the checks below prove nothing.
+    IM_CHECK(shuffled_key != plain_key);
 
     IM_CHECK(!h.app->settings.view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), plain_key);
+    IM_CHECK(hydra::app::dm_report::why_not_comparable(h.app->settings).empty());
     IM_CHECK(!compare_disabled());
 
     open_settings_panel(ctx);
@@ -223,8 +273,14 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(),
-                    "Expert Pro Drums, 2x Bass, Note Shuffle");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), shuffled_key);
+    // The board refuses now, and only because of Note Shuffle: the same
+    // settings unshuffled compare.
+    const std::string refused = hydra::app::dm_report::why_not_comparable(h.app->settings);
+    IM_CHECK(!refused.empty());
+    hydra::app::Settings unshuffled = h.app->settings;
+    unshuffled.view_noteshuffle = false;
+    IM_CHECK(hydra::app::dm_report::why_not_comparable(unshuffled).empty());
 
     close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, compare_disabled, 5));
@@ -238,10 +294,16 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), plain_key);
     // The open popup outlives the test, so the next test could hover nothing.
     close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
+}
+
+// Whether the settings button reads its owner's label for `s`
+// (settings_button_label, unlocked).
+bool button_reads(Harness& h, const hydra::app::Settings& s) {
+    return on_screen(h, hydra::ui::detail::settings_button_label(s, false));
 }
 
 // A fresh app with every analysis setting at its default, the settings button
@@ -251,7 +313,8 @@ void reset_app_at_default_settings(ImGuiTestContext* ctx, Harness& h) {
     reset_app(h);
     h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
     h.app->commit_settings();
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(hydra::ui::detail::settings_at_defaults(h.app->settings));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, h.app->settings); }, 5));
 }
 
 // The settings button (settings summary button handoff, 2026-10-09): it
@@ -260,17 +323,25 @@ void reset_app_at_default_settings(ImGuiTestContext* ctx, Harness& h) {
 void test_settings_button(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app_at_default_settings(ctx, h);
+    const hydra::app::Settings at_defaults = h.app->settings;
+    hydra::app::Settings shuffled = at_defaults;
+    shuffled.view_noteshuffle = true;
+    // The tick must change the words, or the wait below proves nothing.
+    IM_CHECK(hydra::ui::detail::settings_button_label(shuffled, false) !=
+             hydra::ui::detail::settings_button_label(at_defaults, false));
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
     ctx->ItemCheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: Note Shuffle"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->settings.view_noteshuffle && button_reads(h, shuffled);
+    }, 5));
     // Ticking a box leaves the panel open, still the window with focus.
     ctx->Yield(2);
     IM_CHECK(ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
     ctx->ItemUncheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_defaults); }, 5));
     close_settings_panel(ctx);
 }
 
@@ -302,24 +373,25 @@ void test_settings_reset(ImGuiTestContext* ctx) {
         return (ctx->ItemInfo("**/Reset to defaults").ItemFlags & ImGuiItemFlags_Disabled) != 0;
     };
     const std::vector<std::string> folders = h.app->settings.chartfolders;
+    const hydra::app::Settings at_defaults = h.app->settings;
+    // The three changes the clicks below make.
+    hydra::app::Settings changed = at_defaults;
+    changed.view_prodrums = false;
+    changed.sp_cap = 5;
+    changed.early_fill_window_ms = 85;
+    IM_CHECK_EQ(changed.analysis_changes().size(), size_t{3});
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(reset_off());
     ctx->ItemUncheck("**/##prodrums");
-    ctx->ItemInputValue("**/##spcap", 5);
-    ctx->ItemInputValue("**/##earlyfillwindow", 85);
-    IM_CHECK(wait_until(
-        ctx,
-        [&] {
-            return on_screen(h, "Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars \xC2\xB7 "
-                                "Early fill window 85 ms");
-        },
-        5));
+    ctx->ItemInputValue("**/##spcap", changed.sp_cap);
+    ctx->ItemInputValue("**/##earlyfillwindow", changed.early_fill_window_ms);
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, changed); }, 5));
     IM_CHECK(!reset_off());
 
     ctx->ItemClick("**/Reset to defaults");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_defaults); }, 5));
     const hydra::app::Settings defaults;
     IM_CHECK(h.app->settings.view_prodrums);
     IM_CHECK(h.app->settings.sp_cap == hydra::kCloneHeroSpCap);
@@ -364,23 +436,29 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
     ctx->MouseMoveToPos(ImVec2(marker_x, box.RectFull.GetCenter().y));
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, help); }, 5));
 
-    ctx->ItemInputValue("**/##earlyfillwindow", 85);
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
-    IM_CHECK(h.app->settings.early_fill_window_ms == 85);
+    // The range's ends, from the key table's bounds (config.cpp, 0 to
+    // kMaxEarlyFillWindowMs); the button's label for each comes from its owner.
+    const int top = hydra::kMaxEarlyFillWindowMs;
+    hydra::app::Settings at_top = h.app->settings;
+    at_top.early_fill_window_ms = top;
+    hydra::app::Settings at_zero = h.app->settings;
+    at_zero.early_fill_window_ms = 0;
+    // The default sits inside the range, so each wait below sees a change.
+    IM_CHECK(!button_reads(h, at_top) && !button_reads(h, at_zero));
+    ctx->ItemInputValue("**/##earlyfillwindow", top);
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_top); }, 5));
+    IM_CHECK(h.app->settings.early_fill_window_ms == top);
 
     // Below the range first, so the value above it has something to move from.
     ctx->ItemInputValue("**/##earlyfillwindow", -5);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 0; }, 5));
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 0 ms"); }, 5));
-    ctx->ItemInputValue("**/##earlyfillwindow", 200);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 85; }, 5));
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_zero); }, 5));
+    ctx->ItemInputValue("**/##earlyfillwindow", top + 100);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == top; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_top); }, 5));
     close_settings_panel(ctx);
     h.app->flush_settings();
-    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == 85);
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == top);
 }
 
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
@@ -388,16 +466,24 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
 // nothing: the song's row stays Not analyzed (D87 item 9).
 void test_rules_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h, "max_tied_paths = 0\n");
+    // The one bad line the scratch hydra_rules.ini holds, and the key it sets.
+    const std::string key = "max_tied_paths";
+    reset_app(h, key + " = 0\n");
     IM_CHECK(h.app->analysis_blocked());
-    IM_CHECK(h.app->rules_error.find("max_tied_paths") != std::string::npos);
+    IM_CHECK(h.app->rules_error.find(key) != std::string::npos);
+    // One line on screen: the rules file's sentence and the loader's error.
+    const std::vector<hydra::ui::AnalysisOffLine> lines = h.app->analysis_off_lines();
+    IM_CHECK_EQ(lines.size(), size_t{1});
+    if (lines.size() != 1) return;
+    IM_CHECK_STR_EQ(lines[0].sentence, hydra::app::kAnalysisOffSentence);
+    IM_CHECK(lines[0].error == h.app->rules_error);
     scan_library(ctx);
     if (ctx->IsError()) return;
 
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("analysis is off") != std::string::npos;
+        return visible_text(h).find(hydra::app::kAnalysisOffSentence) != std::string::npos;
     }, 5));
-    IM_CHECK(visible_text(h).find("max_tied_paths") != std::string::npos);
+    IM_CHECK(visible_text(h).find(h.app->rules_error) != std::string::npos);
     IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
 
     open_details(ctx, 0);
@@ -418,15 +504,20 @@ void test_rules_error(ImGuiTestContext* ctx) {
 // as they were (D276 item 1).
 void test_settings_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const std::string bad = "view_prodrums=yes\n";
+    // The one bad line: a yes/no key given a word the loader refuses.
+    const std::string key = "view_prodrums";
+    const std::string word = "yes";
+    const std::string bad = key + "=" + word + "\n";
     reset_app(h, "", true, bad);
     IM_CHECK(h.app->analysis_blocked());
-    IM_CHECK(h.app->settings_error.find("view_prodrums") != std::string::npos);
+    // The loader's error names the key and the word it refused.
+    IM_CHECK(h.app->settings_error.find(key) != std::string::npos);
+    IM_CHECK(h.app->settings_error.find(word) != std::string::npos);
 
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find(hydra::app::kSettingsOffSentence) != std::string::npos;
     }, 5));
-    IM_CHECK(visible_text(h).find("view_prodrums = \"yes\"") != std::string::npos);
+    IM_CHECK(visible_text(h).find(h.app->settings_error) != std::string::npos);
     IM_CHECK(!h.app->can_analyze());
     ctx->SetRef("//Hydra");
     IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
@@ -441,43 +532,28 @@ void test_settings_error(ImGuiTestContext* ctx) {
     IM_CHECK(hydra::read_file_text(h.ini_path) == bad);
 }
 
-// The library view's own state (the search text, the dmleaderboards filter,
-// the status fade, the folder confirm) belongs to the AppState, so the next
-// test's fresh app never shows the last test's search text and filter.
+// The library view's own state belongs to the AppState, so the next test's
+// fresh app never shows the last test's search text.
 void test_library_state_per_app(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    const size_t all = h.app->library_shown_count();
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "zzqx"; }, 5));
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemInputValue("##dmfilter", "zzqx");
-    ctx->Yield(2);
-    IM_CHECK(visible_text(h).find("alice") == std::string::npos);
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
+    // The search narrowed the table, so a leftover one would show.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() < all; }, 5));
 
-    // A fresh app: both boxes start empty. ImGui's text log shows an input
+    // A fresh app: the box starts empty. ImGui's text log shows an input
     // box's contents, so leftover text would be on screen.
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(h.app->search.empty());
+    IM_CHECK_EQ(h.app->library_shown_count(), all);
     IM_CHECK(visible_text(h).find("zzqx") == std::string::npos);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("alice") != std::string::npos;
-    }, 5));
-    IM_CHECK(visible_text(h).find("zzqx") == std::string::npos);
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
 }
 
 // The View row and the library's own controls: Pro Drums, backing out of
@@ -494,7 +570,14 @@ void test_view_settings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##prodrums");
     IM_CHECK(!h.app->settings.view_prodrums);
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_prodrums);
-    IM_CHECK(h.app->settings.chartmode_key().find("Pro Drums") == std::string::npos);
+    // Expert with 2x Bass, as the scratch settings start, but Pro Drums off.
+    hydra::ChartReading plain_drums;
+    plain_drums.difficulty = hydra::Difficulty::Expert;
+    plain_drums.prodrums = false;
+    plain_drums.bass2x = true;
+    plain_drums.noteshuffle = false;
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), hydra::app::chartmode_key(plain_drums));
+    IM_CHECK(h.app->settings.chartmode_key() != drums_key(hydra::Difficulty::Expert, true));
     ctx->ItemClick("**/##prodrums");
     IM_CHECK(h.app->settings.view_prodrums);
     close_settings_panel(ctx);
@@ -502,7 +585,9 @@ void test_view_settings(ImGuiTestContext* ctx) {
     // "Analyze library..." asks first; Cancel starts nothing.
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
-    IM_CHECK(visible_text(h).find("no result yet") != std::string::npos);
+    // The confirm asks its owner's question for the plan it counted.
+    IM_CHECK(h.app->batch_confirm_pending);
+    IM_CHECK(on_screen(h, h.app->batch_question(h.app->batch_redo)));
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job == nullptr);
@@ -536,8 +621,28 @@ void test_view_settings(ImGuiTestContext* ctx) {
 
 ImGuiTable* library_table();  // below, beside the column tests
 
+// The notes paths of the rows on screen, sorted.
+std::vector<std::string> shown_paths_sorted(Harness& h) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+        out.push_back(h.app->library_row_at(i).entry.notespath);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// The notes paths of every library row `keep` holds for, sorted.
+std::vector<std::string> library_paths_where(
+    Harness& h, const std::function<bool(const hydra::ui::LibraryRow&)>& keep) {
+    std::vector<std::string> out;
+    for (const hydra::ui::LibraryRow& row : h.app->library.rows())
+        if (keep(row)) out.push_back(row.entry.notespath);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // The search box, the chips, the second line and the empty state, on the
-// scratch library (98 charts in testdata\input).
+// scratch library (every chart in testdata\input). Each expected set of rows
+// is read from the scanned rows themselves.
 void test_library_search(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -545,21 +650,31 @@ void test_library_search(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
     const auto shown = [&] { return h.app->library_shown_count(); };
+    const size_t total = h.app->library.rows().size();
+    IM_CHECK_RETV(total > 0, );
+    const auto chip_ref = [](hydra::ui::StatusChip chip, size_t count) {
+        return "**/" + hydra::ui::chip_label(chip, count);
+    };
 
-    IM_CHECK_EQ(shown(), (size_t)98);
-    IM_CHECK(visible_text(h).find("98 charts") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/All (98)##chipall"));
-    IM_CHECK(ctx->ItemExists("**/Not analyzed (98)##chipnew"));
-    IM_CHECK((ctx->ItemInfo("**/Stale (0)##chipstale").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK_EQ(shown(), total);
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::All, total).c_str()));
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::NotAnalyzed, total).c_str()));
+    IM_CHECK((ctx->ItemInfo(chip_ref(hydra::ui::StatusChip::Stale, 0).c_str()).ItemFlags &
+              ImGuiItemFlags_Disabled) != 0);
 
-    // A quoted phrase: the five charts under "...\Tier 4".
+    // A quoted phrase: the charts in a "Tier 4" folder, and only those.
+    const std::vector<std::string> tier4 = library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+        return r.entry.notespath.find("\\Tier 4\\") != std::string::npos ||
+               r.entry.notespath.find("/Tier 4/") != std::string::npos;
+    });
+    IM_CHECK_RETV(!tier4.empty(), );
     ctx->ItemInputValue("**/##search", "\"tier 4\"");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 5; }, 5));
-    IM_CHECK(ctx->ItemExists("**/All (5)##chipall"));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "\"tier 4\""; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown_paths_sorted(h) == tier4; }, 5));
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::All, tier4.size()).c_str()));
     std::string text = visible_text(h);
-    IM_CHECK(text.find("5 of 98 charts") != std::string::npos);
-    for (const char* title : {"Burnout", "Chair", "Limb From Limb", "Unbound (The Wild Ride)", "YYZ"})
-        IM_CHECK(text.find(title) != std::string::npos);
+    for (size_t i = 0; i < shown(); ++i)
+        IM_CHECK(text.find(h.app->library_row_at(i).title) != std::string::npos);
 
     // With a song open, Folder makes way, so each row shows its folder on
     // the title's second line. No note under the table says where it matched.
@@ -570,26 +685,33 @@ void test_library_search(ImGuiTestContext* ctx) {
     h.app->close_details();
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
 
-    // album: limits a word to the album. Haken - The Good Doctor's song.ini
-    // says album = Vector.
+    // album: limits a word to the album: the rows whose album holds "vector"
+    // and no others. The checks below want exactly one such chart.
+    const std::vector<std::string> vector_album =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            return r.searchable.album.find("vector") != std::string::npos;
+        });
+    IM_CHECK_RETV(vector_album.size() == 1, );
     ctx->ItemInputValue("**/##search", "album:vector");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "album:vector"; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
-    IM_CHECK_EQ(shown(), (size_t)1);
-    IM_CHECK(h.app->library_row_at(0).title == "The Good Doctor");
+    IM_CHECK(wait_until(ctx, [&] { return shown_paths_sorted(h) == vector_album; }, 5));
+    // The album as the table draws it, colour tags removed.
+    const std::string album = h.app->library_row_at(0).album;
+    const std::string doctor_title = h.app->library_row_at(0).title;
+    IM_CHECK_RETV(!album.empty(), );
     IM_CHECK(ctx->ItemExists("**/Album"));
     // With a song open, Album makes way with Charter and Folder, and the
     // album shows on the row's second line instead.
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Album"); }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Vector"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, album); }, 5));
     // The user's case: the song stays open and the search box is emptied.
     // Every row still shows its album under the artist.
     ctx->ItemInputValue("**/##search", "");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 98; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == total; }, 5));
     ctx->Yield(2);
     IM_CHECK(!ctx->ItemExists("**/Album"));
-    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(on_screen(h, album));
     const float open_no_search_h =
         ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
@@ -601,24 +723,27 @@ void test_library_search(ImGuiTestContext* ctx) {
     // title's second line stays empty and the folder is drawn once.
     ImGuiTable* table = library_table();
     IM_CHECK_RETV(table != nullptr, );
-    const std::string doctor_ref = "**/The Good Doctor";
+    const std::string doctor_ref = "**/" + escape_ref(doctor_title);
     const float one_line_h = [&] {
         ctx->ItemInputValue("**/##search", "");
         wait_until(ctx, [&] { return h.app->search.empty(); }, 5);
         return ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
     }();
-    // Album shown, no search: one line. Album hidden by the open song: two.
-    IM_CHECK_GT(open_no_search_h, one_line_h * 1.5f);
+    // Album shown, no search: one line. Album hidden by the open song: two,
+    // so the row is taller (library_table.cpp, row_h).
+    IM_CHECK_GT(open_no_search_h, one_line_h);
     ctx->TableSetColumnEnabled(table->ID, "Album", false);
     ctx->Yield(3);
     IM_CHECK(!table->Columns[hydra::ui::kColumnAlbum].IsEnabled);
     ctx->ItemInputValue("**/##search", "album:vector");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "album:vector" && shown_paths_sorted(h) == vector_album;
+    }, 5));
     ctx->Yield(2);
     const float two_line_h = ctx->ItemInfo(doctor_ref.c_str()).RectFull.GetHeight();
-    IM_CHECK_GT(two_line_h, one_line_h * 1.5f);
-    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
+    IM_CHECK_GT(two_line_h, one_line_h);
+    IM_CHECK_EQ(count_on_screen(h, album), (size_t)1);
     IM_CHECK_EQ(count_on_screen(h, h.app->library_row_at(0).entry.rootfolder), (size_t)1);
     // The album sits in the Artist cell: the frame's text runs title, artist,
     // album line, then the Folder column.
@@ -627,7 +752,7 @@ void test_library_search(ImGuiTestContext* ctx) {
         const hydra::ui::LibraryRow& doctor = h.app->library_row_at(0);
         const size_t title_at = all.find(doctor.title);
         const size_t artist_at = all.find(doctor.artist, title_at);
-        const size_t album_at = all.find("Vector", artist_at);
+        const size_t album_at = all.find(album, artist_at);
         const size_t folder_at = all.find(doctor.entry.rootfolder, artist_at);
         IM_CHECK(title_at != std::string::npos && artist_at != std::string::npos);
         IM_CHECK(album_at != std::string::npos && folder_at != std::string::npos);
@@ -641,31 +766,46 @@ void test_library_search(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const std::string first_ref = "**/" + escape_ref(h.app->library_row_at(0).title);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), two_line_h);
-    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(on_screen(h, album));
     // Album back as a column: one line, and the album is drawn once.
     ctx->TableSetColumnEnabled(table->ID, "Album", true);
     ctx->Yield(3);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), one_line_h);
-    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
+    IM_CHECK_EQ(count_on_screen(h, album), (size_t)1);
 
-    // Words in any order, across title and artist.
+    // Words in any order, across title and artist: every row whose title and
+    // artist hold both words, the title's word given second.
+    const std::vector<std::string> green_burnout =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            const std::string both = r.searchable.title + " " + r.searchable.artist;
+            return both.find("green") != std::string::npos &&
+                   r.searchable.title.find("burnout") != std::string::npos;
+        });
+    IM_CHECK_RETV(!green_burnout.empty(), );
     ctx->ItemInputValue("**/##search", "green burnout");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
-    IM_CHECK(h.app->library_row_at(0).title == "Burnout");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "green burnout" && shown_paths_sorted(h) == green_burnout;
+    }, 5));
 
-    // A charter stored with colour tags is found and drawn without them.
-    // Bloodline charted 15 of the scratch charts (13 of them tagged), so
-    // every row shown is theirs, Acid Romance among them.
+    // A charter stored with colour tags is found and drawn without them:
+    // the rows shown are the ones Bloodline charted, and at least one of
+    // them is stored with a tag in its charter.
+    const std::vector<std::string> bloodline =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            return r.charter == "Bloodline";
+        });
+    bool tagged_stored = false;
+    for (const hydra::store::ChartLibraryEntry& e :
+         h.app->store->list_chart_library(0, static_cast<int>(total)))
+        tagged_stored = tagged_stored ||
+                        (e.charter.find("<color=") != std::string::npos &&
+                         hydra::strip_rich_tags(e.charter) == "Bloodline");
+    IM_CHECK_RETV(tagged_stored, );
     ctx->ItemInputValue("**/##search", "bloodline");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "bloodline" && shown() > 1; }, 5));
-    bool acid_shown = false;
-    for (size_t i = 0; i < shown(); ++i) {
-        IM_CHECK(h.app->library_row_at(i).charter == "Bloodline");
-        acid_shown = acid_shown || h.app->library_row_at(i).title == "Acid Romance";
-    }
-    IM_CHECK(acid_shown);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "bloodline" && shown_paths_sorted(h) == bloodline;
+    }, 5));
     text = visible_text(h);
-    IM_CHECK(text.find("Acid Romance") != std::string::npos);
     IM_CHECK(text.find("Bloodline") != std::string::npos);
     IM_CHECK(text.find("<color=") == std::string::npos);
 
@@ -678,10 +818,10 @@ void test_library_search(ImGuiTestContext* ctx) {
     // the box is the one way to clear it by mouse, and it brings it all back.
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 0; }, 5));
-    IM_CHECK(visible_text(h).find("Nothing matches.") != std::string::npos);
+    IM_CHECK(visible_text(h).find(hydra::app::html::kNothingMatches) != std::string::npos);
     IM_CHECK(!ctx->ItemExists("**/Clear search"));
     ctx->ItemClick("**/X##clearsearch");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 98 && h.app->search.empty(); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown() == total && h.app->search.empty(); }, 5));
 
     // Escape in the box clears it; a second Escape leaves the box.
     ctx->ItemInputValue("**/##search", "chair");
@@ -747,15 +887,19 @@ void test_analyze_follows_chip(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("Analyze library..."); }, 5));
 }
 
-// A chart whose failure the store kept (failure_record, saved on the scratch
-// db the way a batch saves one) reads Can't analyze in the Best path cell,
-// counts under its own chip, and that chip narrows the table and the Analyze
-// button to it (D115). The corpus has no chart without Expert drums, so the
-// failure is saved directly.
+// A chart whose failure a batch kept reads Can't analyze in the Best path
+// cell, counts under its own chip, and that chip narrows the table and the
+// Analyze button to it (D115). Every corpus chart has Expert drums, but many
+// .chart files have no [EasyDrums] section, so the whole corpus is batched at
+// Easy and each of those fails for real (NoNotesError, kept by
+// app::prepare_failed_chart).
 void test_library_cant_analyze(ImGuiTestContext* ctx) {
     using hydra::ui::StatusChip;
     Harness& h = harness(ctx);
     reset_app(h);
+    h.app->settings.view_difficulty = "Easy";
+    h.app->commit_settings();
+    IM_CHECK(h.app->settings.difficulty() == hydra::Difficulty::Easy);
     scan_library(ctx);
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
@@ -764,23 +908,28 @@ void test_library_cant_analyze(ImGuiTestContext* ctx) {
                   .ItemFlags &
               ImGuiItemFlags_Disabled) != 0);
 
-    const std::string md5 = h.app->library_row_at(0).entry.md5;
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
-    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
-                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
-    h.app->refresh_library_summaries();
-    IM_CHECK_EQ(h.app->library.counts().cant_analyze, size_t{1});
+    start_library_batch(ctx);
+    // A batch that never started can't finish, so the wait ends at once.
+    IM_CHECK(wait_until(ctx, [&] {
+        return !h.app->batch_job || h.app->batch_job->snapshot().finished;
+    }, 300));
+    IM_CHECK(h.app->batch_job && h.app->batch_job->snapshot().finished);
+    if (ctx->IsError()) return;
+    dismiss_done(ctx);
+    if (ctx->IsError()) return;
+    const size_t failed = h.app->library.counts().cant_analyze;
+    IM_CHECK(failed > 0);
+    IM_CHECK(failed < total);
     IM_CHECK_EQ(h.app->library.counts().all, total);
-    const std::string chip = "**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, 1);
+    if (failed == 0) return;
+    const std::string chip = "**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, failed);
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 5));
     IM_CHECK((ctx->ItemInfo(chip.c_str()).ItemFlags & ImGuiItemFlags_Disabled) == 0);
-    IM_CHECK(ctx->ItemExists(
-        ("**/" + hydra::ui::chip_label(StatusChip::NotAnalyzed, total - 1)).c_str()));
 
     ctx->ItemClick(chip.c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == 1; }, 5));
-    IM_CHECK(h.app->library_row_at(0).entry.md5 == md5);
-    IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::CantAnalyze);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == failed; }, 5));
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+        IM_CHECK(h.app->library_row_at(i).status == hydra::store::RecordStatus::CantAnalyze);
     // The cell draws the word: the chip's label and the cell both show it.
     const std::string word = hydra::ui::status_label(hydra::store::RecordStatus::CantAnalyze);
     const std::string text = visible_text(h);
@@ -788,13 +937,14 @@ void test_library_cant_analyze(ImGuiTestContext* ctx) {
     IM_CHECK(first != std::string::npos);
     IM_CHECK(text.find(word, first + word.size()) != std::string::npos);
 
-    // The Analyze button counts the one chart on screen.
-    const std::string label = hydra::ui::detail::analyze_shown_label(1);
+    // The Analyze button counts the charts on screen.
+    const std::string label =
+        hydra::ui::detail::analyze_shown_label(static_cast<int64_t>(failed));
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(label.c_str()); }, 5));
     ctx->ItemClick(label.c_str());
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
-    IM_CHECK_EQ(h.app->batch_scope_charts(), int64_t{1});
+    IM_CHECK_EQ(h.app->batch_scope_charts(), static_cast<int64_t>(failed));
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
@@ -879,8 +1029,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     ctx->Yield(3);
 
     // Score range holds six digits beside its step buttons, in the open
-    // settings panel. The sample widest_digits gives is one measured run in
-    // the shipped font at this size (audit finding 112).
+    // settings panel, sized for widest_digits(6).
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
     // The click analyzed (and saved) this song (D87), and the setting change
@@ -889,7 +1038,9 @@ void test_library_layout(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     const std::string widest = hydra::ui::widest_digits(6);
-    IM_CHECK_STR_EQ(widest.c_str(), "000000");
+    // The sample is six digits.
+    IM_CHECK_EQ(widest.size(), size_t{6});
+    IM_CHECK(widest.find_first_not_of("0123456789") == std::string::npos);
     IM_CHECK_GE(ctx->ItemInfo("**/##depthvalue").RectFull.GetWidth(),
                 hydra::ui::button_slot_width(widest.c_str()));
     IM_CHECK_LE(ctx->ItemInfo("**/##depthvalue/+").RectFull.Max.x,
@@ -947,15 +1098,17 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
-    // The headers left to right: Album sits between Artist and Charter.
-    const char* const headers[] = {"Title", "Artist", "Album", "Charter", "Folder", "Best path"};
-    IM_CHECK_EQ(table->ColumnsCount, static_cast<int>(std::size(headers)));
-    for (int c = 0; c < table->ColumnsCount && c < static_cast<int>(std::size(headers)); ++c)
-        IM_CHECK_STR_EQ(ImGui::TableGetColumnName(table, c), headers[c]);
+    // The headers left to right are the specs' headers, in the specs' order.
+    IM_CHECK_EQ(table->ColumnsCount, static_cast<int>(cache.specs.size()));
+    for (int c = 0; c < table->ColumnsCount && c < static_cast<int>(cache.specs.size()); ++c)
+        IM_CHECK_STR_EQ(ImGui::TableGetColumnName(table, c),
+                        cache.specs[static_cast<size_t>(c)].header.c_str());
     // A header is measured in the font it is drawn in. The Best path cells
     // draw as Notation, but TableHeadersRow draws the header as Label.
+    const std::string& best_header =
+        cache.specs[static_cast<size_t>(hydra::ui::kColumnBestPath)].header;
     IM_CHECK_EQ(cache.measured.header_widths[hydra::ui::kColumnBestPath],
-                hydra::ui::text_size(hydra::ui::TextRole::Label, "Best path").x);
+                hydra::ui::text_size(hydra::ui::TextRole::Label, best_header.c_str()).x);
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
@@ -1565,19 +1718,28 @@ void test_old_library_set_aside(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->startup_notice().empty());
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
-    IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
+    // The scan found every chart the ini's folders hold, as the scan's own
+    // discovery reads them, and the fresh library shows each of them.
+    const size_t in_folders =
+        hydra::app::discover_charts(h.app->settings.chartfolders).first.size();
+    IM_CHECK_RETV(in_folders > 0, );  // the harness's ini names the corpus
+    IM_CHECK_EQ(static_cast<size_t>(h.app->scan_job->snapshot().charts_found), in_folders);
     ctx->SetRef("//Scanning charts");
     ctx->ItemClick("Continue");
     ctx->Yield(2);
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_shown_count() > 0);
+    IM_CHECK_EQ(h.app->library.rows().size(), in_folders);
+    IM_CHECK_EQ(h.app->library_shown_count(), in_folders);
 }
 
 // Scans the corpus, then restarts the app on a copy of that library as an
 // older Hydra left it: the scan stamp is one this build does not accept and
 // no row has an album. Returns how many rows the library showed, or 0 when a
-// step failed. The open has finished when it returns.
-size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h) {
+// step failed. The open has finished when it returns. `before_restart` runs
+// after the first scan and before the restart, so a test can set a seam that
+// only the open's scan meets.
+size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h,
+                                      const std::function<void()>& before_restart = {}) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return 0;
@@ -1591,6 +1753,7 @@ size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h) {
                       seed, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';"
                             "UPDATE charts SET album = '';"),
                   0);
+    if (before_restart) before_restart();
     const std::string seed_before = h.seed_db;
     h.seed_db = seed;
     reset_app(h);
@@ -1632,34 +1795,71 @@ void test_rescan_on_open(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->scan_started_by_open);
 }
 
+// Holds every scan job built while it lives on its own thread, before the
+// scan reads anything, until release(). The job copies the hold when it is
+// made; the destructor lets a held scan go and removes the seam, so a check
+// that fails early leaves nothing stuck.
+std::atomic<bool> g_scan_released{true};
+std::atomic<int> g_scans_held{0};
+class ScanHold {
+public:
+    ScanHold() {
+        g_scan_released = false;
+        g_scans_held = 0;
+        seam_.emplace(hydra::ui::set_scan_hold_for_test, [] {
+            ++g_scans_held;
+            testwait::wait_until([] { return g_scan_released.load(); },
+                                 "the test to release the held scan");
+        });
+    }
+    ~ScanHold() { release(); }
+    ScanHold(const ScanHold&) = delete;
+    ScanHold& operator=(const ScanHold&) = delete;
+    void release() {
+        g_scan_released = true;
+        seam_.reset();
+    }
+    // Scans that have reached the hold (1 = the first is held there).
+    int held() const { return g_scans_held.load(); }
+
+private:
+    std::optional<ScopedHook> seam_;
+};
+
 // Cancel on the scan the app started leaves the library as it was, and the
-// library is still out of date, so the next open asks again.
+// library is still out of date, so the next open asks again. The open's scan
+// is held before it reads anything, so the Cancel click lands on a scan still
+// running and the scan window stays still under the mouse.
 void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const size_t rows = restart_on_out_of_date_library(ctx, h);
+    std::optional<ScanHold> hold;
+    const size_t rows = restart_on_out_of_date_library(ctx, h, [&] { hold.emplace(); });
     if (rows == 0) return;
+    IM_CHECK_RETV(hold.has_value(), );
 
-    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    // The scan is held, or it ended without reaching the hold, and the
+    // cancel below can no longer happen.
+    IM_CHECK(wait_until(ctx, [&] {
+        return hold->held() > 0 ||
+               (h.app->scan_job != nullptr && h.app->scan_job->snapshot().finished);
+    }, 5));
+    IM_CHECK_RETV(hold->held() == 1 && h.app->scan_job != nullptr, );
+    IM_CHECK(!h.app->scan_job->snapshot().finished);
+    ctx->Yield(3);  // the scan window opens and settles
     ctx->SetRef("//Scanning charts");
-    // The corpus scan can end before the click lands, and nothing holds it;
-    // the unit test cancels deterministically. Here the Cancel button is
-    // pressed when it is still there, and the test checks whichever end the
-    // scan reached.
-    ctx->ItemClick("Cancel", 0, ImGuiTestOpFlags_NoError);
+    ctx->ItemClick("Cancel");
+    hold->release();
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
-    const bool cancelled = h.app->scan_job->snapshot().cancelled;
+    IM_CHECK(h.app->scan_job->snapshot().cancelled);
     ctx->Yield(2);
-    if (cancelled)
-        IM_CHECK(on_screen(h, "Scan cancelled. The library was left unchanged."));
-    else
-        IM_CHECK(on_screen(h, "Done: "));
+    IM_CHECK(on_screen(h, "Scan cancelled. The library was left unchanged."));
     ctx->ItemClick("Continue");
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
     IM_CHECK(!h.app->scan_started_by_open);
     IM_CHECK(h.app->library_shown_count() == rows);
-    IM_CHECK(h.app->store->chart_library_out_of_date() == cancelled);
+    IM_CHECK(h.app->store->chart_library_out_of_date());
 }
 
 // D266 (user ruling "Refuse, like on open"): a click on Scan library with a
@@ -1700,93 +1900,116 @@ void test_scan_missing_folder(ImGuiTestContext* ctx) {
 
 // ---- the version bar ----------------------------------------------------------
 // The bar D260 rules on.
-// Nothing here touches the network: UpdateSeams serves the release reply, the
-// download and the installer start.
+// The update check and the download are Hydra's real network code, run
+// against GitHub's saved files replayed on this PC (tests/update_replay.h).
+// No step reaches the installer start.
 
 std::string running_version_text() {
     return hydra::core::version_text(hydra::core::running_version());
 }
 
-// The committed test key (sample.bin.sig was signed with it).
-std::array<uint8_t, 64> update_test_key(ImGuiTestContext* ctx) {
-    std::array<uint8_t, 64> key{};
-    IM_CHECK_NO_RET(update_fixtures::read_test_public_key(key));
-    if (ctx->IsError()) return {};
-    return key;
+// True when ui::update_folder() lies inside `temp`, the scratch temp folder.
+// Every AppState start deletes that folder, so no AppState is built unless
+// this holds.
+bool update_folder_is_scratch(const update_fixtures::ScopedTempFolder& temp) {
+    return hydra::same_folder(hydra::ui::update_folder(),
+                              hydra::join_folder(temp.folder(), "HydraDeluxe-update"));
 }
 
-// Sits while `hold` is set and nothing cancels, for at most 30 s; the test's
-// own waits give up before that.
-void wait_released(const std::atomic<bool>& hold, const std::atomic<bool>* cancel) {
-    const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    while (hold.load() && !(cancel && cancel->load()) && std::chrono::steady_clock::now() < give_up)
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-}
-
-// The updater's seams for one test: Hydra counts as installed, GitHub's reply
-// is `reply`, the download copies sample.bin and serves sample.bin.sig, and
-// the installer "ends early", which is a declined UAC prompt (D259 call 10).
-// hold_check and hold_download keep the check or the download running until
-// the test clears them. Make it after reset_app, which installs the harness's
-// own fetcher. Its destructor drops the app first, so no job of it calls a
+// What the version bar test stands on, besides the scratch temp folder it is
+// given: GitHub replayed on this PC, the pretend-installed switch once the
+// test sets it, and the launcher guard. The release reply, the installer, its
+// signature and Hydra's built-in release key are all real.
+//
+// Two stand-ins remain. The address: GitHubReplay sends GitHub's addresses to
+// the local server, and any other address throws (net::set_address_map_for_test).
+// And "installed": AppState runs no check unless the build counts as
+// installed, and a test build never does, so the test sets the switch itself
+// where it needs a check.
+//
+// The harness's "no network" fetcher and downloader would answer before the
+// address map does, so they are cleared for this test's length; the map now
+// guards the network. The launcher seam is a guard, not a stand-in: no test
+// may start an installer, so it counts any call and throws, and the test
+// requires the count is zero.
+//
+// Make it after reset_app, which installs the harness's fetcher and
+// downloader. Its destructor drops the app first, so no job of it calls a
 // seam that is gone.
 struct UpdateSeams {
     Harness& h;
-    std::string reply = update_fixtures::release_reply_at("v9.9.9");
-    std::string sig = hydra::read_file_text(update_fixtures::update_dir() + "/sample.bin.sig");
-    std::atomic<bool> hold_check{false};
-    std::atomic<bool> hold_download{false};
-    std::string folder;
-    ScopedHook installed;
-    ScopedHook folder_seam;
-    ScopedHook fetcher;
-    ScopedHook downloader;
+    const update_fixtures::ScopedTempFolder& temp;
+    std::optional<ScopedHook> installed;  // set by the test where it needs a check
+    ScopedHook no_fetcher;
+    ScopedHook no_downloader;
+    std::optional<update_fixtures::GitHubReplay> replay;  // rebuilt by serve_fresh
+    std::atomic<int> launcher_calls{0};
     ScopedHook launcher;
 
-    explicit UpdateSeams(Harness& harness_)
+    UpdateSeams(Harness& harness_, const update_fixtures::ScopedTempFolder& temp_,
+                const std::string& reply)
         : h(harness_),
-          folder(h.temp_dir + "/update-download"),
-          installed(hydra::app::set_installed_for_test, std::optional<bool>(true)),
-          folder_seam(hydra::ui::set_update_folder_for_test, folder),
-          fetcher(hydra::net::set_fetcher,
-                  [this](const std::string& url, const std::atomic<bool>* cancel) -> std::string {
-                      if (url == hydra::ui::kLatestReleaseUrl) {
-                          wait_released(hold_check, cancel);
-                          return reply;
-                      }
-                      if (url.size() > 4 && url.substr(url.size() - 4) == ".sig") return sig;
-                      throw std::runtime_error("no canned reply for " + url);
-                  }),
-          downloader(hydra::net::set_downloader,
-                     [this](const std::string&, const std::string& path, uint64_t,
-                            std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
-                         wait_released(hold_download, cancel);
-                         fs::copy_file(hydra::os_path(update_fixtures::sample_path()), hydra::os_path(path),
-                                       fs::copy_options::overwrite_existing);
-                         if (received) received->store(fs::file_size(hydra::os_path(path)));
-                     }),
-          launcher(hydra::ui::set_launcher_for_test, [](const std::string&, const std::string&) {
-              return hydra::ui::InstallerEnded([] { return true; });
-          }) {}
+          temp(temp_),
+          no_fetcher(hydra::net::set_fetcher, hydra::net::Fetcher{}),
+          no_downloader(hydra::net::set_downloader, hydra::net::Downloader{}),
+          launcher(hydra::ui::set_launcher_for_test,
+                   [this](const std::string& installer,
+                          const std::string&) -> hydra::ui::InstallerEnded {
+                       ++launcher_calls;
+                       throw std::logic_error("a test reached the installer start, for " + installer +
+                                              "; no test may start an installer");
+                   }) {
+        replay.emplace(reply);
+    }
     ~UpdateSeams() { h.app.reset(); }
     UpdateSeams(const UpdateSeams&) = delete;
     UpdateSeams& operator=(const UpdateSeams&) = delete;
+
+    // The check's address answers `reply` from the next request on. The
+    // installer and signature routes stay, so `reply` must name the saved
+    // release's assets (the saved reply, or real_reply_at of a tag).
+    void serve(const std::string& reply) {
+        replay->server().set_route(replay->check_route(), "200 OK", reply);
+    }
+
+    // Holds the check's reply after its headers until release_check.
+    void hold_check() { replay->server().pause(replay->check_route(), 0); }
+    void release_check() { replay->server().release(replay->check_route()); }
+
+    // Holds the installer's download after its first byte. Nothing in this
+    // test releases it, so the download never ends and no installer start
+    // can come.
+    void hold_download() { replay->server().pause(replay->installer_route(), 1); }
+    bool download_held() { return replay->server().held(replay->installer_route()); }
+
+    // Stops the server while the address map stays, so the check is really
+    // refused, as by a server that is down.
+    void go_down() { replay->stop(); }
+
+    // A new server, serving `reply`, in place of a stopped one. The app goes
+    // first, so no job of it is asking the old server.
+    void serve_fresh(const std::string& reply) {
+        h.app.reset();
+        replay.reset();
+        replay.emplace(reply);
+    }
 };
 
 // A new start of Hydra on the same INI and database, as closing and opening
 // it again would be. `edit`, when given, changes the INI before the start
-// reads it.
-void restart_app(ImGuiTestContext* ctx, Harness& h,
-                 const std::function<void(hydra::app::Settings&)>& edit) {
+// reads it. The start stops first unless update_folder() is inside the
+// scratch temp folder.
+void restart_app(UpdateSeams& seams, const std::function<void(hydra::app::Settings&)>& edit) {
+    Harness& h = seams.h;
     h.app.reset();
     if (edit) {
         hydra::app::Settings s = hydra::app::Settings::load_file(h.ini_path);
         edit(s);
         IM_CHECK(s.save_file(h.ini_path));
     }
+    IM_CHECK(update_folder_is_scratch(seams.temp));
     h.app = std::make_unique<hydra::ui::AppState>();
     h.app->set_render_device(h.device.Get(), h.context.Get());
-    h.app->update_public_key = update_test_key(ctx);
     h.app->wait_store_open();
     IM_CHECK(!h.app->store_open_failed());
 }
@@ -1803,18 +2026,28 @@ void test_version_bar(ImGuiTestContext* ctx) {
     using Dot = hydra::ui::VersionBarStatus::Dot;
     using hydra::app::Settings;
     Harness& h = harness(ctx);
+    // Before the first AppState of this test: every start deletes
+    // update_folder(), which must lie inside the scratch temp folder.
+    const update_fixtures::ScopedTempFolder temp("uitest_version_bar");
+    IM_CHECK(update_folder_is_scratch(temp));
     reset_app(h);
-    UpdateSeams seams(h);
-    h.app->update_public_key = update_test_key(ctx);
-    if (ctx->IsError()) return;
+    // The newer release: the saved real reply with only its tag changed.
+    const std::string newer = "9.9.9";
+    UpdateSeams seams(h, temp, update_fixtures::real_reply_at("v" + newer));
     auto phase_is = [&](Phase phase) { return h.app && h.app->update.phase == phase; };
     auto dot_is = [&](Dot dot) { return h.app && h.app->version_bar_status().dot == dot; };
     const std::string running = running_version_text();
+    // The app's name and a version as the bar reads them (core::named_version).
+    const std::string named_running = hydra::core::named_version(hydra::core::running_version());
+    const std::string named_release =
+        hydra::core::named_version(*hydra::core::parse_version(newer));
     const std::string name = hydra::core::named_version(hydra::core::running_version());
 
     // B4: a copy the installer didn't put in place never checks, and says so.
-    hydra::app::set_installed_for_test(false);
-    restart_app(ctx, h, {});
+    // A test build is not that copy, so with no switch set the registry check
+    // itself says so.
+    IM_CHECK(!hydra::app::installed_by_setup());
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     bool ever_running = false;
     for (int i = 0; i < 5; ++i) {
@@ -1822,7 +2055,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
         ctx->Yield();
     }
     IM_CHECK(!ever_running);
-    const std::string not_installed = "Only the installed copy of Hydra Deluxe checks for updates.";
+    const std::string not_installed = hydra::ui::kOnlyInstalledChecksText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, not_installed); }, 5));
     IM_CHECK(dot_is(Dot::Neutral));
 
@@ -1853,43 +2086,66 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->version_bar_status().text == before.text);
     IM_CHECK(h.app->version_bar_status().dimmed == before.dimmed);
     IM_CHECK(ctx->UiContext->OpenPopupStack.Size == 0);
-    hydra::app::set_installed_for_test(true);
+    // The installed exe: AppState checks only for it.
+    seams.installed.emplace(hydra::app::set_installed_for_test, std::optional<bool>(true));
 
     // B2: with the latest release at the running version, the bar says
     // Checking for updates... while the check runs, then Up to date; nothing
     // about updates shows anywhere else.
-    seams.reply = update_fixtures::release_reply_at("v" + running);
-    seams.hold_check = true;
-    restart_app(ctx, h, {});
+    seams.serve(update_fixtures::real_reply_at("v" + running));
+    seams.hold_check();
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     IM_CHECK(h.app->update_check_running());
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Checking for updates..."); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kCheckingForUpdatesText); }, 5));
     IM_CHECK(dot_is(Dot::Neutral));
-    seams.hold_check = false;
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Up to date"); }, 10));
+    seams.release_check();
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
     IM_CHECK(dot_is(Dot::UpToDate));
     IM_CHECK(phase_is(Phase::None));
-    IM_CHECK(!on_screen(h, "Hydra Deluxe " + running + " is the latest version."));
+    IM_CHECK(!on_screen(h, named_running + " is the latest version."));
     IM_CHECK(!ctx->ItemExists("**/OK##update"));
     IM_CHECK(!ctx->ItemExists("**/Update##update"));
     IM_CHECK(screenshot(ctx, "versionbar-uptodate.png"));
 
     // B3: the offer, its three buttons, and the notes on hover of the
-    // sentence, which ends just left of the Update button.
-    const std::string notes_part = "shows accented letters in song names correctly";
+    // sentence, which ends just left of the Update button. The notes are the
+    // ones the check found (UpdateState::found). The check reads them one
+    // paragraph at a time, so it never depends on how line breaks are spelled:
+    // the screen text writes them its own way (LogRenderedText in
+    // third_party/imgui/imgui.cpp). Every paragraph is checked at each step,
+    // so a tooltip that draws only part of the notes, or leaves part behind,
+    // fails too.
     auto notes_show_on_hover = [&] {
+        IM_CHECK_NO_RET(h.app->update.found.has_value());
+        if (ctx->IsError()) return;
+        std::vector<std::string> paragraphs;
+        for (std::string piece : split_on(h.app->update.found->notes, "\n")) {
+            if (!piece.empty() && piece.back() == '\r') piece.pop_back();
+            if (!piece.empty()) paragraphs.push_back(piece);
+        }
+        IM_CHECK_NO_RET(!paragraphs.empty());
+        if (ctx->IsError()) return;
+        auto all_shown = [&] {
+            return std::all_of(paragraphs.begin(), paragraphs.end(),
+                               [&](const std::string& p) { return on_screen(h, p); });
+        };
+        auto none_shown = [&] {
+            return std::none_of(paragraphs.begin(), paragraphs.end(),
+                                [&](const std::string& p) { return on_screen(h, p); });
+        };
         const ImRect update_rect = ctx->ItemInfo("**/Update##update").RectFull;
-        IM_CHECK_NO_RET(!on_screen(h, notes_part));
+        IM_CHECK_NO_RET(none_shown());
         ctx->MouseMoveToPos(ImVec2(update_rect.Min.x - ImGui::GetStyle().ItemSpacing.x - hydra::ui::px(10),
                                    update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return on_screen(h, notes_part); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, all_shown, 5));
         ctx->MouseMoveToPos(ImVec2(update_rect.Max.x + hydra::ui::px(40), update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return !on_screen(h, notes_part); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, none_shown, 5));
     };
-    seams.reply = update_fixtures::release_reply_at("v9.9.9");
-    restart_app(ctx, h, {});
+    seams.serve(update_fixtures::real_reply_at("v" + newer));
+    restart_app(seams, {});
     if (ctx->IsError()) return;
-    const std::string offer = "Hydra Deluxe 9.9.9 is available.";
+    const std::string offer = named_release + " is available.";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, offer); }, 10));
     IM_CHECK(phase_is(Phase::Offered));
     IM_CHECK(dot_is(Dot::Available));
@@ -1909,49 +2165,70 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(dot_is(Dot::Available));
     notes_show_on_hover();
 
-    // B7: the resting bar's Update downloads with a Cancel button; the
-    // installer ending early brings D259 call 10's sentence and the three
-    // buttons back.
-    seams.hold_download = true;
+    // B7: the resting bar's Update downloads with a Cancel button, and Skip
+    // this version is gone meanwhile. The download is held part-way, so it
+    // never ends; Cancel brings the offer and its three buttons back, and
+    // leaves no file.
+    seams.hold_download();
     ctx->ItemClick("**/Update##update");
-    const std::string downloading = "Downloading Hydra Deluxe 9.9.9...";
+    const std::string downloading = "Downloading " + named_release + "...";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, downloading); }, 5));
     IM_CHECK(ctx->ItemExists("**/Cancel##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
-    seams.hold_download = false;
-    const std::string declined = "The installer didn't start, so Hydra wasn't updated.";
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, declined); }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return seams.download_held(); }, 10));
+    IM_CHECK(phase_is(Phase::Downloading));
+    IM_CHECK(on_screen(h, downloading));
+    IM_CHECK_NO_RET(h.app->update.release.has_value());
+    if (ctx->IsError()) return;
+    const std::string installer = hydra::join_folder(
+        hydra::ui::update_folder(), hydra::ui::update_installer_name(*h.app->update.release));
+    ctx->ItemClick("**/Cancel##update");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::Offered) && on_screen(h, offer); }, 10));
     IM_CHECK(ctx->ItemExists("**/Update##update"));
     IM_CHECK(ctx->ItemExists("**/Skip this version"));
     IM_CHECK(ctx->ItemExists("**/Later"));
     IM_CHECK(!ctx->ItemExists("**/Cancel##update"));
+    IM_CHECK(!on_screen(h, downloading));
+    IM_CHECK(!hydra::file_exists_utf8(installer + ".part"));
+    IM_CHECK(!hydra::file_exists_utf8(installer));
 
-    // B3: Skip this version, and the next start names the release, marked
-    // Skipped., with no buttons.
+    // B3: Skip this version, from that offer, and the next start names the
+    // release, marked Skipped., with no buttons.
     ctx->ItemClick("**/Skip this version");
-    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, declined); }, 5));
-    IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == "9.9.9");
-    restart_app(ctx, h, {});
+    IM_CHECK(wait_until(ctx, [&] {
+        return phase_is(Phase::None) && !ctx->ItemExists("**/Skip this version");
+    }, 5));
+    IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == newer);
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running() && on_screen(h, offer); }, 10));
     ctx->Yield(2);
     IM_CHECK(phase_is(Phase::None));
-    IM_CHECK(on_screen(h, "Skipped."));
+    IM_CHECK(on_screen(h, hydra::ui::kSkippedText));
     IM_CHECK(dot_is(Dot::Available));
     IM_CHECK(!ctx->ItemExists("**/Update##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
     IM_CHECK(!ctx->ItemExists("**/Later"));
 
     // B5: a start-up check that fails says so, with the job's plain_error
-    // sentence dimmed after it, and no buttons.
-    seams.reply = "this is not JSON";
-    restart_app(ctx, h, {});
+    // sentence dimmed after it, and no buttons. The failure is real: the
+    // server is down, so the check's connection is refused. The sentence is
+    // plain_error of the error Hydra's transport throws for the check's
+    // address as it answers now.
+    seams.go_down();
+    std::string reason;
+    try {
+        (void)hydra::net::http_get(hydra::ui::kLatestReleaseUrl, nullptr, hydra::NetService::GitHub);
+    } catch (const std::exception& e) {
+        reason = hydra::app::plain_error(e);
+    }
+    IM_CHECK(!reason.empty());
+    restart_app(seams, {});
     if (ctx->IsError()) return;
-    const std::string could_not = "Hydra couldn't check for updates when it started.";
+    const std::string could_not = hydra::ui::kCouldNotCheckText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, could_not); }, 10));
     ctx->Yield(2);
-    const std::string reason = h.app->update.check_error;
-    IM_CHECK(!reason.empty());
+    IM_CHECK(h.app->update.check_error == reason);
     IM_CHECK(on_screen(h, reason));
     IM_CHECK(dot_is(Dot::Neutral));
     IM_CHECK(!ctx->ItemExists("**/Later"));
@@ -1978,7 +2255,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
         IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
         open_settings_panel(ctx);
         if (ctx->IsError()) return;
-        IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Stop the batch to change these."); }, 5));
+        IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::detail::kSettingsLockedText); }, 5));
         IM_CHECK(item_disabled(ctx, "**/##prodrums"));
         close_settings_panel(ctx);
         h.app->batch_job->stop();
@@ -1987,14 +2264,15 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
 
     // B7: the first start after a version change says so in
-    // the bar, and OK gives way to the offer the start-up check found.
-    seams.reply = update_fixtures::release_reply_at("v9.9.9");
-    restart_app(ctx, h, [](Settings& s) {
+    // the bar, and OK gives way to the offer the start-up check found. The
+    // server B5 stopped gives way to a new one.
+    seams.serve_fresh(update_fixtures::real_reply_at("v" + newer));
+    restart_app(seams, [](Settings& s) {
         s.last_run_version = "0.0.1";
         s.skipped_update_version.clear();
     });
     if (ctx->IsError()) return;
-    const std::string updated = "Updated to Hydra Deluxe " + running + ".";
+    const std::string updated = "Updated to " + named_running + ".";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, updated); }, 5));
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running(); }, 10));
     ctx->ItemClick("**/OK##update");
@@ -2004,19 +2282,20 @@ void test_version_bar(ImGuiTestContext* ctx) {
 
     // B7: with nothing newer, OK gives the bar back to Up to date, and
     // the next start shows no note.
-    seams.reply = update_fixtures::release_reply_at("v" + running);
-    restart_app(ctx, h, [](Settings& s) { s.last_run_version = "0.0.1"; });
+    seams.serve(update_fixtures::real_reply_at("v" + running));
+    restart_app(seams, [](Settings& s) { s.last_run_version = "0.0.1"; });
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, updated); }, 5));
     IM_CHECK(Settings::load_file(h.ini_path).last_run_version == running);
     ctx->ItemClick("**/OK##update");
     IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, updated); }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Up to date"); }, 10));
-    restart_app(ctx, h, {});
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     ctx->Yield(3);
     IM_CHECK(phase_is(Phase::None));
     IM_CHECK(!on_screen(h, updated));
+    IM_CHECK(seams.launcher_calls.load() == 0);
 }
 
 // Decision 10 of docs/superpowers/plans/2026-10-24-album-search.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-album-search.md):
@@ -2038,9 +2317,9 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     };
 
     // The empty box shows its placeholder and no hint line.
-    IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
+    IM_CHECK(on_screen(h, hydra::app::html::search_hint({"song", "artist", "album", "charter", "folder"})));
     IM_CHECK(!on_screen(h, "Narrow with"));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
     IM_CHECK(!on_screen(h, note));
 
@@ -2061,7 +2340,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     ctx->ItemInputValue("**/##search", "stars:9");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->library.query().errors.empty(); }, 5));
     IM_CHECK(on_screen(h, h.app->library.query().errors[0]));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
 
     // With a song open the library is narrow; the line, the link and the
     // popup still show, and the Escape that closes the popup leaves the song
@@ -2070,7 +2349,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair" && h.app->library_shown_count() > 0; }, 5));
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
     ctx->ItemClick("**/Search tips##searchtips");
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));

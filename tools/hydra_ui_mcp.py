@@ -15,9 +15,15 @@ timeout in force and where it logs. The helper owns the transport (launch,
 the pipe name, stop), the caps on every reply, the reports for a dead or
 silent Hydra, the tool list, the line numbers of a hydra_run script, the
 snapshot of the user's library (snapshot_library, the only code that knows
-that folder's path), and the real-app record a window session leaves
-(realapp_record). What it never does: build anything, or name the library
-folder on a command line.
+that folder's path), the tree a session runs from (session_tree), and the
+real-app record a window session leaves (realapp_record). What it never does:
+build anything, or name the library folder on a command line.
+
+A session runs the exes in this checkout's build-cpp/Release and records this
+checkout's commit, unless hydra_start names a worktree of the same repo. Then
+it runs that worktree's build and records that worktree's commit and
+cleanliness, so a main session in the main checkout can leave the real-app
+record for a branch it built in a worktree.
 
 One tool has nothing to do with the GUI. hydra_build_pass hands a main session
 a build pass. It lives here because a hook can then refuse that one tool to
@@ -56,7 +62,10 @@ DEFAULT_LIBRARY_DIR = r"C:\Program Files\Hydra"
 LIBRARY_DIR_ENV = "HYDRA_LIBRARY_DIR"
 
 REPO = Path(__file__).resolve().parent.parent
-EXE_DIR = REPO / "build-cpp" / "Release"
+# Where a tree keeps its dev build: this checkout's, or the worktree a
+# hydra_start names (session_tree).
+EXE_SUBDIR = Path("build-cpp") / "Release"
+EXE_DIR = REPO / EXE_SUBDIR
 HEADLESS_EXE = "hydra_uitest.exe"
 WINDOW_EXE = "Hydra.exe"
 BUILD_TARGETS = {HEADLESS_EXE: "hydra_uitest", WINDOW_EXE: "Hydra"}
@@ -94,6 +103,11 @@ BUILD_PASS_TIMEOUT_S = 30
 
 class SnapshotRefused(Exception):
     pass
+
+
+class TreeRefused(Exception):
+    """hydra_start's worktree is not one a session may use; the message says
+    why and what to pass."""
 
 
 class HydraGone(Exception):
@@ -179,16 +193,29 @@ def _git(repo, *args):
     return r.stdout
 
 
+def git_common_dir(repo):
+    """The absolute git common dir of the tree at `repo`: the folder every
+    worktree of one repo shares. Raises OSError when git cannot say."""
+    return Path(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+
+
+def same_path(a, b):
+    """True when `a` and `b` name one folder, spelled either way Windows and
+    git spell it (slashes, case)."""
+    return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+
+
 def realapp_record(session, repo):
     """Append the record of a window session that ended in a plain stop to
     REALAPP_FILE in `repo`'s git common dir, so every worktree of the repo
-    shares one file and git never tracks it. Returns (file, commit). Raises
+    shares one file and git never tracks it. `repo` is the session's tree
+    (session_tree). Returns (file, commit). Raises
     OSError when git cannot say or the file cannot be written.
 
     The record names the tree's HEAD, not the build: Hydra.exe carries no
     commit. `dirty` is true when git status lists anything, untracked files
     included."""
-    common = Path(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+    common = git_common_dir(repo)
     commit = _git(repo, "rev-parse", "HEAD").strip()
     dirty = _git(repo, "status", "--porcelain") != ""
     record = {"kind": "realapp", "commit": commit, "dirty": dirty,
@@ -267,8 +294,9 @@ def seconds_field(msg, key):
 
 
 class Session:
-    def __init__(self, mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep):
+    def __init__(self, mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep, repo):
         self.mode = mode
+        self.repo = repo  # the tree whose exes run and whose record a window session writes
         self.proc = proc
         self.argv = argv
         self.scratch = scratch  # the helper's own folder: snapshot, shots, output
@@ -312,8 +340,10 @@ class Helper:
 
     def __init__(self, exe_dir=EXE_DIR, launcher=default_launcher, temp_root=None,
                  reply_margin_s=REPLY_MARGIN_S, hello_timeout_s=HELLO_TIMEOUT_S, repo=REPO):
+        # The tree and exe folder a session uses when hydra_start names no
+        # worktree (session_tree).
         self.exe_dir = Path(exe_dir)
-        self.repo = Path(repo)  # the tree a window session's record names
+        self.repo = Path(repo)
         self.launcher = launcher
         self.temp_root = Path(temp_root) if temp_root else default_temp_root()
         self.reply_margin_s = reply_margin_s
@@ -326,7 +356,47 @@ class Helper:
 
     # -- starting and stopping ------------------------------------------------
 
-    def start(self, mode, library_dir=None, keep=False):
+    def session_tree(self, worktree):
+        """The (exe_dir, repo, reply line) a session uses: this helper's own
+        when `worktree` is None, else that worktree's, with a line naming it
+        for the reply. Raises TreeRefused, saying what was wrong and what to
+        pass, unless `worktree` is exactly the top folder of a worktree of
+        this helper's repo, so its record lands in the REALAPP_FILE the ref
+        gate reads."""
+        if worktree is None:
+            return self.exe_dir, self.repo, None
+        want = f"pass the absolute path of a worktree folder of {self.repo}"
+        tree = Path(worktree) if worktree else None
+        if tree is None or not tree.is_absolute():
+            raise TreeRefused(f"worktree {worktree!r} is not an absolute path; {want}")
+        if not tree.is_dir():
+            raise TreeRefused(f"worktree {tree} is not a folder; {want}")
+        try:
+            top = Path(_git(tree, "rev-parse", "--show-toplevel").strip())
+        except OSError as e:
+            raise TreeRefused(f"worktree {tree} is not a git worktree ({e}); {want}") from None
+        if not same_path(top, tree):
+            raise TreeRefused(f"worktree {tree} is inside the worktree {top}, not its top folder;"
+                              f" pass {top}")
+        try:
+            mine = git_common_dir(self.repo)
+        except OSError as e:
+            raise TreeRefused(f"this helper's own repo {self.repo} has no git common dir to"
+                              f" compare with ({e})") from None
+        try:
+            theirs = git_common_dir(tree)
+            commit = _git(tree, "rev-parse", "HEAD").strip()
+        except OSError as e:
+            raise TreeRefused(f"worktree {tree}: {e}; {want}") from None
+        if not same_path(theirs, mine):
+            raise TreeRefused(
+                f"worktree {tree} belongs to another repo (git common dir {theirs}), so its"
+                f" record would miss {mine / REALAPP_FILE}, the file the ref gate reads; {want}")
+        line = (f"  tree: {tree}, at commit {commit}; a window session's real-app record names"
+                " this tree's HEAD and cleanliness when it stops")
+        return tree / EXE_SUBDIR, tree, line
+
+    def start(self, mode, library_dir=None, keep=False, worktree=None):
         with self.lock:
             if mode not in ("headless", "window"):
                 return f'unknown mode "{mode}"; use "headless" or "window"'
@@ -334,10 +404,14 @@ class Helper:
             if self.session is not None:
                 notes.append("stopped the running session first: " + self._stop_session(False))
             self.ever_started = True
-            exe = self.exe_dir / (HEADLESS_EXE if mode == "headless" else WINDOW_EXE)
+            try:
+                exe_dir, repo, tree_line = self.session_tree(worktree)
+            except TreeRefused as e:
+                return "\n".join(notes + [f"refused: {e}"])
+            exe = exe_dir / (HEADLESS_EXE if mode == "headless" else WINDOW_EXE)
             if not exe.is_file():
                 return "\n".join(notes + [
-                    f"{exe.name} is not built (looked in {self.exe_dir}). Ask the main"
+                    f"{exe.name} is not built (looked in {exe_dir}). Ask the main"
                     f" session to build the {BUILD_TARGETS[exe.name]} target."])
             self.count += 1
             tag = f"{os.getpid()}_{self.count}"
@@ -382,7 +456,7 @@ class Helper:
                     creationflags=subprocess.CREATE_NO_WINDOW)
             finally:
                 out.close()
-            s = Session(mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep)
+            s = Session(mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep, repo)
             self.session = s
             try:
                 self._connect(s)
@@ -396,6 +470,8 @@ class Helper:
                      f"  wait cap: {s.timeout:g} s, unless a hydra_wait_idle or hydra_wait_text call gives its own",
                      f"  log: {s.log_path}",
                      f"  helper scratch: {scratch}" + (" (kept after stop)" if keep else "")]
+            if tree_line is not None:
+                lines.append(tree_line)
             return "\n".join(lines + notes)
 
     def _connect(self, s):
@@ -474,7 +550,7 @@ class Helper:
         if s.mode != "window" or not s.hello:
             return ""
         try:
-            path, commit = realapp_record(s, self.repo)
+            path, commit = realapp_record(s, s.repo)
         except OSError as e:
             return f"\nno real-app record written: {e}"
         return f"\nreal-app record for commit {commit} added to {path}"
@@ -761,15 +837,20 @@ def build_server():
     )
 
     @server.tool()
-    def hydra_start(mode: str, library_dir: str | None = None, keep: bool = False) -> str:
+    def hydra_start(mode: str, library_dir: str | None = None, keep: bool = False,
+                    worktree: str | None = None) -> str:
         """Start a session; stops any session already running. mode is "headless"
         (hydra_uitest on the test corpus, no window) or "window" (the real Hydra
         window on a fresh snapshot copy of the library folder: library_dir, else
         HYDRA_LIBRARY_DIR, else DEFAULT_LIBRARY_DIR in tools/hydra_ui_mcp.py).
         keep=True keeps the helper's scratch folder, screenshots included,
         after hydra_stop, until the cleanup sweep removes it after a week with
-        no writes."""
-        return HELPER.start(mode, library_dir, keep)
+        no writes. worktree, the absolute path of a worktree folder of this
+        repo, runs that folder's build-cpp/Release exes, and a window
+        session's real-app record then names that worktree's commit and
+        cleanliness: use it for a branch's real-app check from the main
+        checkout. Without it, the session uses this checkout's."""
+        return HELPER.start(mode, library_dir, keep, worktree)
 
     @server.tool()
     def hydra_stop(keep_window: bool = False) -> str:

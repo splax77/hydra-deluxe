@@ -4,13 +4,20 @@ check over trace.ts, the two hook RVAs, where a trace's notes come from, and
 the background TraceSession.
 
 No game and no Frida: the fake frida module and the fake wait come from
-test_frida_attach, so both test files drive run_agent the same way.
+test_frida_attach, so both test files drive run_agent the same way. The
+reading and command-line tests run on real traces of the Window Map probe
+song, copied under testdata/ch_runs with the song folder the runs played.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import math
 import os
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -23,15 +30,18 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
-from tools.ch_mcp import hydra_end  # noqa: E402
+from tools.ch_mcp import hydra_end, install_chart  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    AGENT_DIR, FakeFrida, FakeSession, instant_wait, by_name_only_findings, sent)
+    AGENT_DIR, CH_RUNS, FakeFrida, FakeSession, instant_wait, by_name_only_findings,
+    recorded, sent)
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
-from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
+from tools.ch_mcp.tests.test_hydra_end import FAKE, _REAL_MAKE_DUMP  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe import prep_inputs  # noqa: E402
 from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
+from tools.ch_probe.tests.test_sp_compare import _replay_file  # noqa: E402
 
 
 def setUpModule():
@@ -41,77 +51,175 @@ def setUpModule():
 def tearDownModule():
     FAKE.stop()
 
-ENGINE = {"name": "Eng", "image": "StrikeCore", "parent": "Base<Inputs>",
-          "shape": {"sealed": True, "generic_base": True,
-                    "round_start_double": True, "ctor_rva": True}}
+
+# Real traces of the Window Map probe song (hydra-data/ch-mcp-runs/
+# 2026-10-28/l3): a count run that played it to the end, a count run the
+# agent's song cap ended early (from l3/keys), an args run of the two
+# per-note methods, and that args run's own report.
+L3 = "2026-10-28-l3"
+# The song folder those runs played (C:\Clone Hero\songs\Hydra Probe\
+# Window Map): its manifest, chart and song.ini.
+WINDOW_MAP_SONG = os.path.join(CH_RUNS, L3, WINDOW_MAP)
+WINDOW_MAP_CHART = os.path.join(WINDOW_MAP_SONG, "notes.chart")
+# Hydra's dump of that chart, the file hydra_end.make_dump writes for it.
+WINDOW_MAP_DUMP = os.path.join(_REPO_ROOT, "testdata", "replay", "window_map-dump.json")
+# A later trace of the same song that caught one call before it was stopped
+# (hydra-data/ch-mcp-runs/2026-11-06/ls-d1b-run1/trace-2.jsonl).
+ONE_CALL_RUN = ("2026-11-06-ls-d1b-run1", "trace-2.jsonl")
 
 
-def entry(names, count, owner="engine", rva="0x1000"):
-    return {"names": names, "owner": owner, "rva": rva, "params": ["uint"],
-            "count": count, "args": []}
+def window_map_notes() -> list[dict]:
+    return TH.load_manifest(WINDOW_MAP_SONG)[1]
+
+
+def recorded_payloads(run: str, name: str, key: str) -> list[dict]:
+    """The payloads of a recorded agent log that hold `key`."""
+    return [m["payload"] for m in recorded(run, name) if key in m["payload"]]
+
+
+def recorded_table(name: str) -> list[dict]:
+    """The method table a recorded count run's agent sent last."""
+    return recorded_payloads(L3, name, "methods")[-1]["methods"]
+
+
+def recorded_report(name: str) -> list[str]:
+    with open(os.path.join(CH_RUNS, L3, name), encoding="utf-8") as fh:
+        return fh.read().splitlines()
+
+
+def window_map_dump(test: unittest.TestCase) -> str:
+    """WINDOW_MAP_DUMP, or a failure naming the command that makes it."""
+    if not os.path.isfile(WINDOW_MAP_DUMP):
+        cmd = prep_inputs.dump_command(prep_inputs.DEFAULT_EXE, WINDOW_MAP_CHART,
+                                       WINDOW_MAP_DUMP)
+        test.fail(f"{WINDOW_MAP_DUMP} is missing; make it with: "
+                  f"{subprocess.list2cmdline(cmd)}")
+    return WINDOW_MAP_DUMP
+
+
+def copy_window_map(folder: str) -> None:
+    for name in os.listdir(WINDOW_MAP_SONG):
+        shutil.copyfile(os.path.join(WINDOW_MAP_SONG, name), os.path.join(folder, name))
+
+
+@contextlib.contextmanager
+def window_map_dumps(test: unittest.TestCase, made: list):
+    """hydra_end.make_dump writing WINDOW_MAP_DUMP for each chart it is asked
+    about, putting the chart into `made`. For a copy of the Window Map chart,
+    whose hydra_replay dump that file is."""
+    dump = window_map_dump(test)
+
+    def make_dump(chart, out):
+        made.append(chart)
+        shutil.copyfile(dump, out)
+
+    with unittest.mock.patch.object(hydra_end, "make_dump", make_dump):
+        yield
 
 
 def notes_at(*times_ms):
     return [{"index": i, "time_ms": t} for i, t in enumerate(times_ms)]
 
 
-def call(name, song_time_s, args=()):
-    return {"call": name, "names": [name], "songTime": song_time_s,
-            "args": list(args)}
-
-
 class OncePerNoteTest(unittest.TestCase):
-    def test_picks_the_exact_count_and_the_off_by_one(self):
-        table = [entry(["A"], 142), entry(["B", "B2"], 142),
-                 entry(["C"], 141), entry(["D"], 143), entry(["E"], 140),
-                 entry(["F"], 144), entry(["G"], 0), entry(["H"], 9000)]
-        exact, off = TH.once_per_note(table, 142)
-        self.assertEqual([e["names"] for e in exact], [["A"], ["B", "B2"]])
-        self.assertEqual([e["names"] for e in off], [["C"], ["D"]])
+    def test_a_full_run_finds_the_studys_per_note_methods(self):
+        # The count run that played Window Map to its end.
+        entries = recorded_table("trace-wm-count.jsonl")
+        n = len(window_map_notes())
+        exact, off = TH.once_per_note(entries, n)
+        # The score and dynamics methods run once per note
+        # (constants.py names both from the study).
+        self.assertLessEqual({C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS},
+                             {int(e["rva"], 16) for e in exact})
+        self.assertEqual(off, [])
+        # Against a note count one more or one fewer, the same methods are
+        # the off-by-one ones and none is exact.
+        for other in (n - 1, n + 1):
+            with self.subTest(note_count=other):
+                self.assertEqual(TH.once_per_note(entries, other), ([], exact))
 
-    def test_no_match_gives_two_empty_lists(self):
-        self.assertEqual(TH.once_per_note([entry(["A"], 7)], 120), ([], []))
+    def test_a_run_cut_short_finds_no_per_note_method(self):
+        # The keys count run on the same song ended on the agent's song cap
+        # before its last notes, so no method reached the manifest's count or
+        # one off it.
+        entries = recorded_table("trace-keys-count.jsonl")
+        self.assertEqual(TH.once_per_note(entries, len(window_map_notes())),
+                         ([], []))
+
+
+# A call line of trace_hits' args report: the nearest note's index, its time
+# and the call's difference from it.
+NEAREST_IN_REPORT = re.compile(r"nearest note (\d+) at (\d+) ms, diff ([+-]\d+\.\d) ms$")
 
 
 class LineUpTest(unittest.TestCase):
-    NOTES = notes_at(1000, 1100, 1300, 2000, 2500)
+    def setUp(self):
+        self.notes = window_map_notes()
 
-    def test_each_call_gets_its_nearest_note_and_the_difference(self):
-        calls = [call("Hit", 0.99), call("Hit", 1.12), call("Hit", 1.25),
-                 call("Hit", 2.0), call("Hit", 3.0)]
-        lined = TH.line_up(calls, self.NOTES)
-        self.assertEqual([x.note_index for x in lined], [0, 1, 2, 3, 4])
-        self.assertEqual([x.note_ms for x in lined],
-                         [1000, 1100, 1300, 2000, 2500])
-        for got, want in zip([x.diff_ms for x in lined],
-                             [-10.0, 20.0, -50.0, 0.0, 500.0]):
-            self.assertAlmostEqual(got, want, places=6)
+    def test_each_call_gets_the_nearest_note_the_run_reported(self):
+        # The args run's own report names each call's nearest note and
+        # difference, as line_up worked them out during the run.
+        calls = recorded_payloads(L3, "trace-wm-args.jsonl", "call")
+        reported = [m.groups() for m in map(NEAREST_IN_REPORT.search,
+                                            recorded_report("trace-wm-args.txt")) if m]
+        self.assertEqual(len(reported), len(calls))
+        lined = TH.line_up(calls, self.notes)
+        self.assertEqual([(str(x.note_index), str(x.note_ms), f"{x.diff_ms:+.1f}")
+                          for x in lined], reported)
 
-    def test_a_tie_goes_to_the_earlier_note(self):
-        lined = TH.line_up([call("Hit", 1.05)], self.NOTES)
-        self.assertEqual(lined[0].note_index, 0)
+    def test_a_call_at_the_limit_counts_and_just_inside_its_distance_does_not(self):
+        calls = recorded_payloads(*ONE_CALL_RUN, "call")
+        lined = TH.line_up(calls, self.notes)
+        gap = abs(lined[0].diff_ms)
+        self.assertEqual(TH.count_within(lined, gap), 1)
+        self.assertEqual(TH.count_within(lined, math.nextafter(gap, 0.0)), 0)
+        # The hit came inside EXPECT_NORMAL_BACK_MS.
+        self.assertEqual(TH.count_within(lined, C.EXPECT_NORMAL_BACK_MS), 1)
 
-    def test_the_85_ms_boundary_counts_and_just_past_it_does_not(self):
+    def test_notes_with_no_call(self):
+        # The one call sits near one note; the notes either side of it are
+        # farther than EXPECT_NORMAL_BACK_MS from it, so every other note has
+        # no call near it.
+        calls = recorded_payloads(*ONE_CALL_RUN, "call")
+        hit = TH.line_up(calls, self.notes)[0]
         limit = C.EXPECT_NORMAL_BACK_MS
-        exactly = TH.line_up([call("Hit", 1.0)], notes_at(915))
-        before = TH.line_up([call("Hit", 1.0)], notes_at(1085))
-        past = TH.line_up([call("Hit", 1.0)], notes_at(914.9))
-        self.assertEqual(exactly[0].diff_ms, 85.0)
-        self.assertEqual(before[0].diff_ms, -85.0)
-        self.assertEqual(TH.count_within(exactly, limit), 1)
-        self.assertEqual(TH.count_within(before, limit), 1)
-        self.assertEqual(TH.count_within(past, limit), 0)
+        i = hit.note_index
+        self.assertEqual(self.notes[i]["index"], i)
+        for side in (self.notes[i - 1], self.notes[i + 1]):
+            self.assertGreater(abs(hit.call_ms - side["time_ms"]), limit)
+        n = len(self.notes)
+        self.assertEqual(TH.notes_without_call(calls, self.notes, limit), n - 1)
+        # The limit itself is included.
+        gap = abs(hit.diff_ms)
+        self.assertEqual(TH.notes_without_call(calls, self.notes, gap), n - 1)
+        self.assertEqual(TH.notes_without_call(calls, self.notes,
+                                               math.nextafter(gap, 0.0)), n)
 
 
 class CapTest(unittest.TestCase):
-    # A song end of 60,080 ms, as a dump of the Window Map chart could name.
-    END_MS = 60080.0
+    def setUp(self):
+        # Hydra's own song end for the Window Map chart the recorded runs played.
+        self.end_ms = hydra_end.song_length_ms(window_map_dump(self))
 
     def test_the_song_cap_is_hydras_end_plus_the_margin(self):
-        self.assertAlmostEqual(TH.trace_cap_s(self.END_MS), 90.08)
+        # The cap is later than the song's end by a positive margin, and is
+        # the song's end itself when the margin is zero.
+        end_s = C.ms_to_s(self.end_ms)
+        self.assertGreater(TH.TRACE_CAP_MARGIN_S, 0.0)
+        self.assertAlmostEqual(TH.trace_cap_s(self.end_ms) - end_s,
+                               TH.TRACE_CAP_MARGIN_S)
+        with unittest.mock.patch.object(TH, "TRACE_CAP_MARGIN_S", 0.0):
+            self.assertAlmostEqual(TH.trace_cap_s(self.end_ms), end_s)
 
     def test_the_wall_cap_is_the_song_cap_plus_the_pause_room(self):
-        self.assertAlmostEqual(TH.wall_cap_s(self.END_MS), 210.08)
+        # The wall cap is later than the song cap by the pause room, and is
+        # the song cap itself when there is no pause room.
+        song_cap = TH.trace_cap_s(self.end_ms)
+        self.assertGreater(TH.WALL_CAP_PAUSE_S, 0.0)
+        self.assertAlmostEqual(TH.wall_cap_s(self.end_ms) - song_cap,
+                               TH.WALL_CAP_PAUSE_S)
+        with unittest.mock.patch.object(TH, "WALL_CAP_PAUSE_S", 0.0):
+            self.assertAlmostEqual(TH.wall_cap_s(self.end_ms), song_cap)
 
 
 class SongEndTest(unittest.TestCase):
@@ -122,28 +230,46 @@ class SongEndTest(unittest.TestCase):
         os.mkdir(self.song)
 
     def test_the_end_is_hydras_for_the_folders_chart(self):
-        chart = os.path.join(self.song, "notes.mid")
-        open(chart, "w").close()
-        FAKE.set_end(chart, 193934.0)
-        self.assertEqual(TH.song_end_ms(self.song),
-                         (193934.0, hydra_end.chart_source_text(chart)))
-        self.assertEqual(FAKE.charts[-1], chart)
+        copy_window_map(self.song)
+        chart = os.path.join(self.song, "notes.chart")
+        made = []
+        with window_map_dumps(self, made):
+            got = TH.song_end_ms(self.song)
+        self.assertEqual(got, (hydra_end.song_length_ms(WINDOW_MAP_DUMP),
+                               hydra_end.chart_source_text(chart)))
+        self.assertEqual(made, [chart])
 
     def test_a_folder_with_no_chart_is_refused_with_no_dump(self):
-        before = len(FAKE.charts)
-        with self.assertRaises(hydra_end.SongEndMissing) as caught:
-            TH.song_end_ms(self.song)
-        self.assertEqual(str(caught.exception),
-                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
-                         "song end to cap the trace at")
-        self.assertEqual(len(FAKE.charts), before)
+        # hydra_end's own make_dump, with an exe that is not there: a dump
+        # tried would fail with ReplayFailed as the refusal's cause.
+        missing_exe = os.path.join(self.tmp.name, "no-such-hydra_replay.exe")
+        with unittest.mock.patch.object(hydra_end, "make_dump", _REAL_MAKE_DUMP), \
+                unittest.mock.patch.object(prep_inputs, "DEFAULT_EXE", missing_exe):
+            with self.assertRaises(hydra_end.SongEndMissing) as caught:
+                TH.song_end_ms(self.song)
+        self.assertIsNone(caught.exception.__cause__)
+        # The refusal names the folder and every chart file it looked for.
+        refusal = str(caught.exception)
+        self.assertIn(self.song, refusal)
+        for name in install_chart.CHART_FILES:
+            self.assertIn(name, refusal)
 
     def test_a_failed_dump_is_refused(self):
+        # hydra_end's own make_dump, run with an exe that is not there, so
+        # the real runner fails before any hydra_replay could start.
+        copy_window_map(self.song)
         chart = os.path.join(self.song, "notes.chart")
-        open(chart, "w").close()
-        with self.assertRaises(hydra_end.SongEndMissing) as caught:
-            TH.song_end_ms(self.song)
-        self.assertIn("hydra_replay dump failed with exit code 1", str(caught.exception))
+        missing_exe = os.path.join(self.tmp.name, "no-such-hydra_replay.exe")
+        with unittest.mock.patch.object(hydra_end, "make_dump", _REAL_MAKE_DUMP), \
+                unittest.mock.patch.object(prep_inputs, "DEFAULT_EXE", missing_exe):
+            with self.assertRaises(hydra_end.SongEndMissing) as caught:
+                TH.song_end_ms(self.song)
+        refusal = str(caught.exception)
+        cause = caught.exception.__cause__
+        self.assertIsInstance(cause, prep_inputs.ReplayFailed)
+        # The refusal names the chart and carries the runner's own reason.
+        self.assertIn(chart, refusal)
+        self.assertIn(str(cause), refusal)
 
 
 class CommandLineTest(unittest.TestCase):
@@ -162,167 +288,154 @@ class CommandLineTest(unittest.TestCase):
         self.out_path = os.path.join(self.tmp.name, "trace.jsonl")
         self.lines = []
 
-    def run_main(self, extra, session):
-        return TH.main(["--song", self.song, "--engine-class", "Eng",
+    def run_main(self, extra, session, engine="Eng", wait=instant_wait):
+        return TH.main(["--song", self.song, "--engine-class", engine,
                         "--agent", self.agent, "--out", self.out_path] + extra,
-                       frida_mod=FakeFrida(session), wait=instant_wait,
+                       frida_mod=FakeFrida(session), wait=wait,
                        out=self.lines.append)
 
-    def test_count_mode_posts_the_settings_and_prints_the_table(self):
-        table = {"done": "song over", "mode": "count", "calls": 9,
-                 "not_hooked": [], "no_code": ["base Abs"],
-                 "methods": [entry(["Tick"], 6, rva="0x2000"),
-                             entry(["Hit", "Hit2"], 3, owner="base")]}
-        session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
-                                     "no_code": ["base Abs"]}), sent(table)])
-        code = self.run_main(["--mode", "count"], session)
+    def use_window_map(self) -> float:
+        """The song folder becomes a copy of the Window Map song the recorded
+        runs played, and its chart's dump is Hydra's. Returns Hydra's end."""
+        copy_window_map(self.song)
+        self.enterContext(window_map_dumps(self, []))
+        return hydra_end.song_length_ms(WINDOW_MAP_DUMP)
+
+    def run_window_map_count(self) -> tuple[float, list[dict], FakeSession, int]:
+        """The real count run on Window Map (trace-wm-count.jsonl), played
+        through the real runner and wait with that run's engine class.
+        Returns Hydra's end, the messages, the session and the exit code."""
+        end_ms = self.use_window_map()
+        msgs = recorded(L3, "trace-wm-count.jsonl")
+        engine = msgs[0]["payload"]["engine"]["name"]
+        session = FakeSession(msgs)
+        code = self.run_main(["--mode", "count"], session, engine=engine,
+                             wait=FA._default_wait)
+        return end_ms, msgs, session, code
+
+    def test_count_mode_posts_the_settings(self):
+        # The agent gets trace_settings for Hydra's end of the song with no
+        # methods, and the wall cap for that end.
+        end_ms, msgs, session, code = self.run_window_map_count()
         self.assertEqual(code, 0)
-        # The fake dump's song end of 6,000 ms + 30 s margin = 36 s song cap;
-        # plus 120 s of pause room = 156 s wall-clock cap.
+        engine = msgs[0]["payload"]["engine"]["name"]
         self.assertEqual(session.script.posted, [{
-            "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
-            "mode": "count", "engine_class": "Eng",
-            "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "round_start_offset": C.OFF_ROUND_START, "methods": []}])
+            **TH.trace_settings(end_ms, TH.MODE_COUNT, engine,
+                                C.RVA_DRUMS_ENGINE_CTOR, []),
+            "type": "start", "cap_s": TH.wall_cap_s(end_ms)}])
         self.assertEqual(session.detach_calls, 1)
-        self.assertEqual(self.lines, [
-            "ended: done (agent: song over)",
-            "engine: Eng in StrikeCore, base Base<Inputs>",
-            "shape: sealed yes, generic_base yes, round_start_double yes, "
-            "ctor_rva yes",
-            f"notes in {self.manifest}: 3",
-            "hooked: 2 code addresses, 9 calls; no code: 1 methods; "
-            "not hooked: 0",
-            "once per note (count 3): Hit / Hit2 (base 0x1000)",
-            "off by one (count 2 or 4): none",
-            "all methods by count:",
-            "        6  Tick (engine 0x2000)  (uint)",
-            "        3  Hit / Hit2 (base 0x1000)  (uint)",
-            f"messages written to {self.out_path}",
-        ])
 
-    def test_args_mode_lines_calls_up_with_the_notes(self):
-        session = FakeSession([
-            sent({"engine": ENGINE, "hooked": 1, "no_code": []}),
-            sent(call("Hit", 1.0, [7])), sent(call("Hit", 2.1, [8])),
-            sent({"done": "song over", "mode": "args", "calls": 2,
-                  "not_hooked": []})])
-        code = self.run_main(["--mode", "args", "--method", "Hit",
-                              "--engine-ctor-rva", "0x1234"], session)
+    def test_count_mode_prints_the_table_the_real_run_printed(self):
+        # Every line of the count run's own report comes back, in its order,
+        # but for the two lines that named that run's own files
+        # (testdata/ch_runs/2026-10-28-l3/trace-wm-count.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt, with the user's folder name in its last line replaced by "user").
+        _, _, _, code = self.run_window_map_count()
         self.assertEqual(code, 0)
-        posted = session.script.posted[0]
-        self.assertEqual(posted["methods"], ["Hit"])
-        self.assertEqual(posted["engine_ctor_rva"], 0x1234)
-        self.assertEqual(self.lines[4:], [
-            "calls: 2",
-            "  call 1: Hit at 1000.0 ms, args [7]; nearest note 0 at 1000 ms, "
-            "diff +0.0 ms",
-            "  call 2: Hit at 2100.0 ms, args [8]; nearest note 1 at 2000 ms, "
-            "diff +100.0 ms",
-            "calls within 85 ms of their nearest note (EXPECT_NORMAL_BACK_MS): "
-            "1 of 2",
-            "notes with no call within 85 ms: 2 of 3",
-            "not hooked: 0",
-            f"messages written to {self.out_path}",
-        ])
+        report = self.assert_printed_the_report("trace-wm-count.txt")
+        # And nothing else: the two file lines are the only lines added.
+        self.assertEqual(len(self.lines), len(report) + 2, self.lines)
 
-    def test_trace_args_report_prints_not_hooked(self):
-        session = FakeSession([
-            sent({"engine": ENGINE, "hooked": 1, "no_code": []}),
-            sent(call("Hit", 1.0, [7])),
-            sent({"done": "song over", "mode": "args", "calls": 1,
-                  "not_hooked": ["Miss: no such method"]})])
-        self.run_main(["--mode", "args", "--method", "Hit", "--method", "Miss"],
-                      session)
-        at = self.lines.index("not hooked: 1")
-        self.assertEqual(self.lines[at + 1], "  not hooked: Miss: no such method")
+    def assert_printed_the_report(self, name: str) -> list[str]:
+        """Every line of a recorded run's own report `name` is in self.lines,
+        in its order, but for the lines that named that run's own files; those
+        name this run's manifest and log. Returns the report's other lines."""
+        report = [line for line in recorded_report(name) if "\\" not in line]
+        wanted = set(report)
+        self.assertEqual([line for line in self.lines if line in wanted], report)
+        self.assertEqual(len([line for line in self.lines if self.manifest in line]), 1)
+        self.assertTrue(self.lines[-1].endswith(self.out_path), self.lines[-1])
+        return report
 
-    def test_notes_with_no_call_line(self):
-        # Notes at 1,000, 2,000 and 3,000 ms. One call at 1,000 and one 100 ms
-        # past 2,000: the line counts notes, so 2,000 and 3,000 have none.
-        session = FakeSession([
-            sent({"engine": ENGINE, "hooked": 1, "no_code": []}),
-            sent(call("Hit", 1.0)), sent(call("Hit", 2.1)),
-            sent({"done": "song over", "mode": "args", "calls": 2,
-                  "not_hooked": []})])
-        self.run_main(["--mode", "args", "--method", "Hit"], session)
-        self.assertIn("notes with no call within 85 ms: 2 of 3", self.lines)
-        # The 85 ms limit is EXPECT_NORMAL_BACK_MS's, the limit included.
-        limit = C.EXPECT_NORMAL_BACK_MS
-        self.assertEqual(TH.notes_without_call([call("Hit", 1.085)],
-                                               notes_at(1000), limit), 0)
-        self.assertEqual(TH.notes_without_call([call("Hit", 1.0851)],
-                                               notes_at(1000), limit), 1)
+    def test_args_mode_reports_a_real_run_as_that_run_did(self):
+        # The args run's messages, played through the real runner and wait
+        # with the same song, method names and engine class.
+        end_ms = self.use_window_map()
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        calls = [m["payload"] for m in msgs if "call" in m["payload"]]
+        methods = list(dict.fromkeys(c["call"] for c in calls))
+        engine = msgs[0]["payload"]["engine"]["name"]
+        session = FakeSession(msgs)
+        code = self.run_main(["--mode", "args"]
+                             + [arg for m in methods for arg in ("--method", m)],
+                             session, engine=engine, wait=FA._default_wait)
+        self.assertEqual(code, 0)
+        # The agent gets trace_settings for Hydra's end of the song, and the
+        # wall cap for that end.
+        self.assertEqual(session.script.posted, [{
+            **TH.trace_settings(end_ms, TH.MODE_ARGS, engine,
+                                C.RVA_DRUMS_ENGINE_CTOR, methods),
+            "type": "start", "cap_s": TH.wall_cap_s(end_ms)}])
+        self.assertEqual(session.detach_calls, 1)
+        # Every line of the run's own report comes back, in its order, but
+        # for the two lines that named that run's own files.
+        self.assert_printed_the_report("trace-wm-args.txt")
+        with open(self.out_path, encoding="utf-8") as fh:
+            self.assertEqual([json.loads(line) for line in fh], msgs)
 
     def test_empty_manifest_prints_one_line(self):
+        # A manifest with no notes is refused before any dump or attach.
         with open(self.manifest, "w", encoding="utf-8") as fh:
             json.dump({"song": "Song", "notes": []}, fh)
-        code = self.run_main(["--mode", "count"], FakeSession([]))
+        dumps_before = len(FAKE.charts)
+        session = FakeSession([])
+        code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{self.manifest} holds no notes, so there is nothing to line calls up with"])
+        self.assertEqual(len(self.lines), 1, self.lines)
+        self.assertIn(self.manifest, self.lines[0])
+        self.assertIsNone(session.script)  # no agent was loaded
+        self.assertEqual(len(FAKE.charts), dumps_before)  # and no dump made
 
     def test_a_folder_with_no_chart_prints_one_line_and_traces_nothing(self):
         os.remove(self.chart)
         session = FakeSession([])
         code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{self.song} has no notes.chart or notes.mid, so Hydra has no song end "
-            "to cap the trace at; nothing traced"])
+        # The one line is song_end_ms's own refusal for this folder.
+        with self.assertRaises(hydra_end.SongEndMissing) as caught:
+            TH.song_end_ms(self.song)
+        self.assertEqual(len(self.lines), 1, self.lines)
+        self.assertTrue(self.lines[0].startswith(str(caught.exception)), self.lines)
         self.assertIsNone(session.script)  # no agent was loaded
 
-    def test_a_trace_ended_by_the_runner_cap_exits_0_with_no_error(self):
-        # A fake song end of 62,080 ms + 30 s margin = 92.08 s song cap; plus
-        # 120 s of pause room = 212.08 s.
-        with open(self.manifest, "w", encoding="utf-8") as fh:
-            json.dump({"song": WINDOW_MAP, "notes": notes_at(3000, 59080)},
-                      fh)
-        FAKE.set_end(self.chart, 62080.0)
-        session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
-                                     "no_code": []})])
-        code = self.run_main(["--mode", "count"], session)
-        self.assertEqual(code, 0)
-        posted = session.script.posted[0]
-        self.assertAlmostEqual(posted["cap_s"], 212.08)
-        self.assertAlmostEqual(posted["song_cap_s"], 92.08)
-        self.assertEqual(session.detach_calls, 1)
-        self.assertEqual(self.lines[:2], [
-            "cap of 212.08 s reached before the agent finished; 1 messages seen",
-            "ended: cap"])
-        self.assertIn("table: none received", self.lines)
-        self.assertFalse(any(line.startswith("error") for line in self.lines))
-
     def test_an_agent_error_is_printed_and_exits_1(self):
-        session = FakeSession([sent({"error": "engine shape check failed: "
-                                              "ctor_rva", "engine": ENGINE})])
-        code = self.run_main(["--mode", "count"], session)
+        # A real agent error reply (hydra-data/ch-mcp-runs/2026-10-31/
+        # ls-d1a-run2/kit-1.jsonl). The kit agent sent it, and the runner
+        # ends every agent's run on an error the same way (FA.ends_run).
+        self.use_window_map()
+        msgs = recorded("2026-10-31-ls-d1a-run2", "kit-1.jsonl")
+        error = msgs[0]["payload"]["error"]
+        session = FakeSession(msgs)
+        code = self.run_main(["--mode", "count"], session, wait=FA._default_wait)
         self.assertEqual(code, 1)
-        self.assertIn("table: none received", self.lines)
-        self.assertIn("error: engine shape check failed: ctor_rva", self.lines)
         self.assertEqual(session.detach_calls, 1)
-
-    def test_not_running_says_so_and_stops(self):
-        code = self.run_main(["--mode", "count"], None)
-        self.assertEqual(code, 1)
-        self.assertEqual(self.lines,
-                         ["Clone Hero.exe is not running; nothing attached"])
+        # The report ends on the agent's own error.
+        self.assertTrue(self.lines[-2].endswith(error), self.lines)
 
     def test_a_missing_agent_says_how_to_build_it(self):
         os.remove(self.agent)
         code = self.run_main(["--mode", "count"], FakeSession([]))
         self.assertEqual(code, 1)
         self.assertEqual(self.lines, [BS.check(self.agent)])
-        self.assertTrue(self.lines[0].startswith(f"{self.agent} not found; "))
+        # The line names the missing agent and the command that builds it.
+        self.assertIn(self.agent, self.lines[0])
+        self.assertIn(BS.build_command(self.agent), self.lines[0])
 
     def test_a_stale_agent_runs_nothing(self):
         with open(os.path.join(self.tmp.name, "trace.ts"), "a", encoding="utf-8") as fh:
             fh.write("// an edit after the build\n")
-        code = self.run_main(["--mode", "count"], FakeSession([]))
+        session = FakeSession([])
+        code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{self.agent} is stale: trace.ts changed since it was built; "
-            "run npm run build:trace in tools/ch_mcp/agent first"])
+        # The one line is build_stamp's refusal for this agent: it names the
+        # edited source and the command that rebuilds the agent.
+        refusal = BS.check(self.agent)
+        self.assertIsNotNone(refusal)
+        self.assertEqual(self.lines, [refusal])
+        self.assertIn(self.agent, refusal)
+        self.assertIn("trace.ts", refusal)
+        self.assertIn(BS.build_command(self.agent), refusal)
+        self.assertIsNone(session.script)  # no agent was loaded
 
     def test_the_modes_refuse_the_wrong_method_flags(self):
         for extra in (["--mode", "args"], ["--mode", "count", "--method", "X"]):
@@ -338,46 +451,76 @@ class TraceAgentTest(unittest.TestCase):
             self.assertEqual(by_name_only_findings(fh.read()), [])
 
     def test_only_gamemanager_ts_looks_up_the_game_manager(self):
-        # One owner: gamemanager.ts holds the lookup. These two agents call its
-        # findGameManager and neither repeats the lookup.
-        for name in ("clock.ts", "trace.ts"):
-            with self.subTest(agent=name):
-                with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
-                    text = fh.read()
-                self.assertIn("findGameManager()", text)
-                self.assertNotIn("gc.choose", text)
-                self.assertNotIn("tryAssembly", text)
+        # One owner: gamemanager.ts looks the GameManager class up by its
+        # CLASS_NAME. No other agent file holds that class name as a string or
+        # looks up the class gamemanager.ts exports as GAME_MANAGER, so any
+        # other agent reaches the game manager through gamemanager.ts.
+        def read(name):
+            with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+                return fh.read()
 
-    def test_ended_line_names_the_song_cap(self):
-        result = FA.RunResult(reason=FA.END_DONE, cap_s=212.08,
-                              payloads=[{"done": "song cap", "methods": []}])
-        self.assertEqual(TH.ended_line(result), "ended: done (agent: song cap)")
+        owner = read("gamemanager.ts")
+        found = re.search(r'^const CLASS_NAME = "(\w+)";$', owner, re.MULTILINE)
+        self.assertIsNotNone(found, "gamemanager.ts names no CLASS_NAME")
+        self.assertIn("tryClass(CLASS_NAME)", owner)
+        self.assertIn("export const GAME_MANAGER = CLASS_NAME;", owner)
+        quoted = (f'"{found.group(1)}"', f"'{found.group(1)}'")
+        others = sorted(n for n in os.listdir(AGENT_DIR)
+                        if n.endswith(".ts") and n != "gamemanager.ts")
+        self.assertIn("trace.ts", others)
+        for name in others:
+            with self.subTest(agent=name):
+                text = read(name)
+                for literal in quoted:
+                    self.assertNotIn(literal, text)
+                self.assertNotIn("tryClass(GAME_MANAGER)", text)
+
+    def test_ended_line_is_the_line_each_real_run_printed(self):
+        # Two real runs of trace.ts and the first line of each one's own
+        # report: the args run the song ended, and the keys count run the
+        # agent's cap ended (testdata/ch_runs/2026-10-28-l3/
+        # trace-keys-count.txt is that line, copied from hydra-data/
+        # ch-mcp-runs/2026-10-28/l3/keys/trace-keys-count.txt). The result
+        # carries the end ends_run reads from the run's last payload.
+        for log, report in (("trace-wm-args.jsonl", "trace-wm-args.txt"),
+                            ("trace-keys-count.jsonl", "trace-keys-count.txt")):
+            with self.subTest(run=log):
+                payloads = [m["payload"] for m in recorded(L3, log)]
+                result = FA.RunResult(reason=FA.ends_run(payloads[-1]),
+                                      cap_s=0.0, payloads=payloads)
+                self.assertEqual(TH.ended_line(result), recorded_report(report)[0])
 
     def test_the_end_reasons_are_the_runners(self):
-        # trace.ts ends with a `done` payload, which ends_run reads.
-        self.assertEqual(FA.ends_run({"done": "song over", "methods": []}),
-                         FA.END_DONE)
+        # Every real trace.ts log: only its last payload, the agent's `done`,
+        # ends the run, and ends_run reads it as the runner's done.
+        for log in ("trace-wm-args.jsonl", "trace-wm-count.jsonl",
+                    "trace-keys-count.jsonl", "trace-ew-count.jsonl"):
+            with self.subTest(run=log):
+                payloads = [m["payload"] for m in recorded(L3, log)]
+                self.assertEqual([FA.ends_run(p) for p in payloads[:-1]],
+                                 [None] * (len(payloads) - 1))
+                self.assertEqual(FA.ends_run(payloads[-1]), FA.END_DONE)
 
 
 class HookRvaTest(unittest.TestCase):
-    # The literals are the study's: docs/research/
-    # 2026-10-28-clone-hero-mcp-feasibility.md, "Test 3: the hit method".
+    def setUp(self):
+        # The once-per-note methods of the count run that played Window Map
+        # to its end: the study's run of trace.ts.
+        entries = recorded_table("trace-wm-count.jsonl")
+        self.exact = TH.once_per_note(entries, len(window_map_notes()))[0]
+
     def test_the_two_engine_methods_are_the_studys_addresses(self):
-        self.assertEqual(C.RVA_NOTE_SCORE_ADD, 0x20DEEC0)
-        self.assertEqual(C.RVA_NOTE_DYNAMICS, 0x20DE770)
+        # The engine's own methods that ran once per note in that run are
+        # exactly the score and dynamics methods' addresses.
+        self.assertEqual({int(e["rva"], 16) for e in self.exact if e["owner"] == "engine"},
+                         {C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS})
 
-    def test_the_default_hooks_only_the_score_method(self):
-        self.assertEqual(C.PER_NOTE_DEFAULT_RVAS, (C.RVA_NOTE_SCORE_ADD,))
-
-
-def write_json(path, data):
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
-
-
-def score_chord(index, ms):
-    return {"index": index, "ms": ms,
-            "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]}
+    def test_the_default_hooks_only_once_per_note_methods(self):
+        # Every method ch_trace_start hooks by default ran once per note in
+        # that run, so each gives one call per note it hits.
+        self.assertTrue(C.PER_NOTE_DEFAULT_RVAS)
+        self.assertLessEqual(set(C.PER_NOTE_DEFAULT_RVAS),
+                             {int(e["rva"], 16) for e in self.exact})
 
 
 class SongNotesTest(unittest.TestCase):
@@ -386,41 +529,57 @@ class SongNotesTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.song = os.path.join(self.tmp.name, "Song")
         os.mkdir(self.song)
-        self.score = os.path.join(self.tmp.name, "score.json")
-        write_json(self.score, {"chords": [score_chord(0, 1000.0),
-                                           score_chord(1, 1250.5),
-                                           score_chord(2, 2000.0)]})
+        # Hydra's own score JSON for Pitch Dark (testdata/input/
+        # test_pitch_dark_ratio/notes.mid), made by hydra_replay score; the
+        # comment above _REPLAY_DIR in tools/ch_probe/tests/test_sp_compare.py
+        # gives the command.
+        self.score = _replay_file("test_pitch_dark_ratio-score.json")
+        with open(self.score, encoding="utf-8") as fh:
+            self.chords = json.load(fh)["chords"]
 
     def test_a_score_json_becomes_notes_in_the_manifest_shape(self):
-        self.assertEqual(TH.notes_from_score(self.score), [
-            {"index": 0, "time_ms": 1000.0},
-            {"index": 1, "time_ms": 1250.5},
-            {"index": 2, "time_ms": 2000.0}])
+        notes = TH.notes_from_score(self.score)
+        # One note per chord, each with only keys a real probe song's
+        # manifest note also has, so line_up reads either the same way.
+        self.assertEqual(len(notes), len(self.chords))
+        manifest_keys = set.intersection(*(set(n) for n in window_map_notes()))
+        for note in notes:
+            self.assertLessEqual(set(note), manifest_keys, note)
+        self.assertEqual([(n["index"], n["time_ms"]) for n in notes],
+                         [(c["index"], c["ms"]) for c in self.chords])
+        # A call at a chord's time lines up with that chord's note, no gap.
+        chord = self.chords[len(self.chords) // 2]
+        hit = TH.line_up([{"songTime": C.ms_to_s(chord["ms"])}], notes)[0]
+        self.assertEqual(hit.note_index, chord["index"])
+        self.assertAlmostEqual(hit.diff_ms, 0.0, places=6)
 
     def test_the_manifest_wins_when_the_folder_has_one(self):
-        manifest = os.path.join(self.song, "manifest.json")
-        write_json(manifest, {"song": "Song", "notes": notes_at(500, 900)})
-        self.assertEqual(TH.song_notes(self.song, self.score),
-                         (manifest, notes_at(500, 900)))
+        # The Window Map song folder has its real manifest; the Pitch Dark
+        # score JSON holds other notes, and the manifest's are used.
+        manifest, notes = TH.load_manifest(WINDOW_MAP_SONG)
+        self.assertNotEqual(len(notes), len(self.chords))
+        self.assertEqual(TH.song_notes(WINDOW_MAP_SONG, self.score),
+                         (manifest, notes))
 
     def test_the_score_json_is_used_when_there_is_no_manifest(self):
-        path, notes = TH.song_notes(self.song, self.score)
-        self.assertEqual(path, self.score)
-        self.assertEqual([n["time_ms"] for n in notes], [1000.0, 1250.5, 2000.0])
+        self.assertEqual(TH.song_notes(self.song, self.score),
+                         (self.score, TH.notes_from_score(self.score)))
 
     def test_no_source_names_both(self):
+        # The refusal names the manifest it looked for, and the score JSON
+        # that was missing, or says none was given.
         missing = os.path.join(self.tmp.name, "nope.json")
-        manifest = os.path.join(self.song, "manifest.json")
+        manifest = TH.manifest_path(self.song)
         with self.assertRaises(TH.NotesMissing) as given:
             TH.song_notes(self.song, missing)
-        self.assertEqual(str(given.exception),
-                         "no notes to line the calls up with: no manifest at "
-                         f"{manifest}, and no score JSON at {missing}")
         with self.assertRaises(TH.NotesMissing) as none:
             TH.song_notes(self.song)
-        self.assertEqual(str(none.exception),
-                         "no notes to line the calls up with: no manifest at "
-                         f"{manifest}, and no score JSON was given")
+        for refusal in (str(given.exception), str(none.exception)):
+            with self.subTest(refusal=refusal):
+                self.assertIn(manifest, refusal)
+        self.assertIn(missing, str(given.exception))
+        self.assertNotIn(missing, str(none.exception))
+        self.assertNotEqual(str(given.exception), str(none.exception))
 
 
 # How long a test waits for the session's thread. Only a hang reaches it.
@@ -444,9 +603,9 @@ class TraceSessionTest(unittest.TestCase):
         self.in_wait.set()
         return event.wait(timeout_s)
 
-    def session(self, fake_session, **kw):
+    def session(self, fake_session, notes=None, **kw):
         kw.setdefault("wait", self.blocking_wait)
-        s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
+        s = TH.TraceSession(notes or self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent,
                             frida_mod=FakeFrida(fake_session), **kw)
         self.addCleanup(s.stop, THREAD_CAP_S)
@@ -456,70 +615,104 @@ class TraceSessionTest(unittest.TestCase):
         fake_session.script.handlers["message"](sent(payload), None)
 
     def test_the_agent_gets_mains_args_mode_settings(self):
-        fake = FakeSession([sent({"done": "song over", "calls": 0})])
-        s = self.session(fake)
+        # main in args mode and a session, each on the Window Map song with
+        # the real args run's engine class and methods, post the same start.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        engine = msgs[0]["payload"]["engine"]["name"]
+        methods = list(dict.fromkeys(m["payload"]["call"] for m in msgs
+                                     if "call" in m["payload"]))
+        song = os.path.join(self.tmp.name, "Song")
+        os.mkdir(song)
+        copy_window_map(song)
+        by_main = FakeSession(msgs)
+        with window_map_dumps(self, []):
+            code = TH.main(["--song", song, "--engine-class", engine,
+                            "--mode", "args", "--agent", self.agent,
+                            "--out", os.path.join(self.tmp.name, "main.jsonl")]
+                           + [arg for m in methods for arg in ("--method", m)],
+                           frida_mod=FakeFrida(by_main), wait=FA._default_wait,
+                           out=lambda _line: None)
+        self.assertEqual(code, 0)
+        by_session = FakeSession(msgs)
+        s = TH.TraceSession(window_map_notes(), engine, methods, self.out_path,
+                            song_end_ms=hydra_end.song_length_ms(WINDOW_MAP_DUMP),
+                            agent_path=self.agent, frida_mod=FakeFrida(by_session),
+                            wait=self.blocking_wait)
+        self.addCleanup(s.stop, THREAD_CAP_S)
+        s.start()
         self.assertTrue(s.stop(THREAD_CAP_S))
-        # The song end of 6,000 ms + 30 s margin = 36 s song cap; plus 120 s
-        # of pause room = 156 s wall-clock cap.
-        self.assertEqual(fake.script.posted, [{
-            "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
-            "mode": "args", "engine_class": "Eng",
-            "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "round_start_offset": C.OFF_ROUND_START, "methods": ["Hit"]}])
+        self.assertEqual(len(by_main.script.posted), 1)
+        self.assertEqual(by_session.script.posted, by_main.script.posted)
 
     def test_stop_ends_a_run_that_never_ends_and_detaches_once(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []})])
+        # A real trace that caught one call and sent no end: the run goes on
+        # until stop() ends it.
+        msgs = recorded(*ONE_CALL_RUN)
+        fake = FakeSession(msgs)
         s = self.session(fake)
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertFalse(s.ended())
-        self.assertEqual(s.ended_line(),
-                         "ended: not yet; the trace is still running")
+        self.assertIsNone(s.result)
+        running = s.ended_line()
         self.assertTrue(s.stop(THREAD_CAP_S))
         self.assertEqual(fake.detach_calls, 1)
         self.assertEqual(s.result.reason, TH.END_STOPPED)
         self.assertIsNone(s.result.error)
-        self.assertEqual(s.ended_line(), "ended: stopped")
+        # Once stopped, the line is ended_line's for the stopped result, and
+        # it differs from the line the running trace gave.
+        self.assertEqual(s.ended_line(), TH.ended_line(s.result))
+        self.assertNotEqual(running, s.ended_line())
+        self.assertEqual(s.payloads(), [m["payload"] for m in msgs])
         self.assertEqual(s.lines, [])
 
     def test_calls_grow_as_the_agent_sends_them(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []})])
+        # The real args run's messages, its first sent at the start and the
+        # rest one at a time, all but its end.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        payloads = [m["payload"] for m in msgs if "done" not in m["payload"]]
+        fake = FakeSession(msgs[:1])
         s = self.session(fake)
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertEqual(s.calls(), [])
-        self.deliver(fake, call("Hit", 1.0, [7]))
-        self.assertEqual(s.calls(), [call("Hit", 1.0, [7])])
-        self.deliver(fake, call("Hit", 2.1, [8]))
-        self.deliver(fake, call("Hit", 2.95, [9]))
-        self.assertEqual(len(s.calls()), 3)
-        self.assertEqual(len(s.payloads()), 4)
+        for k, payload in enumerate(payloads[1:], start=2):
+            self.deliver(fake, payload)
+            # calls() is every `call` payload seen so far; the engine
+            # payload is seen but is not a call.
+            self.assertEqual(s.payloads(), payloads[:k])
+            self.assertEqual(s.calls(), payloads[1:k])
+        self.assertFalse(s.ended())
 
     def test_lined_up_starts_at_since(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []}),
-                            sent(call("Hit", 1.0)), sent(call("Hit", 2.1)),
-                            sent(call("Hit", 2.95))])
-        s = self.session(fake)
-        self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
-        lined = s.lined_up(since=2)
-        self.assertEqual(len(lined), 1)
-        self.assertEqual(lined[0].note_index, 2)
-        self.assertAlmostEqual(lined[0].diff_ms, -50.0, places=6)
-        self.assertEqual([x.note_index for x in s.lined_up()], [0, 1, 2])
+        # The real args run on Window Map, lined up with that song's notes.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        calls = [m["payload"] for m in msgs if "call" in m["payload"]]
+        s = self.session(FakeSession(msgs), notes=window_map_notes())
+        self.assertTrue(s.stop(THREAD_CAP_S))
+        everything = s.lined_up()
+        self.assertEqual(everything, TH.line_up(calls, window_map_notes()))
+        for since in (0, 1, len(calls) // 2, len(calls) - 1, len(calls)):
+            with self.subTest(since=since):
+                self.assertEqual(s.lined_up(since=since), everything[since:])
 
     def test_a_run_the_agent_ends_keeps_the_agents_end(self):
-        fake = FakeSession([sent(call("Hit", 1.0)),
-                            sent({"done": "song over", "calls": 1})])
+        # The real args run, which the agent ended at the song's end: the
+        # session's line is the one that run's own report printed.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        fake = FakeSession(msgs)
         s = self.session(fake)
         self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: done (agent: song over)")
+        self.assertEqual(s.ended_line(), recorded_report("trace-wm-args.txt")[0])
         self.assertEqual(fake.detach_calls, 1)
-        self.assertEqual(len(s.calls()), 1)
+        self.assertEqual(s.calls(),
+                         [m["payload"] for m in msgs if "call" in m["payload"]])
 
     def test_an_agent_end_that_lands_as_stop_is_seen_keeps_its_reason(self):
         # The agent's end arrives between the wait's check of `ended` and its
-        # check of the stop event: the run is already over as "done".
+        # check of the stop event: the run is already over as "done". The end
+        # is the real args run's own, and the session's line is the one that
+        # run's own report printed.
+        end = recorded(L3, "trace-wm-args.jsonl")[-1]["payload"]
+        self.assertEqual(FA.ends_run(end), FA.END_DONE)
         fake = FakeSession([])
         s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent,
@@ -531,41 +724,54 @@ class TraceSessionTest(unittest.TestCase):
             flag = real_is_set()
             if flag and not delivered:
                 delivered.append(True)
-                self.deliver(fake, {"done": "song over", "calls": 0})
+                self.deliver(fake, end)
             return flag
 
         s._stop.is_set = is_set_after_agent_ends
         s.start()
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: done (agent: song over)")
+        self.assertEqual(delivered, [True])
+        self.assertEqual(s.result.reason, FA.END_DONE)
+        self.assertEqual(s.ended_line(), recorded_report("trace-wm-args.txt")[0])
         self.assertEqual(fake.detach_calls, 1)
 
     def test_the_wall_cap_still_ends_a_run_nobody_stops(self):
-        # The clock reads 0 when the wait starts, then past the 156 s cap.
-        clock = iter([0.0, 157.0])
+        # The clock reads 0 when the wait starts, then one second past the
+        # session's wall cap for its song end.
+        cap_s = TH.wall_cap_s(self.END_MS)
+        clock = iter([0.0, cap_s + 1.0])
         fake = FakeSession([])
         s = self.session(fake, now=lambda: next(clock))
         s._thread.join(THREAD_CAP_S)
         self.assertTrue(s.ended())
-        self.assertEqual(s.ended_line(), "ended: cap")
+        self.assertEqual(s.result.reason, FA.END_CAP)
+        self.assertEqual(s.result.cap_s, cap_s)
+        self.assertEqual(s.ended_line(), TH.ended_line(s.result))
         self.assertEqual(fake.detach_calls, 1)
-        self.assertEqual(s.lines, [
-            "cap of 156 s reached before the agent finished; 0 messages seen"])
-
-    def test_not_running_is_the_end_and_its_line_is_kept(self):
-        s = self.session(None)
-        self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: not running")
-        self.assertEqual(s.lines,
-                         ["Clone Hero.exe is not running; nothing attached"])
+        # The runner's one line names that cap and the messages it saw.
+        self.assertEqual(len(s.lines), 1, s.lines)
+        self.assertIn(f"{cap_s:g} s", s.lines[0])
+        self.assertIn(f"{len(s.payloads())} messages", s.lines[0])
 
     def test_a_runner_that_raises_ends_as_failed(self):
-        fake = FakeSession([], load_raises=RuntimeError("script broke"))
-        s = self.session(fake)
+        # The runner's own open of the out log fails for real: its folder is
+        # not there. The run ends as failed, keeps that error's own text and
+        # still detaches once.
+        missing_out = os.path.join(self.tmp.name, "no-such-folder", "trace.jsonl")
+        with self.assertRaises(OSError) as opened:
+            open(missing_out, "w", encoding="utf-8")
+        fake = FakeSession([])
+        s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], missing_out,
+                            song_end_ms=self.END_MS, agent_path=self.agent,
+                            frida_mod=FakeFrida(fake), wait=self.blocking_wait)
+        self.addCleanup(s.stop, THREAD_CAP_S)
+        s.start()
         self.assertTrue(s.stop(THREAD_CAP_S))
         self.assertEqual(s.result.reason, TH.END_FAILED)
-        self.assertEqual(s.result.error, "RuntimeError: script broke")
+        self.assertIn(type(opened.exception).__name__, s.result.error)
+        self.assertIn(str(opened.exception), s.result.error)
+        self.assertIsNone(fake.script)  # no agent was loaded
         self.assertEqual(fake.detach_calls, 1)
 
     def test_a_missing_agent_says_how_to_build_it(self):
@@ -573,8 +779,12 @@ class TraceSessionTest(unittest.TestCase):
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent)
-        self.assertEqual(str(raised.exception), BS.check(self.agent))
-        self.assertTrue(str(raised.exception).startswith(f"{self.agent} not found; "))
+        # The refusal is build_stamp's: it names the missing agent and the
+        # command that builds it.
+        refusal = str(raised.exception)
+        self.assertEqual(refusal, BS.check(self.agent))
+        self.assertIn(self.agent, refusal)
+        self.assertIn(BS.build_command(self.agent), refusal)
 
     def test_a_session_needs_a_method(self):
         with self.assertRaises(ValueError):

@@ -13,6 +13,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <stdexcept>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -281,12 +284,34 @@ constexpr size_t kChunkBytes = 64 * 1024;
 Fetcher g_fetcher;
 Downloader g_downloader;
 
+// set_address_map_for_test's pairs. A job's thread reads them while the test's
+// thread may set them, hence the lock.
+std::mutex g_address_mutex;
+std::vector<AddressPair> g_address_map;  // guarded by g_address_mutex
+
+// Whether a prefix that ends at `at` ends on a boundary of `url` (http.h,
+// set_address_map_for_test).
+bool at_boundary(const std::string& url, size_t at) {
+    return at == url.size() || url[at] == '/' || url[at] == '?' || url[at] == '#';
+}
+
+// The address a request is really sent to: `url` itself unless a test has
+// installed an address map.
+std::string mapped_address(const std::string& url) {
+    std::lock_guard<std::mutex> lock(g_address_mutex);
+    if (g_address_map.empty()) return url;
+    for (const AddressPair& pair : g_address_map)
+        if (url.compare(0, pair.from.size(), pair.from) == 0 && at_boundary(url, pair.from.size()))
+            return pair.to + url.substr(pair.from.size());
+    throw std::logic_error("no address map entry for " + url + ", so nothing was sent");
+}
+
 }  // namespace
 
 std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
                      NetService service) {
     if (g_fetcher) return g_fetcher(url, cancel);
-    Response response(url, cancel, service);
+    Response response(mapped_address(url), cancel, service);
     std::string body;
     std::vector<char> chunk(kChunkBytes);
     while (size_t n = response.read(chunk.data(), chunk.size())) body.append(chunk.data(), n);
@@ -297,7 +322,7 @@ void http_download(const std::string& url, const std::string& path, uint64_t siz
                    std::atomic<uint64_t>* received, const std::atomic<bool>* cancel,
                    NetService service) {
     if (g_downloader) return g_downloader(url, path, size_cap, received, cancel);
-    Response response(url, cancel, service);
+    Response response(mapped_address(url), cancel, service);
     download_to_file([&](char* buffer, size_t capacity) { return response.read(buffer, capacity); },
                      path, size_cap, received, cancel);
 }
@@ -351,5 +376,10 @@ void download_to_file(const BodyReader& body, const std::string& path, uint64_t 
 void set_fetcher(Fetcher fetcher) { g_fetcher = std::move(fetcher); }
 
 void set_downloader(Downloader downloader) { g_downloader = std::move(downloader); }
+
+void set_address_map_for_test(std::vector<AddressPair> map) {
+    std::lock_guard<std::mutex> lock(g_address_mutex);
+    g_address_map = std::move(map);
+}
 
 }  // namespace hydra::net

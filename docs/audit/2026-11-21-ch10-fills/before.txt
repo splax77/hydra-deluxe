@@ -1,0 +1,41 @@
+click ###analysissettings
+wait 0.2
+window //$FOCUSED
+check **/##legacyfills
+key Escape
+wait 0.2
+window //Hydra
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+timeout 300
+open Laments Of An Icarus
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.5
+text
+click **/##DetailsTabs/Preview
+wait 1
+text
+dump Hydra
+open Trippin' on a Hole in a Paper Heart
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.5
+text
+click **/##DetailsTabs/Preview
+wait 1
+text
+open Grow
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.5
+text
+click **/##DetailsTabs/Preview
+wait 1
+text
+type **/##search |
+wait 0.5
+text | Laments
+text | Paper Heart
+text | Victoria

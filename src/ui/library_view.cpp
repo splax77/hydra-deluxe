@@ -148,8 +148,8 @@ void render_startup_screen(AppState& app) {
                               ImGuiChildFlags_AlwaysUseWindowPadding,
                           ImGuiWindowFlags_NoSavedSettings);
         if (p.upgrading) {
-            ImGui::TextWrapped("Updating your library file for this version of Hydra");
-            ImGui::TextWrapped("This happens once. Your charts and results are kept.");
+            ImGui::TextWrapped("%s", StoreOpenProgress::kUpgradeHeading);
+            ImGui::TextWrapped("%s", StoreOpenProgress::kUpgradeNote);
         }
         ImGui::TextUnformatted(p.label().c_str());
         if (bar) {

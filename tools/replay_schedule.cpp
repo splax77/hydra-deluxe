@@ -497,7 +497,12 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     nlohmann::json act_list = nlohmann::json::array();
     std::map<int64_t, size_t> act_number;  // act tick -> place in path order
     std::set<int64_t> declined;
+    // Two sets, each read from its own owner and neither from the other.
+    // final_ends holds each window's deactivation node, the node the press
+    // timing below measures from (on_end). sp_ends holds where each window's
+    // Star Power is over as played, which the chord row's "ends_sp" prints.
     std::set<int64_t> final_ends;
+    std::set<int64_t> sp_ends;
     for (size_t a = 0; a < acts.size(); ++a) {
         const Activation& act = *acts[a];
         nlohmann::json one = activation_json(act, chords, song.timing(), refusals);
@@ -506,6 +511,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         act_number[act.timecode.ticks()] = a;
         declined.insert(act.skipped_fill_ticks.begin(), act.skipped_fill_ticks.end());
         if (const std::optional<int64_t> d = act.deact_tick()) final_ends.insert(*d);
+        if (const std::optional<int64_t> e = act.window_end_tick()) sp_ends.insert(*e);
     }
 
     std::vector<double> chord_ms;
@@ -559,7 +565,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                            {"ms", c.ms},
                            {"side_ms", sides[i]},
                            {"gems", gems},
-                           {"ends_sp", final_ends.count(c.tick) > 0},
+                           {"ends_sp", sp_ends.count(c.tick) > 0},
                            {"declined", is_declined},
                            {"paid_by", paid}};
         if (is_declined) {

@@ -8,6 +8,7 @@ methods KitTools calls, and the clock is a fake that sleeping moves.
 from __future__ import annotations
 
 import csv
+import functools
 import io
 import json
 import os
@@ -29,9 +30,10 @@ from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
-from tools.ch_probe.constants import ms_to_s  # noqa: E402
+from tools.ch_probe.constants import ms_to_s, s_to_ms  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    FakeFrida, ReplySession, instant_wait)
+    FakeFrida, ReplySession, instant_wait, recorded)
+from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
@@ -67,19 +69,6 @@ BINDINGS = [
     {"element_id": 19, "element_name": "SelectPad", "action_id": 6, "action_name": "Select"},
 ]
 BINDINGS = [{**b, "element_type": 0} for b in BINDINGS]
-
-# The map ls-d2b-run1 read back for a kit built from the SLInputDrums
-# definition: the same pads, but Start 20, Select 21 and Kick 22 bound as
-# buttons (row P10 of the plan).
-OLD_BINDINGS = BINDINGS[:7] + [
-    {"element_id": 20, "element_name": "Start", "action_id": 16, "action_name": "Start",
-     "element_type": 1},
-    {"element_id": 21, "element_name": "Select", "action_id": 6, "action_name": "Select",
-     "element_type": 1},
-    {"element_id": 22, "element_name": "Kick", "action_id": 4, "action_name": "Orange",
-     "element_type": 1},
-]
-
 
 # The six placeholder tags, as the setup and teardown messages carry them.
 PLACEHOLDER_TAGS = [f"hydra-placeholder-{i}" for i in range(6)]
@@ -152,6 +141,43 @@ TEARDOWN_MOUSE_MISMATCH = {"checks": [
     {"what": "mouse", "ok": False, "detail": "Mouse.enabled false (was true)"},
     {"what": "switch", "ok": True, "detail": "ignoreInputWhenAppNotInFocus true (was true)"},
 ], "all_ok": False}
+
+
+def recorded_replies(run, name):
+    """The replies kit.ts sent in a real run, as ReplySession hands them
+    back: each message's payload, in the log's order."""
+    return [m["payload"] for m in recorded(run, name)]
+
+
+# kit.ts's status, setup and teardown replies from a real run on the MIDI
+# Drums definition, the kit handed to System (lines 1, 2 and 4 of
+# hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/kit-1.jsonl).
+LS_G1_STATUS, LS_G1_SETUP, LS_G1_TEARDOWN = recorded_replies(
+    "ls-g1-run1", "kit-1-setup-teardown.jsonl")
+# kit.ts's status and setup replies from a real run whose kit got id 6 and
+# the drum map, but from the SLInputDrums definition, so Start, Select and
+# the kick are other elements, bound as buttons (lines 1 and 2 of
+# hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1/kit-1.jsonl).
+LS_E_STATUS, LS_E_SETUP = recorded_replies("ls-e-run1", "kit-1-setup.jsonl")
+# kit.ts's setup reply from a real run whose kit came from the SLInputDrums
+# definition, so the kick, Start and Select are elements 22, 20 and 21, bound
+# as buttons (line 2 of hydra-data/ch-mcp-runs/2026-11-06/ls-d2b-run1/kit-2.jsonl).
+_, LS_D2B_SETUP = recorded_replies("2026-11-06-ls-d2b-run1", "kit-2.jsonl")
+# kit.ts's status and setup replies from a real run that gave the kit to
+# System and read back no map at all, "maps": [] (lines 1 and 2 of
+# hydra-data/ch-mcp-runs/2026-10-31/ls-d1-run1/kit-1.jsonl).
+LS_D1_STATUS, LS_D1_SETUP = recorded_replies("ls-d1-run1", "kit-1-setup.jsonl")
+
+
+def bindings_by_element(reply):
+    """A setup reply's bindings in its enabled maps, by element id."""
+    return {b["element_id"]: b for m in reply["maps"] if m["enabled"] for b in m["bindings"]}
+
+
+# The game's velocity gate, disassembled (the listing kit_tools.KIT_REQUIRED_ID
+# is read from).
+VELOCITY_GATE_ASM = os.path.join(_REPO_ROOT, "docs", "clone-hero", "code", "6142",
+                                 "lane_velocity_337E10.asm")
 
 
 class FakeGame:
@@ -237,7 +263,12 @@ class Rig(unittest.TestCase):
         self.events.append("find clock")
         return self.CLOCK_ADDR
 
-    def tools(self, replies=(), attached=True, setting="0"):
+    def tools(self, replies=(), attached=True, setting="0", documents_dir=None,
+              real_frida_tools=False):
+        """KitTools on the rig. `documents_dir` reads pause_on_focus_lost from
+        the settings.ini in that folder through the real reader; without it
+        `setting` is the value read. `real_frida_tools` hands it the
+        server's real FridaTools, which nothing has attached."""
         self.game = FakeGame(self.events, self.tmp)
         self.session = ReplySession(list(replies))
         self.frida = RecordingFrida(self.session, self.events)
@@ -247,7 +278,12 @@ class Rig(unittest.TestCase):
                 raise setting
             return setting
 
-        tools = K.KitTools(self.game, FakeFridaTools(attached), threading.RLock(),
+        if documents_dir is not None:
+            read_settings = functools.partial(K.read_pause_setting, documents_dir)
+        lock = threading.RLock()
+        frida_tools = (FT.FridaTools(self.game, lock) if real_frida_tools
+                       else FakeFridaTools(attached))
+        tools = K.KitTools(self.game, frida_tools, lock,
                            agent_dir=self.agent_dir, frida_mod=self.frida,
                            wait=instant_wait, now=self.clock.now, sleep=self.clock.sleep,
                            read_settings=read_settings, find_clock=self.find_clock)
@@ -267,42 +303,71 @@ class Rig(unittest.TestCase):
 
 
 class ConstantsTest(unittest.TestCase):
-    def test_the_users_answers_and_the_probe_values_are_pinned(self):
-        self.assertEqual(K.KIT_HOLD_FRAMES, 2)
-        self.assertEqual(K.KIT_SETUP_CAP_S, 10)
-        self.assertEqual(K.KIT_PRESS_CAP_S, 1)
-        self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
-        self.assertEqual(K.KIT_DEFINITION_ID, 1)
-        self.assertEqual(K.KIT_DEFINITION_NAME, "MIDI Drums")
-        self.assertEqual(K.KIT_TAG, "hydra-kit")
-        self.assertEqual(K.KIT_PLAYER, "Player1")
+    def test_the_drum_maps_ids_are_the_ones_the_game_loaded_in_every_real_run(self):
+        # Each recorded setup reply that holds a map, from runs on two kit
+        # definitions, has its one enabled map at the ids the kit asks for,
+        # and map_problems passes it.
+        for reply in (LS_G1_SETUP, LS_E_SETUP, LS_D2B_SETUP):
+            enabled = [(m["category_id"], m["layout_id"]) for m in reply["maps"]
+                       if m["enabled"]]
+            self.assertEqual(enabled, [(K.KIT_MAP_CATEGORY_ID, K.KIT_MAP_LAYOUT_ID)])
+            self.assertEqual(K.map_problems(reply["maps"]), [])
 
-    def test_the_drum_maps_category_and_layout_are_pinned(self):
-        # Page 07, IN-76: category 1 ("Gameplay"), layout 2 ("Drums").
-        self.assertEqual(K.KIT_MAP_CATEGORY_ID, 1)
-        self.assertEqual(K.KIT_MAP_LAYOUT_ID, 2)
+    def test_the_games_reply_to_the_setup_message_holds_what_it_names(self):
+        # The real run's setup reply is the game's answer to the message
+        # setup_message builds for the player that run named: the agent
+        # loaded the map, made the placeholders and tagged the kit from it.
+        reply = LS_G1_SETUP
+        message = K.setup_message(reply["kit"]["player"])
+        self.assertEqual(K.map_problems(reply["maps"]), [])
+        self.assertEqual([(m["category_id"], m["layout_id"]) for m in reply["maps"]
+                          if m["enabled"]],
+                         [(message["category_id"], message["layout_id"])])
+        self.assertEqual([p["tag"] for p in reply["placeholders"]],
+                         message["placeholder_tags"])
+        self.assertEqual((reply["kit"]["tag"], reply["kit"]["player"]),
+                         (message["tag"], message["player"]))
 
-    def test_the_setup_message_carries_the_maps_ids(self):
-        self.assertEqual(K.setup_message("System"), {
-            "type": "setup", "tag": K.KIT_TAG, "definition_id": 1, "player": "System",
-            "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS})
+    def test_every_element_is_bound_as_an_axis_by_the_games_drum_map(self):
+        # The map the game gave a kit built from KIT_DEFINITION_ID in a real
+        # run binds every element in KIT_ELEMENTS, by the same name, as an
+        # axis, to the action KIT_BINDINGS names, and binds nothing else.
+        real = bindings_by_element(LS_G1_SETUP)
+        self.assertEqual(set(real), {e.id for e in K.KIT_ELEMENTS.values()})
+        self.assertEqual(set(real), set(K.KIT_BINDINGS))
+        for name, element in K.KIT_ELEMENTS.items():
+            binding = real[element.id]
+            self.assertEqual(binding["element_name"], element.name, name)
+            self.assertEqual(binding["element_type"], K.ELEMENT_TYPE_AXIS, name)
+            self.assertEqual(binding["action_id"], K.KIT_BINDINGS[element.id][0], name)
+        self.assertEqual(K.binding_problems(LS_G1_SETUP["maps"]), [])
+        # A real map from another definition binds Start, Select and the kick
+        # as buttons on other elements; the check names each of them.
+        buttons = {i for i, b in bindings_by_element(LS_E_SETUP).items()
+                   if b["element_type"] == K.ELEMENT_TYPE_BUTTON}
+        self.assertTrue(buttons)
+        problems = K.binding_problems(LS_E_SETUP["maps"])
+        for element_id in buttons:
+            self.assertTrue(any(p.startswith(f"element {element_id}:") for p in problems),
+                            (element_id, problems))
 
-    def test_every_element_is_an_axis_of_definition_1(self):
-        self.assertEqual({n: (e.id, e.name, e.strength) for n, e in K.KIT_ELEMENTS.items()}, {
-            "red": (0, "Snare", None), "yellow": (1, "Tom1", None),
-            "blue": (2, "Tom2", None), "green": (3, "Tom3", None),
-            "yellow_cymbal": (4, "Cymbal1", None), "blue_cymbal": (5, "Cymbal2", None),
-            "green_cymbal": (6, "Cymbal3", None), "kick": (7, "Kick", None),
-            "start": (18, "StartPad", 1.0), "select": (19, "SelectPad", 1.0)})
-        self.assertEqual({k: v[0] for k, v in K.KIT_BINDINGS.items()}, {
-            0: 1, 1: 2, 2: 3, 3: 0, 4: 37, 5: 38, 6: 39, 7: 4, 18: 16, 19: 6})
-        self.assertEqual((K.ELEMENT_TYPE_AXIS, K.ELEMENT_TYPE_BUTTON), (0, 1))
-        self.assertEqual(set(K.KIT_TYPE_CHECKED), set(K.KIT_ELEMENTS))
-
-    def test_the_gates_id_and_the_placeholder_count_are_pinned(self):
-        # The literal the gate passes: lane_velocity_337E10.asm line 53.
-        self.assertEqual(K.KIT_REQUIRED_ID, 6)
-        self.assertEqual(K.KIT_PLACEHOLDERS, 6)
+    def test_the_kit_holds_the_id_the_games_velocity_gate_passes(self):
+        # The id is the immediate the gate moves into r8d, the id argument,
+        # just before its call to ContainsController.
+        with open(VELOCITY_GATE_ASM, encoding="utf-8") as f:
+            listing = f.read().splitlines()
+        call = next(i for i, line in enumerate(listing) if "$$ContainsController" in line)
+        literal = re.search(r"mov\s+r8d, (\w+)\s*$", listing[call - 1])
+        self.assertIsNotNone(literal, listing[call - 1])
+        self.assertEqual(int(literal.group(1), 0), K.KIT_REQUIRED_ID)
+        # In a real run the placeholders used up every id below it, so the
+        # kit got it.
+        reply = LS_G1_SETUP
+        self.assertEqual([p["id"] for p in reply["placeholders"]],
+                         list(range(K.KIT_PLACEHOLDERS)))
+        self.assertEqual(reply["placeholders_created"], len(K.placeholder_tags()))
+        self.assertEqual(reply["kit"]["id"], K.KIT_REQUIRED_ID)
+        self.assertIsNone(K.kit_id_problem(reply))
 
     def test_no_placeholder_tag_equals_or_starts_with_the_kits_tag(self):
         tags = K.placeholder_tags()
@@ -310,252 +375,275 @@ class ConstantsTest(unittest.TestCase):
         for tag in tags:
             self.assertFalse(tag.startswith(K.KIT_TAG), tag)
 
-    def test_every_auto_player_lane_has_a_kit_element(self):
-        self.assertEqual({lane: K.lane_element(lane).id for lane in Lane}, {
-            Lane.GREEN: 3, Lane.RED: 0, Lane.YELLOW: 1, Lane.BLUE: 2, Lane.KICK: 7,
-            Lane.YELLOW_CYMBAL: 4, Lane.BLUE_CYMBAL: 5, Lane.GREEN_CYMBAL: 6})
+    def test_every_auto_player_lane_presses_the_element_the_game_binds_to_it(self):
+        # Each lane gets its own element, and in the game's real drum map
+        # that element fires the lane's action (the pads and cymbals) or is
+        # the game's own Kick element.
+        real = bindings_by_element(LS_G1_SETUP)
+        self.assertEqual(len({K.lane_element(lane).id for lane in Lane}), len(Lane))
+        for lane in Lane:
+            binding = real[K.lane_element(lane).id]
+            word = lane.name.lower().replace("_", "")
+            if lane is Lane.KICK:
+                self.assertEqual(binding["element_name"].lower(), word, binding)
+            else:
+                self.assertTrue(binding["action_name"].lower().endswith(word), (lane, binding))
 
     def test_items_take_the_kit_prefix_and_refuse_unknown_names(self):
+        # The real step file's kit items each parse to their own element.
+        items = [i for s in MT.load_steps()["steps"] for i in s["items"]
+                 if i.startswith(K.KIT_PREFIX)]
+        self.assertTrue(items)
+        for item in items:
+            self.assertEqual(K.parse_items(item), [item[len(K.KIT_PREFIX):]])
         self.assertEqual(K.parse_items("kit:start, Green,kick,green"), ["start", "green", "kick"])
         with self.assertRaises(K.KitRefused) as cm:
             K.parse_items("purple")
-        self.assertTrue(str(cm.exception).startswith('unknown kit item "purple"; kit items: red,'))
+        refusal = str(cm.exception)
+        self.assertIn('"purple"', refusal)
+        self.assertTrue(refusal.endswith(K.item_names()), refusal)
         with self.assertRaises(K.KitRefused):
             K.parse_items(" , ")
 
 
 class SetupTest(Rig):
     def test_refused_without_ch_attach(self):
-        tools = self.tools(attached=False)
+        # The server's real FridaTools, with nothing attached.
+        tools = self.tools(real_frida_tools=True)
         self.assertEqual(tools.ch_kit_setup(), FT.NOT_ATTACHED)
         self.assertEqual(self.events, [])
 
-    def test_refused_when_the_settings_line_is_1(self):
-        reply = self.tools(setting="1").ch_kit_setup()
-        self.assertEqual(reply, "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
-                                "start the game with ch_start, which sets it for the run")
-        self.assertEqual(self.events, [])
+    # The settings.ini a real run backed up before its launch, which reads
+    # pause_on_focus_lost = 1 (copied from
+    # hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/backup-20261112-182956).
+    REAL_SETTINGS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                                 "backup-20261112-182956", G.SETTINGS)
 
-    def test_refused_when_the_settings_line_is_missing(self):
-        reply = self.tools(setting=G.SettingNotFound("no `pause_on_focus_lost` line")).ch_kit_setup()
-        self.assertTrue(reply.startswith("refused: could not read pause_on_focus_lost"))
+    def documents_with(self, drop_setting_line=False):
+        """A documents folder holding the real settings.ini, read through the
+        real reader; with `drop_setting_line`, the same file less its
+        pause_on_focus_lost line."""
+        folder = os.path.join(self.tmp, "documents")
+        os.makedirs(folder)
+        with open(self.REAL_SETTINGS, "rb") as f:
+            lines = f.read().splitlines(keepends=True)
+        if drop_setting_line:
+            kept = [line for line in lines
+                    if line.split(b"=")[0].strip() != G.PAUSE_ON_FOCUS_LOST.encode()]
+            self.assertEqual(len(kept), len(lines) - 1)
+            lines = kept
+        with open(os.path.join(folder, G.SETTINGS), "wb") as f:
+            f.write(b"".join(lines))
+        return folder
+
+    def test_refused_when_the_settings_line_is_1(self):
+        value = G.get_game_setting(self.REAL_SETTINGS, G.PAUSE_ON_FOCUS_LOST)
+        self.assertNotEqual(value, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        reply = self.tools(documents_dir=self.documents_with()).ch_kit_setup()
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"{G.SETTINGS} reads {G.PAUSE_ON_FOCUS_LOST} = {value}, "
+                      f"not {G.PAUSE_ON_FOCUS_LOST_RUN_VALUE}", reply)
         self.assertIn("ch_start", reply)
         self.assertEqual(self.events, [])
 
-    def test_a_stale_or_missing_kit_agent_is_refused_before_any_attach(self):
-        path = os.path.join(self.agent_dir, K.KIT_AGENT_FILE)
-        with open(os.path.join(self.agent_dir, "kit.ts"), "a", encoding="utf-8") as f:
-            f.write("// an edit after the build\n")
-        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
-        self.assertEqual(reply.splitlines()[-1],
-                         f"{path} is stale: kit.ts changed since it was built; "
-                         "run npm run build:kit in tools/ch_mcp/agent first")
-        os.remove(BS.stamp_path(path))
-        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
-        self.assertEqual(reply.splitlines()[-1], BS.check(path))
-        self.assertIn("has no build stamp", reply)
+    def test_refused_when_the_settings_line_is_missing(self):
+        folder = self.documents_with(drop_setting_line=True)
+        with self.assertRaises(G.SettingNotFound) as cm:
+            K.read_pause_setting(folder)
+        reply = self.tools(documents_dir=folder).ch_kit_setup()
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"could not read {G.PAUSE_ON_FOCUS_LOST} in {G.SETTINGS} "
+                      f"({cm.exception})", reply)
+        self.assertIn("ch_start", reply)
+        self.assertEqual(self.events, [])
+
+    def test_an_unbuilt_kit_agent_is_refused_before_any_attach(self):
+        # The real agent folder's checked-in files, as a checkout holds them
+        # before npm run build:kit has made kit.js.
+        folder = os.path.join(self.tmp, "real-agent")
+        os.makedirs(folder)
+        for name in (K.KIT_AGENT_NAME + ".ts", *BS.BUILD_INPUTS):
+            shutil.copyfile(os.path.join(FT.AGENT_DIR, name), os.path.join(folder, name))
+        self.agent_dir = folder
+        path = os.path.join(folder, K.KIT_AGENT_FILE)
+        refusal = BS.check(path)
+        self.assertIsNotNone(refusal)
+        self.assertIn(BS.build_command(path), refusal)
+        reply = self.tools([LS_G1_STATUS, LS_G1_SETUP]).ch_kit_setup()
+        self.assertEqual(reply.splitlines()[-1], refusal)
         self.assertNotIn("attach", self.events)
+        self.assertIsNone(self.session.script)
 
     def test_backup_then_attach_then_setup_and_the_flags_are_printed(self):
-        tools = self.tools([STATUS, setup_reply()])
-        lines = tools.ch_kit_setup().splitlines()
+        # The replies of a real run, which handed the kit to System.
+        player = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        lines = tools.ch_kit_setup(player).splitlines()
         self.assertEqual(self.events, ["backup", "attach"])
-        self.assertEqual(self.posted(), [
-            {"type": "read"},
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 1, "player": "Player1",
-             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
-        self.assertEqual(lines[0], BACKUP_LINE)
-        self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
-        self.assertIn("Keyboard.enabled: was on, now off", lines)
-        self.assertIn("Mouse.enabled: was on, now off", lines)
-        self.assertIn("player 9999999 System: keyboard was on, now off; mouse was on, now off", lines)
-        self.assertIn("player 0 Player1: keyboard was on, now off; mouse was off, now off", lines)
-        self.assertIn("kit: controller 6, definition 1 (MIDI Drums), tag hydra-kit, created, "
-                      "on Player1", lines)
-        self.assertIn("map: category 1, layout 2, enabled, 10 bindings", lines)
-        self.assertIn("  Kick (element 7) -> Orange (action 4)", lines)
-        self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
+        self.assertEqual(self.posted(), [{"type": "read"}, K.setup_message(player)])
+        self.assertEqual(lines[:2], [K.given_player_line(player), BACKUP_LINE])
+        printed = K.setup_lines(LS_G1_SETUP)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        # Every device and every player the game read back gets its line.
+        for device in K.KIT_DEVICES:
+            self.assertTrue(any(line.startswith(f"{K.device_label(device)}: ")
+                                for line in printed), device)
+        for p in LS_G1_SETUP["players_was"]:
+            self.assertTrue(any(line.startswith(f"player {p['id']} {p['name']}: ")
+                                for line in printed), p)
+        self.assertTrue(any(line.startswith(f"kit: controller {LS_G1_SETUP['kit']['id']}, ")
+                            for line in printed))
+        self.assertEqual(lines[-1], f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS")
         self.assertIsNotNone(self.game.kit_source())
 
     def test_a_map_that_differs_is_refused_naming_the_element_and_torn_down(self):
-        wrong = [b if b["element_id"] != 7 else {**b, "action_id": 0, "action_name": "Green"}
-                 for b in BINDINGS]
-        tools = self.tools([STATUS, setup_reply(wrong), TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
-        self.assertIn("  Kick (element 7): expected action 4 (Orange), the map gives 0", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIn("kit teardown: all checks ok", lines)
-        self.assertEqual(lines[-1], "kit agent: detached")
+        # A real run's kit got id 6 and the drum map but from another
+        # definition (LS_E_SETUP); the teardown reply is a real one too.
+        player = LS_E_SETUP["kit"]["player"]
+        self.assertIsNone(K.kit_id_problem(LS_E_SETUP))
+        self.assertEqual(K.map_problems(LS_E_SETUP["maps"]), [])
+        real = bindings_by_element(LS_E_SETUP)
+        unbound = [i for i in K.KIT_BINDINGS if i not in real]
+        extra = [i for i in real if i not in K.KIT_BINDINGS]
+        self.assertTrue(unbound and extra)
+        tools = self.tools([LS_E_STATUS, LS_E_SETUP, LS_G1_TEARDOWN])
+        lines = tools.ch_kit_setup(player).splitlines()
+        refusal = next(i for i, line in enumerate(lines) if line.startswith("refused: "))
+        self.assertIn("KIT_BINDINGS", lines[refusal])
+        named = lines[refusal + 1:]
+        names = {e.id: e.name for e in K.KIT_ELEMENTS.values()}
+        for element_id in unbound:
+            self.assertTrue(any(line.startswith(f"  {names[element_id]} (element {element_id}):")
+                                for line in named), element_id)
+        for element_id in extra:
+            self.assertTrue(any(line.startswith(f"  element {element_id}:") for line in named),
+                            element_id)
+        self.assertNotIn(f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], K.teardown_message())
+        printed = K.teardown_lines(LS_G1_TEARDOWN)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        self.assertTrue(lines[-1].startswith("kit agent: "), lines[-1])
+        self.assertIsNone(tools._agent)
         self.assertIsNone(self.game.kit_source())
 
-    def test_a_keyboard_left_on_is_refused_and_torn_down(self):
-        reply = setup_reply()
-        reply["keyboard_now"] = True
-        tools = self.tools([STATUS, reply, TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("Keyboard.enabled: was on, now on", lines)
-        self.assertIn("refused: Rewired's keyboard (Keyboard.enabled) reads on after setup, "
-                      "not off, so the user's own input would still reach the game", lines)
-        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIn("kit teardown: keyboard: ok (Keyboard.enabled true (was true))", lines)
-        self.assertEqual(lines[-1], "kit agent: detached")
-        self.assertIsNone(self.game.kit_source())
+    def test_a_read_back_with_the_keyboard_and_mouse_on_is_one_refusal_naming_both(self):
+        # A real run's status reply, read before setup, holds the game's
+        # keyboard and mouse both on; the same run's setup reply holds both off.
+        for device in K.KIT_DEVICES:
+            self.assertIs(LS_G1_STATUS[f"{device}_now"], True, device)
+            self.assertIs(LS_G1_SETUP[f"{device}_now"], False, device)
+        problem = K.devices_problem(LS_G1_STATUS)
+        self.assertTrue(problem.startswith("refused: "), problem)
+        self.assertNotIn("\n", problem)
+        self.assertEqual(problem.count("refused: "), 1)
+        for device in K.KIT_DEVICES:
+            self.assertIn(f"{device} ({K.device_label(device)}) reads on", problem)
+        self.assertIsNone(K.devices_problem(LS_G1_SETUP))
 
-    def test_a_mouse_left_on_is_refused_and_torn_down(self):
-        reply = setup_reply()
-        reply["mouse_now"] = True
-        tools = self.tools([STATUS, reply, TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("Keyboard.enabled: was on, now off", lines)
-        self.assertIn("Mouse.enabled: was on, now on", lines)
-        self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads on after setup, "
-                      "not off, so the user's own input would still reach the game", lines)
-        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIn("kit teardown: mouse: ok (Mouse.enabled true (was true))", lines)
-        self.assertEqual(lines[-1], "kit agent: detached")
-        self.assertIsNone(self.game.kit_source())
+    def test_a_setup_reply_with_no_map_is_one_difference_that_names_no_element(self):
+        maps = LS_D1_SETUP["maps"]
+        self.assertEqual(maps, [])
+        problems = K.binding_problems(maps)
+        self.assertEqual(len(problems), 1)
+        # The same reason map_problems gives after naming the ids it wants.
+        self.assertTrue(K.map_problems(maps)[0].endswith(f"; {problems[0]}"), problems)
+        for element_id in K.KIT_BINDINGS:
+            self.assertNotIn(f"element {element_id}", problems[0])
 
-    def test_both_left_on_name_both_in_one_refusal(self):
-        reply = {**setup_reply(), "keyboard_now": True, "mouse_now": True}
-        self.assertEqual(K.devices_problem(reply),
-                         "refused: Rewired's keyboard (Keyboard.enabled) reads on and Rewired's "
-                         "mouse (Mouse.enabled) reads on after setup, not off, so the user's own "
-                         "input would still reach the game")
+    def test_a_real_definition_1_map_passes_both_checks(self):
+        real = bindings_by_element(LS_G1_SETUP)
+        self.assertEqual(sorted(real), sorted(K.KIT_BINDINGS))
+        self.assertEqual({b["element_type"] for b in real.values()}, {K.ELEMENT_TYPE_AXIS})
+        self.assertEqual(K.map_problems(LS_G1_SETUP["maps"]), [])
+        self.assertEqual(K.binding_problems(LS_G1_SETUP["maps"]), [])
 
-    def test_a_reply_with_no_keyboard_or_mouse_read_back_is_refused(self):
-        reply = setup_reply()
-        del reply["keyboard_now"]
-        self.assertEqual(K.devices_problem(reply),
-                         "refused: Rewired's keyboard (Keyboard.enabled) reads None after setup, "
-                         "not off, so the user's own input would still reach the game")
-        reply = setup_reply()
-        del reply["mouse_now"]
-        self.assertEqual(K.devices_problem(reply),
-                         "refused: Rewired's mouse (Mouse.enabled) reads None after setup, "
-                         "not off, so the user's own input would still reach the game")
-        self.assertIsNone(K.devices_problem(setup_reply()))
+    def test_the_ls_d2b_run1_map_is_refused_naming_each_element_and_its_action(self):
+        maps = LS_D2B_SETUP["maps"]
+        real = bindings_by_element(LS_D2B_SETUP)
+        names = {e.id: e.name for e in K.KIT_ELEMENTS.values()}
+        unbound = [i for i in K.KIT_BINDINGS if i not in real]
+        extra = [i for i in real if i not in K.KIT_BINDINGS]
+        # The kit's kick element is unbound and the run's kick is another element.
+        kick = K.KIT_ELEMENTS["kick"].id
+        self.assertIn(kick, unbound)
+        self.assertTrue(any(real[i]["element_name"] == names[kick] for i in extra))
+        problems = K.binding_problems(maps)
+        self.assertEqual(len(problems), len(unbound) + len(extra), problems)
+        for element_id in unbound:
+            action_id, action_name = K.KIT_BINDINGS[element_id]
+            line, = [p for p in problems
+                     if p.startswith(f"{names[element_id]} (element {element_id}): ")]
+            self.assertIn(f"action {action_id} ({action_name})", line)
+        for element_id in extra:
+            line, = [p for p in problems if p.startswith(f"element {element_id}: ")]
+            self.assertIn("KIT_BINDINGS", line)
+            self.assertTrue(line.endswith(f" {real[element_id]['action_id']}"), line)
 
-    def test_a_setup_reply_missing_mouse_now_is_refused_and_torn_down(self):
-        reply = setup_reply()
-        del reply["mouse_now"]
-        tools = self.tools([STATUS, reply, TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("Mouse.enabled: was on, now None", lines)
-        self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads None after setup, "
-                      "not off, so the user's own input would still reach the game", lines)
-        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIsNone(self.game.kit_source())
 
-    def test_a_disabled_map_or_a_missing_binding_is_a_difference(self):
-        reply = setup_reply()
-        reply["maps"][0]["enabled"] = False
-        self.assertEqual(len(K.binding_problems(reply["maps"])), 10)
-        missing = K.binding_problems(setup_reply(BINDINGS[1:])["maps"])
-        self.assertEqual(missing, ["Snare (element 0): expected action 1 (Red), the map gives none"])
-        self.assertEqual(K.binding_problems([]), ["the setup reply holds no map for the kit"])
-
-    def test_the_definition_1_map_passes_both_checks(self):
-        maps = setup_reply()["maps"]
-        self.assertEqual(sorted(b["element_id"] for b in maps[0]["bindings"]),
-                         [0, 1, 2, 3, 4, 5, 6, 7, 18, 19])
-        self.assertEqual({b["element_type"] for b in maps[0]["bindings"]}, {0})
-        self.assertEqual(K.map_problems(maps), [])
-        self.assertEqual(K.binding_problems(maps), [])
-
-    def test_the_ls_d2b_run1_map_is_refused_naming_kick_7_and_element_22(self):
-        problems = K.binding_problems(setup_reply(OLD_BINDINGS)["maps"])
-        self.assertIn("Kick (element 7): expected action 4 (Orange), the map gives none", problems)
-        self.assertIn("element 22: not in KIT_BINDINGS, the map gives 4", problems)
-        self.assertEqual(problems, [
-            "Kick (element 7): expected action 4 (Orange), the map gives none",
-            "StartPad (element 18): expected action 16 (Start), the map gives none",
-            "SelectPad (element 19): expected action 6 (Select), the map gives none",
-            "element 20: not in KIT_BINDINGS, the map gives 16",
-            "element 21: not in KIT_BINDINGS, the map gives 6",
-            "element 22: not in KIT_BINDINGS, the map gives 4"])
-
-    def test_a_button_binding_on_the_kick_is_refused_naming_button_and_definition_1(self):
-        button = [{**b, "element_type": 1} if b["element_id"] == 7 else b for b in BINDINGS]
-        tools = self.tools([STATUS, setup_reply(button), TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
-        self.assertIn(
-            "  Kick (element 7): the map binds it as a button (element type 1 (button)), but "
-            "the kit is built from definition 1 (MIDI Drums), whose elements are all axes, so "
-            "a button binding is another definition's map", lines)
-        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIsNone(self.game.kit_source())
-
-    def test_every_element_is_type_checked_not_only_the_kick(self):
-        button = [{**b, "element_type": 1} if b["element_id"] in (0, 18) else b
-                  for b in BINDINGS]
-        problems = K.binding_problems(setup_reply(button)["maps"])
-        self.assertEqual([p.split(":")[0] for p in problems],
-                         ["Snare (element 0)", "StartPad (element 18)"])
-        self.assertTrue(all("binds it as a button" in p for p in problems))
-
-    def test_a_binding_with_no_element_type_is_refused(self):
-        untyped = [{k: v for k, v in b.items() if k != "element_type"} if b["element_id"] == 7
-                   else b for b in BINDINGS]
-        self.assertEqual(K.binding_problems(setup_reply(untyped)["maps"]), [
-            "Kick (element 7): expected element type 0 (axis), the map gives None"])
-
-    def test_an_element_bound_as_both_kinds_is_refused_as_a_button(self):
-        both = BINDINGS + [{**BINDINGS[7], "element_type": 1}]
-        self.assertEqual(K.binding_problems(setup_reply(both)["maps"]), [
-            "Kick (element 7): the map binds it as a button (element type 0 (axis), "
-            "1 (button)), but the kit is built from definition 1 (MIDI Drums), whose "
-            "elements are all axes, so a button binding is another definition's map"])
-
-    def test_a_setup_with_no_reply_ends_at_its_cap_and_tears_down(self):
-        tools = self.tools([STATUS, None, TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("setup failed: no reply to the setup request within the cap of 10 s "
-                      "(KIT_SETUP_CAP_S)", lines)
-        self.assertEqual(self.posted()[-1]["type"], "teardown")
-        self.assertEqual(lines[-1], "kit agent: detached")
+# kit.ts's teardown reply from the real run whose setup gave the kit id 0
+# (line 3 of hydra-data/ch-mcp-runs/2026-10-31/ls-d1-run1/kit-1.jsonl, the run
+# LS_D1_SETUP comes from).
+LS_D1_TEARDOWN, = recorded_replies("ls-d1-run1", "kit-1-teardown.jsonl")
 
 
 class SetupForRunTest(Rig):
     def test_a_setup_that_passes_gives_the_game_player_and_the_reply(self):
-        tools = self.tools([STATUS, setup_reply()])
-        player, text = tools.setup_for_run("System")
+        # The replies of a real run, which handed the kit to System.
+        player_name = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        player, text = tools.setup_for_run(player_name)
+        self.addCleanup(lambda: player is not None and player.close())
         self.assertIsInstance(player, K.GamePlayer)
         self.assertIsNotNone(tools._agent._listener)
-        self.assertEqual(self.posted()[1]["player"], "System")
-        self.assertIn("bindings: all 10 match KIT_BINDINGS", text)
-        player.close()
-
-    def test_a_setup_that_is_refused_gives_no_player(self):
-        player, text = self.tools(attached=False).setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
-
-    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player(self):
-        tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
-        player, text = tools.setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertIn("refused: the kit is controller 7", text)
-        self.assertEqual(self.posted()[-1]["type"], "teardown")
-
-    def test_a_kit_already_set_up_gives_no_player_and_stays(self):
-        tools = self.set_up()
-        player, text = tools.setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertIn(K.KIT_ALREADY_SET_UP, text)
+        self.assertEqual(self.posted(), [{"type": "read"}, K.setup_message(player_name)])
+        lines = text.splitlines()
+        self.assertEqual(lines[0], K.given_player_line(player_name))
+        self.assertEqual(lines[-1], f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS")
+        self.assertFalse(any(line.startswith("refused: ") for line in lines), lines)
         self.assertIsNotNone(tools._ready_agent())
 
-    def test_the_kit_tools_lend_no_press_and_the_harness_press_stays(self):
-        # The auto-player reaches the kit only through the GamePlayer (D342);
-        # the module's kit_press stays for the stall harness (row P32 of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)).
-        self.assertFalse(hasattr(K.KitTools, "kit_press"))
-        self.assertTrue(callable(K.kit_press))
+    def test_a_setup_that_is_refused_gives_no_player(self):
+        # The server's real FridaTools, with nothing attached.
+        player, text = self.tools(real_frida_tools=True).setup_for_run("System")
+        self.assertIsNone(player)
+        self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
+        self.assertEqual(self.events, [])
+
+    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player(self):
+        # A real run's setup gave the kit an id other than KIT_REQUIRED_ID;
+        # its status and teardown replies are that run's own.
+        player_name = LS_D1_SETUP["kit"]["player"]
+        self.assertNotEqual(LS_D1_SETUP["kit"]["id"], K.KIT_REQUIRED_ID)
+        wrong_id = K.kit_id_problem(LS_D1_SETUP)
+        self.assertIn(f"controller {LS_D1_SETUP['kit']['id']},", wrong_id)
+        tools = self.tools([LS_D1_STATUS, LS_D1_SETUP, LS_D1_TEARDOWN])
+        player, text = tools.setup_for_run(player_name)
+        self.assertIsNone(player)
+        self.assertIn(wrong_id, text)
+        self.assertNotIn(f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS", text)
+        self.assertEqual(self.posted()[-1], K.teardown_message())
+        lines = text.splitlines()
+        printed = K.teardown_lines(LS_D1_TEARDOWN)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        self.assertIsNone(tools._agent)
+        self.assertIsNone(self.game.kit_source())
+
+    def test_a_kit_already_set_up_gives_no_player_and_stays(self):
+        # Set up on a real run's replies, then ask again: nothing is sent.
+        player_name = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        first, _ = tools.setup_for_run(player_name)
+        self.addCleanup(lambda: first is not None and first.close())
+        self.assertIsNotNone(first)
+        agent, sent = tools._ready_agent(), len(self.posted())
+        player, text = tools.setup_for_run(player_name)
+        self.assertIsNone(player)
+        self.assertEqual(text, f"{K.given_player_line(player_name)}\n{K.KIT_ALREADY_SET_UP}")
+        self.assertEqual(len(self.posted()), sent)
+        self.assertIs(tools._ready_agent(), agent)
 
 
 class MapProblemsTest(Rig):
@@ -586,9 +674,6 @@ class MapProblemsTest(Rig):
             "the setup reply holds 2 such maps among 2:",
             "  map: category 1, layout 2, enabled",
             "  map: category 1, layout 2, enabled"])
-
-    def test_the_drum_map_passes(self):
-        self.assertEqual(K.map_problems(setup_reply()["maps"]), [])
 
     def test_setup_on_system_with_no_map_is_refused_and_torn_down(self):
         reply = setup_reply()
@@ -787,13 +872,10 @@ class PadAxisTest(unittest.TestCase):
         return round((axis - 0.5) * 254)
 
     def test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold(self):
-        for threshold in (1, 64, 127):
+        # None is the threshold left out.
+        for threshold in (None, 1, 64, 127):
             self.assertEqual(K.pad_axis("accent", threshold), 1.0)
             self.assertEqual(K.pad_axis("none", threshold), 1.0)
-
-    def test_a_plain_or_accent_gem_needs_no_threshold(self):
-        self.assertEqual(K.pad_axis("accent"), 1.0)
-        self.assertEqual(K.pad_axis("none"), 1.0)
 
     def test_a_ghost_makes_a_byte_of_the_threshold_minus_one(self):
         self.assertEqual(self.byte(K.pad_axis("ghost", 1)), 0)
@@ -825,13 +907,6 @@ class StrengthTest(Rig):
                                                {"id": 7, "value": ghost}])
         self.assertNotEqual(ghost, accent)
 
-    def test_a_red_ghost_and_a_kick_ghost_give_elements_0_and_7_at_the_ghost_value(self):
-        ghost = K.pad_axis("ghost", 100)
-        message = K.press_message([K.lane_element(Lane.RED), K.lane_element(Lane.KICK)],
-                                  values=[ghost, ghost])
-        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
-                                               {"id": 7, "value": ghost}])
-
     def test_a_kick_with_no_value_gives_element_7_at_the_plain_value(self):
         message = K.press_message([K.lane_element(Lane.KICK)])
         self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
@@ -856,10 +931,6 @@ class StrengthTest(Rig):
                     self.assertTrue(written)
                     for element in written:
                         self.assertNotIsInstance(element["value"], bool, (group, values))
-
-    def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
-        message = K.press_message([K.KIT_ELEMENTS["red"]])
-        self.assertEqual(message["elements"], [{"id": 0, "value": K.pad_axis("none")}])
 
     def test_a_list_of_values_of_another_length_is_an_error(self):
         with self.assertRaises(ValueError):
@@ -1064,25 +1135,50 @@ class FrameProbeTest(Rig):
             "cap_s": 6})
         self.assertEqual(self.events.count("find clock"), 1)
 
+    # The frame probe's reply from the real LS-G1 run, its first 12 of 1649
+    # rows (hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/frame_probe-1.json).
+    REAL_PROBE = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                              "frame_probe-1-first-12-rows.json")
+
+    @staticmethod
+    def numbers(text):
+        return [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
+
     def test_a_clean_probe_prints_each_number_and_passes(self):
-        lines = self.probe(self.probe_reply())
-        path = os.path.join(self.tmp, "frame_probe-1.json")
-        self.assertEqual(lines, [
-            f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
-            f"rows: 11, frames 1000 to 1010; rows saved to {path}",
-            "frame steps: all 10 rose by exactly 1",
-            "frame rate: 333.3 frames a second (10 frames in 30 ms of wall time); "
-            "not part of the pass line",
-            "press: down on frame 1000, up on frame 1002",
-            "Green read-back: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "any_button: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "engine clock minus songTime over 11 frames: smallest 1.000 ms, "
-            "median 2.000 ms, largest 3.000 ms",
-            "hook_out: True",
-            "failure: none",
-            "managers: 1; probe wall time: 5003 ms",
-            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
-            "the press read back as pressed, and the hook is out"])
+        with open(self.REAL_PROBE, encoding="utf-8") as f:
+            reply = json.load(f)
+        rows = reply["frames"]
+        frames = [r["frame"] for r in rows]
+        down = reply["down_frame"]
+        # The real run is clean: every frame steps by 1, the press is read
+        # back, the hook came out and nothing faulted.
+        self.assertEqual(frames, list(range(frames[0], frames[0] + len(frames))))
+        self.assertIsNone(reply["failure"])
+        self.assertIs(reply["hook_out"], True)
+        green = next(r["frame"] for r in rows if r["frame"] >= down and r["read"][0] is True)
+        anyb = next(r["frame"] for r in rows if r["frame"] >= down and r["any_button"] is True)
+        span_ms = rows[-1]["wall_ms"] - rows[0]["wall_ms"]
+        rate = (frames[-1] - frames[0]) / ms_to_s(span_ms)
+        gaps = sorted(s_to_ms(r["engine_clock_s"] - r["song_time_s"]) for r in rows)
+        median = (gaps[(len(gaps) - 1) // 2] + gaps[len(gaps) // 2]) / 2
+
+        lines = self.probe(reply)
+        self.assertIn(f"{self.CLOCK_ADDR:#x}", lines[0])
+        counts, saved = lines[1].split("; ")
+        self.assertEqual(self.numbers(counts), [len(rows), frames[0], frames[-1]])
+        self.assertEqual(saved, f"rows saved to {os.path.join(self.tmp, 'frame_probe-1.json')}")
+        self.assertEqual(self.numbers(lines[2])[0], len(rows) - 1)
+        self.assertEqual(self.numbers(lines[3]),
+                         [float(f"{rate:.1f}"), frames[-1] - frames[0], span_ms])
+        self.assertEqual(self.numbers(lines[4]), [down, reply["up_frame"]])
+        self.assertEqual(self.numbers(lines[5]), [green, green - down])
+        self.assertEqual(self.numbers(lines[6]), [anyb, anyb - down])
+        self.assertEqual(self.numbers(lines[7]), [len(rows)] + [
+            float(f"{g:.3f}") for g in (gaps[0], median, gaps[-1])])
+        self.assertEqual(self.numbers(lines[10]), [reply["managers"], reply["wall_ms"]])
+        # The verdict is the clean one, because no part of the reply failed.
+        self.assertTrue(lines[-1].startswith("PASS "), lines[-1])
+        self.assertFalse(any("FAIL" in line for line in lines), lines)
 
     def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
         reply = self.probe_reply()

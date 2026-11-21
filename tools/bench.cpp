@@ -141,9 +141,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
 }
 
 // One library row as the JSON both --dump and --dump-db write, so a scan's dump
-// and a database's dump diff clean. Paths are written as the scan snapshot
-// keys them (relative_slash_path under `rel`, which may be empty), so dumps
-// also compare across machines.
+// and a database's dump diff clean. Paths are written as
+// relative_slash_path (core/strutil.h) keys them, under `rel` (which may be
+// empty), so dumps also compare across machines.
 static nlohmann::json row_json(const std::string& notespath, const std::string& rootfolder,
                                const std::string& md5, const std::string& title,
                                const std::string& artist, const std::string& charter,

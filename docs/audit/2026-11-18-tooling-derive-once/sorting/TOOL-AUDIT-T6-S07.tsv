@@ -1,0 +1,44 @@
+id	verdict	category	theme	sides	why
+L-F19-01	CONFIRMED	Q	holding the merge on findings	one-reviewer-rule-d107.md:11 (memory) says do not hold; derive-once-review.md:106 holds for kind H, kind D, Holds-the-merge notes; doc-review.md:98 holds nothing	Memory vs DOR vs DR disagree on holding the merge, with no code behind either and no Confirmed line naming both sides.
+L-F19-02	CONFIRMED	A	none	integrate.md:54 'keys a review on the exact tree, any later commit voids it' vs review_rules.py:233-246 _carries and derive-once-review.md:191 (clean merge of main passes)	The prose says any later commit voids a review but the hook carries a conflict-free merge of main.
+L-F19-03	CONFIRMED	A	none	ui-testing.md:145,147 list 12 report-window tests vs tests/ui/uitest_report_windows.cpp holding 24 names	The page lists two groups as the full set while the test file registers 12 more.
+L-F19-04	CONFIRMED-CHANGED	B	none	one-reviewer-rule-d107.md:15 (memory) says cap is 150 with no 100/20 wrap-up point vs progress.py:12-14 and reviewer.md:11	Only split is a memory note omitting the warning point; the writer-brief.md:101 path is a row mismatch, not a split.
+L-F19-05	CONFIRMED	A	none	derive-once-review.md:151,202, doc-review.md:29, reviewer.md:33 'every markdown file' vs agent_stop.py:163 DOC_SUFFIXES (.md,.html,.htm)	Four prose copies name a narrower file set than the code fingerprints.
+L-F19-06	CONFIRMED-CHANGED	Q	merge-of-main carry rule	review_rules.py:233-246 _carries (scans for a passing commit) vs ref_judge.py:305-316 made_from_existing (two parents, no pass check)	Two code places decide the carry differently and the ref_judge comment overstates that they match.
+L-F19-07	CONFIRMED	A	none	doc-review.md:21 'nobody computes or types a key' then 'waive doc-review <key>' vs publish_gate.py:107 and review_rules.py:26-28 which require a typed hex key	The page contradicts itself about a typed key and the code does require one; no behaviour split.
+L-F19-08	CONFIRMED	A	none	ui-testing.md:10-11 real-app check only for visual cases, cleared by 'still owed' vs review_rules.py:428-437 any non-comment src/ui change needs record or typed waiver	The page says one thing and the hook enforces a wider rule (the page also states it at :235).
+L-F19-09	CONFIRMED	P	none	none	One home (clone-hero-mcp.md:31) with no disagreement; the fix is only to add a check or leave the doc.
+L-F19-10	CONFIRMED	P	none	none	Owner publish_gate.py:13-14 and copies agree; the rest are pointers with no split.
+L-F19-11	CONFIRMED-CHANGED	P	none	none	Matcher and check() name the same two tools; the code skips more than the row said but nothing disagrees.
+L-F19-12	CONFIRMED-CHANGED	Q	plan review scope	plans-reviewed-before-shown.md (memory) 'every plan before user sees it, in chat too' vs doc-review.md:17 'committed plans are not gated' and publish_gate.py:110-113	Memory, doc and gate disagree on which plans get reviewed and no hook covers pasted plans.
+L-F19-13	CONFIRMED	P	none	none	'None between the sign-off homes'; agent_stop.py and prose agree, only copies.
+L-F19-14	CONFIRMED-CHANGED	Q	merge test command spellings	integrate.md:43-44 '-tc=single-owner*', '-sf=*docs_match_code*' vs agent-rules.md:7 '-tc=docs match code*', '-sf=*single_owner*'; MEMORY.md:20 vs its note	Two docs spell the same test filters differently and a memory index line differs too; whether the integrate.md filter matches a real case is unrun.
+L-F19-15	CONFIRMED	P	none	none	'None between homes'; ruling_rules.py and prose agree, only copies and an unbacked date.
+L-F19-16	CONFIRMED	P	none	none	The public-page lists agree today; copies only.
+L-F19-17	CONFIRMED	C	none	H .derive-once-gate and .doc-review-gate name hooks\lib\*.ps1 vs live owner gates\review_rules.py:18-22	Two marker files cite hook files that no longer exist and the current owner is clear.
+L-F19-18	CONFIRMED	P	none	none	'None stated' for splits; kinds list and deny lines agree where read, copies only.
+L-F19-19	CONFIRMED	P	none	none	Docs and code agree on the allow phrases; only copies.
+L-F19-20	NOT VERIFIED	P	none	none	Single-home rows and agreeing copies with no verified split; second round confirmed the items it opened.
+L-F19-21	CONFIRMED	Q	banned phrase lists	public-doc-style.md:31 nine throat-clearing phrases vs ~/.claude/CLAUDE.md:5 three phrases	Two docs list banned phrases differently with no code behind either.
+L-F20-01	CONFIRMED	Q	chart count wording	ui-testing.md:46,48 '98' vs agent-rules.md:14 and no-full-library-runs.md:11 'about 115'	Docs disagree because they count songs versus chart files, with no code behind either.
+L-F20-02	CONFIRMED	Q	what counts as full library run	no-full-library-runs.md:15 'No hook enforces it yet' vs percall.py:46-55; three lists in memory, agent-rules.md:14, brief-preamble.md:49	Memory is stale, but the three lists of what counts as a full run differ and the hook sees only the flag text.
+L-F20-03	CONFIRMED	B	none	early-fill-orange-85-d250.md:11 names kEarlyFillSlackMs vs src/core/model.h:106-115 kDefaultEarlyFillWindowMs	The memory note uses a constant name that does not exist in code.
+L-F20-04	CONFIRMED	Q	above-optimal scores	analyzing-sp-squeezes SKILL.md:55 'bug, never a real score' vs public-doc-style.md:17 and dmleaderboards-comparison.md:24-29 'expected, normal'	Docs and notes disagree, possibly about different cases, with no code behind either.
+L-F20-05	CONFIRMED	B	none	hydra-deluxe-rename.md:3 description 'patseguin1-commits' vs its own line 11 and this-machine.md:15 'splax77'	Memory note description is stale against its own body and the current repo name.
+L-F20-06	CONFIRMED	Q	stop hook merge base	hooks-never-guess.md:13 calls merge base an assumption/fault vs agent_stop.py documents() and README:49 state it as the rule	Memory calls it a fault while code and README state it as the rule; whether it should change is a choice.
+L-F20-07	CONFIRMED	Q	Preview fix tense	test-rubric-examples.md:9 'has since landed' vs :330-336 'the test to write in the same change as the Preview fix'	Same page says the fix both landed and is still to come, with no code behind it.
+L-F20-08	CONFIRMED	P	none	none	CMakeLists.txt version and copies in this-machine.md and memory agree today.
+L-F20-09	CONFIRMED	Q	video tools review gate	fc-video-workflow.md:17 'Keep the reviewer gate' vs review_rules.py:408 gate off with no marker in video-tools repo	A memory rule has no hook in that repo; whether to add a gate is a choice.
+L-F20-10	CONFIRMED-CHANGED	B	none	hooks-never-guess.md:17 and one-reviewer-rule-d107.md:11 'no second review' vs agent-rules.md:11, derive-once-review.md:175 D314 exception	Memory notes omit the D314 exception that the docs state.
+L-F20-11	CONFIRMED	Q	plan GUI click test rule	new-screens-start-from-a-clickable-mockup.md:15 only; planner.md, premise-map.md, owner-map.md, ui-testing.md have no hit	A memory-only rule with no home in docs or hooks.
+L-F20-12	CONFIRMED	Q	capture zoom step	render-checks-use-the-corpus.md:3,18 '2x zoom' vs ui-testing.md:10-11 no zoom step	A memory-only step with no home in the page that owns the check.
+L-F20-13	NOT VERIFIED	B	none	derive-display-from-engine-truth.md:20 'a row' vs derive-once-review.md:80 'row OR one-sentence reason'	Only verified split is a memory note against the review doc; other items are single-home.
+L-F21-01	CONFIRMED	P	none	none	'None today': realapp.jsonl name equal in both repos; fix is a pointer.
+L-F21-02	CONFIRMED	Q	who typed this check	review_rules.py:103 human_prompt_text turnOrigin vs session_cards/common.py:397-398 classify_user origin.kind	Two code places decide whether the user typed a line, using different fields.
+L-F21-03	CONFIRMED	Q	reviewer fingerprint twice	review_dispatch.py:172 sha256(prompt) vs agent_stop.py:199 sha256(first user message)	Two code places compute the brief fingerprint separately and match only if bytes agree.
+L-F21-04	CONFIRMED	A	none	stall.py:280 'A move of main to a tip with no verdict is refused.' vs review_rules.py:408-411 'no-gate' allows it	The hook's message states the rule without its no-marker condition.
+L-F21-05	CONFIRMED-CHANGED	P	none	none	'None between homes of the same value'; run.py comment already names the refusal.
+L-F21-06	CONFIRMED	Q	hooks line budget	replay.py:41 LINE_BUDGET = 3100 vs review-and-hooks.md:13 Confirmed 'Raise cap to 3,050'	Code value is backed only by an Unconfirmed line; the Confirmed line says 3,050.
+L-F21-07	CONFIRMED	C	none	inventory row I9-138 describes test_review_rules.py:911-1013 which no longer exists (replay.py:16,131 only)	The cited test was removed and the current place is clear.
+L-F21-08	CONFIRMED	P	none	none	build_slot.ps1:75 and copies agree; 'None' for splits.
+L-F21-09	CONFIRMED	P	none	none	Picker limits and kinds agree today; step-8 number copy is only a copy to point instead.

@@ -60,7 +60,7 @@ jobs:
     steps:
       # The full history, so the precheck self-test's two real commit ranges
       # (c6debcd^2...c6debcd and 11b9d44^2...11b9d44, in tests/test_precheck.cpp)
-      # are in the clone; without them it skips that part. The build folder
+      # are in the clone; without them those two test cases fail. The build folder
       # step also needs the history back to the saved folder's commit.
       - name: Check out the code
         uses: actions/checkout@v7
@@ -277,8 +277,9 @@ jobs:
     # the runs and their times. The build step starts from an empty folder
     # every night, and the sccache cache decides how long it takes. An empty
     # cache is the slow case, and a slow runner can add minutes to it, so the
-    # build step's cap is sized for that case.
-    timeout-minutes: 30
+    # build step's cap is sized for that case. The 14.51 install step adds up
+    # to its own 20-minute cap on top.
+    timeout-minutes: 50
     defaults:
       run:
         shell: pwsh
@@ -298,6 +299,43 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # This job builds with the 14.51 compiler (cl 19.51), not the image's
+      # newest. On a 14.52 build, the coverage tool's rewrite of the exe breaks
+      # short jumps: it pads the code after an unconditional jump to a 16-byte
+      # boundary and leaves the jump's offset as it was, so the jump lands
+      # early. "The coverage report" in docs/development.md has the details.
+      # The image ships only the newest compiler, so this step adds 14.51 next
+      # to it. Its time cap is a guess until a run measures it.
+      - name: Install the 14.51 compiler
+        timeout-minutes: 20
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -all -products * -property installationPath
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', "`"$vs`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.51.x86.x64',
+            '--quiet', '--norestart', '--nocache')
+          # 3010 is "installed, restart wanted", which a fresh runner ignores.
+          if ($p.ExitCode -notin 0, 3010) { throw "Visual Studio Installer exited with $($p.ExitCode)" }
+
+      # Puts the 14.51 compiler on PATH for the later steps; build_cpp.ps1
+      # finds cl.exe there and enters no shell of its own.
+      - name: Set up the 14.51 developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: "14.51"
+
+      # Fails the job if the shell gave any other compiler, so a silent
+      # fallback to the newest one cannot bring the crash back.
+      - name: Check the compiler is 19.51
+        run: |
+          $banner = (& cl.exe 2>&1 | Out-String)
+          # Only the banner decides here, not cl's own exit code.
+          $global:LASTEXITCODE = 0
+          Write-Host $banner
+          if ($banner -notmatch 'Version 19\.51\.') { throw "expected cl 19.51, got: $banner" }
 
       # sccache runs each compile and keeps the object in GitHub's cache.
       - name: Install sccache

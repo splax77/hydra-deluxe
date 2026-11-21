@@ -247,8 +247,8 @@ Rounds run four slices at a time in table order: 22 rounds for 86 slices, the la
 | A8 | 843 | `tests/test_batch_text.cpp`, `tests/test_best_finish.cpp`, `tests/test_column_widths.cpp` |
 | A9 | 1060 | `tests/test_config.cpp`, `tests/test_dm_other_speed.cpp` |
 | A10 | 1059 | `tests/test_dm_report.cpp` |
-| A11 | 1106 | `tests/test_docs_match_code.cpp` (part 1 of 2) |
-| A12 | 1106 | `tests/test_docs_match_code.cpp` (part 2 of 2) |
+| A11 | 1106 | `tests/test_docs_match_code.cpp` (removed; `git show 4ccd4b93:tests/test_docs_match_code.cpp`) (part 1 of 2) |
+| A12 | 1106 | `tests/test_docs_match_code.cpp` (removed; `git show 4ccd4b93:tests/test_docs_match_code.cpp`) (part 2 of 2) |
 | A13 | 994 | `tests/test_engine_sweeps.cpp`, `tests/test_fill_deadline.cpp` |
 | A14 | 1275 | `tests/test_fill_report.cpp`, `tests/test_fills_and_skips.cpp`, `tests/test_fitted_text_cache.cpp`, `tests/test_helpers.cpp` |
 | A15 | 1031 | `tests/test_highway_draw.cpp` |

@@ -1,0 +1,59 @@
+{
+  "agents": [
+    {
+      "digest": "5ab224df8a03565539b3f524efad7d49f004407b722e7098c77573e56d33bee5",
+      "file": "launch.js",
+      "fresh": true,
+      "stamp": {
+        "format": 1,
+        "js": "launch.js",
+        "js_sha256": "b2ff6dae342948ffe930aeb4a3c67111864853868ca9ab9f96a54609ea2c640a",
+        "sources": {
+          "launch.ts": "a65b00dbbba006025afce1cc096e1fa2594147ef169ba254773aee912e1fc849",
+          "launch_core.ts": "c12517feea7eb6720e06db04ccc36819ba8674d89134ded5b3896103251c65c6",
+          "package-lock.json": "f5acb05e3bc8a1e10f16083d2f261b1bca3927e50bce0cc0d390dcb445924911",
+          "package.json": "de919768b645945f4b85a7aeb53a080d169b15a45754573c13c1421b8c263919",
+          "tsconfig.json": "e752d5af0b08a6e5490e04f1fa315fc6ee664bce1e001af479aebc9c1033248a"
+        }
+      }
+    },
+    {
+      "digest": "fa4253840210c2eab88cc16d8c1cd7f17a3d66c4c185e35f746a006511ec2c86",
+      "file": "state.js",
+      "fresh": true,
+      "stamp": {
+        "format": 1,
+        "js": "state.js",
+        "js_sha256": "e5f4990779d6f7c8720a0827f6ef73adede053717afa81f218f63156b17c4c5c",
+        "sources": {
+          "../menu_fields.json": "5679b3f52fc534226c826cbd8e27d800d4c6fd74780825470b552199b5500f68",
+          "gamemanager.ts": "eb921cfcd0a9386ba7c79bbf4fc07443f8dbd4c21f5642e5b385fde866db579f",
+          "menu.ts": "3665972f2511a92259edaf786777ad0251f14334915f363f1cc2de815e377621",
+          "package-lock.json": "f5acb05e3bc8a1e10f16083d2f261b1bca3927e50bce0cc0d390dcb445924911",
+          "package.json": "de919768b645945f4b85a7aeb53a080d169b15a45754573c13c1421b8c263919",
+          "state.ts": "f533f55a3b8901cdbf48c4402f31f58bcb4e1e00a21379aeaca3d6ca0ea58115",
+          "tsconfig.json": "e752d5af0b08a6e5490e04f1fa315fc6ee664bce1e001af479aebc9c1033248a"
+        }
+      }
+    },
+    {
+      "digest": "1dee6997078621534241130d72cb307291f78a646b71e7e9e7279e94e3c01bca",
+      "file": "kit.js",
+      "fresh": true,
+      "stamp": {
+        "format": 1,
+        "js": "kit.js",
+        "js_sha256": "8d57f44eeee1376a1e4bd9a698b8e8e58651b4ecd56651f374bbd5344f8e85e6",
+        "sources": {
+          "gamemanager.ts": "eb921cfcd0a9386ba7c79bbf4fc07443f8dbd4c21f5642e5b385fde866db579f",
+          "kit.ts": "cbfddedb817fba210bb14ab30990dd25222705f2645f090d448bf61312f45f8f",
+          "package-lock.json": "f5acb05e3bc8a1e10f16083d2f261b1bca3927e50bce0cc0d390dcb445924911",
+          "package.json": "de919768b645945f4b85a7aeb53a080d169b15a45754573c13c1421b8c263919",
+          "press_schedule.ts": "822f39805ba8d9149150a8768e895b2fb52ceb9ff506357ed2054b5e658b2cc9",
+          "tsconfig.json": "e752d5af0b08a6e5490e04f1fa315fc6ee664bce1e001af479aebc9c1033248a"
+        }
+      }
+    }
+  ],
+  "hydra_replay_build": "Nov 11 2026 22:34:50"
+}

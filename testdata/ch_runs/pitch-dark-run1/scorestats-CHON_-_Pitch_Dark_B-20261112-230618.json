@@ -1,0 +1,156 @@
+{
+  "game_version": "v1.1.0.6142-final",
+  "checksum": "1125C9A5976D58A9ED44B63376147043",
+  "song_name": "Pitch Dark",
+  "artist_name": "CHON",
+  "charter_name": "Bloodline",
+  "playback_speed": 100,
+  "game_mode": "Quickplay",
+  "score_timestamp": "2026-11-13T04:06:18.4191999Z",
+  "band_score": 383575,
+  "band_stars": 7,
+  "player_count": 1,
+  "players": [
+    {
+      "instrument": "ProDrums",
+      "difficulty": "Expert",
+      "profile_name": "",
+      "modifiers": [
+        "DoubleKick"
+      ],
+      "remote_network_player": false,
+      "lefty_flip": false,
+      "no_fail": true,
+      "video_calibration": 0.0299999993,
+      "audio_calibration": 0,
+      "controller_type": "Drums",
+      "score": 383575,
+      "base_score": 63725,
+      "solo_bonus_total": 29800,
+      "squeezed_score": 1430,
+      "clean_play_bonus": 0,
+      "note_score": 63660,
+      "sustain_score": 0,
+      "sp_score": 106050,
+      "combo_score": 184065,
+      "notes_hit": 1110,
+      "total_notes": 1111,
+      "max_streak": 1027,
+      "end_streak": 83,
+      "excess_hits": 0,
+      "sp_phrases_earned": 15,
+      "sp_phrases_total": 15,
+      "sp_activations": 3,
+      "time_in_sp": 48.1216278,
+      "sp_ticks_accumulated": 53778,
+      "sp_bar_ticks": 14400,
+      "stars": 7,
+      "avg_multiplier": 5.55158901,
+      "squeezed_notes": 7,
+      "squeeze_note_losses": 1,
+      "frets_ghosted": 0,
+      "accent_notes_hit": 0,
+      "accent_notes_total": 0,
+      "ghost_notes_hit": 0,
+      "ghost_notes_total": 0,
+      "is_fc": false,
+      "versus_winner": true,
+      "is_bot": false,
+      "is_pfc": false,
+      "failed_in_run_time": -1,
+      "section_count": 18,
+      "section_stats": [
+        {
+          "section_name": "Intro a",
+          "notes_hit": 0,
+          "notes_count": 0
+        },
+        {
+          "section_name": "Intro b",
+          "notes_hit": 0,
+          "notes_count": 0
+        },
+        {
+          "section_name": "Intro c",
+          "notes_hit": 0,
+          "notes_count": 0
+        },
+        {
+          "section_name": "Intro d",
+          "notes_hit": 0,
+          "notes_count": 0
+        },
+        {
+          "section_name": "Chorus 1a",
+          "notes_hit": 89,
+          "notes_count": 89
+        },
+        {
+          "section_name": "Chorus 1b",
+          "notes_hit": 84,
+          "notes_count": 84
+        },
+        {
+          "section_name": "Verse 1a",
+          "notes_hit": 83,
+          "notes_count": 83
+        },
+        {
+          "section_name": "Verse 1b",
+          "notes_hit": 116,
+          "notes_count": 116
+        },
+        {
+          "section_name": "Chorus 2a",
+          "notes_hit": 95,
+          "notes_count": 95
+        },
+        {
+          "section_name": "Chorus 2b",
+          "notes_hit": 94,
+          "notes_count": 94
+        },
+        {
+          "section_name": "Verse 2a",
+          "notes_hit": 28,
+          "notes_count": 28
+        },
+        {
+          "section_name": "Verse 2b",
+          "notes_hit": 60,
+          "notes_count": 60
+        },
+        {
+          "section_name": "Drum solo a",
+          "notes_hit": 169,
+          "notes_count": 169
+        },
+        {
+          "section_name": "Drum solo b",
+          "notes_hit": 129,
+          "notes_count": 129
+        },
+        {
+          "section_name": "Outro a",
+          "notes_hit": 79,
+          "notes_count": 79
+        },
+        {
+          "section_name": "Outro b",
+          "notes_hit": 84,
+          "notes_count": 85
+        },
+        {
+          "section_name": "Outro c",
+          "notes_hit": 0,
+          "notes_count": 0
+        },
+        {
+          "section_name": "Outro d",
+          "notes_hit": 0,
+          "notes_count": 0
+        }
+      ]
+    }
+  ]
+}

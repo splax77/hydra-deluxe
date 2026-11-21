@@ -49,6 +49,18 @@ TrackGem gem_of(const PreviewNote& n, bool pro) {
     return g;
 }
 
+// A span's state at an instant from three facts there: is the instant inside
+// some interval, does one start there, does one end there. The order is
+// Onyx's makeToggle, described at SpanSweep; SpanSweep::at and SpRunSweep::at
+// both read their facts through it.
+Toggle toggle_of(bool inside, bool starts, bool ends) {
+    if (inside) return Toggle::On;
+    if (starts && ends) return Toggle::Restart;
+    if (starts) return Toggle::Start;
+    if (ends) return Toggle::End;
+    return Toggle::Empty;
+}
+
 }  // namespace
 
 // The sweep keeps sorted starts and ends and answers by binary search. At
@@ -90,11 +102,26 @@ Toggle SpanSweep::at(double t) const {
                             static_cast<int64_t>(zeros_at) > 0;
     const bool starts = std::binary_search(all_starts_.begin(), all_starts_.end(), t);
     const bool ends = std::binary_search(all_ends_.begin(), all_ends_.end(), t);
-    if (inside) return Toggle::On;
-    if (starts && ends) return Toggle::Restart;
-    if (starts) return Toggle::Start;
-    if (ends) return Toggle::End;
-    return Toggle::Empty;
+    return toggle_of(inside, starts, ends);
+}
+
+// "Just before t" is the double below t: no time lies between the two. So a
+// window running there and at t holds t inside; one running at t only starts
+// at t; one running there only ends at t.
+Toggle SpRunSweep::at(double t) const {
+    if (std::isnan(t)) return Toggle::Empty;
+    const double before = std::nextafter(t, -std::numeric_limits<double>::infinity());
+    bool inside = false;
+    bool starts = false;
+    bool ends = false;
+    for (const Iv& w : windows_) {
+        const bool b = app::sp_running_in(w, before);
+        const bool a = app::sp_running_in(w, t);
+        inside = inside || (b && a);
+        starts = starts || (a && !b);
+        ends = ends || (b && !a);
+    }
+    return toggle_of(inside, starts, ends);
 }
 
 // The interval at t (the activated fill's lane, or the fill fill_at names):
@@ -111,6 +138,16 @@ std::optional<size_t> TrackState::LaneSweep::at(double t) const {
     return ends;
 }
 
+// The end edge comes from the span's end tick through the song's own timing
+// (the display-only sub-tick lookup), never from its end ms.
+std::pair<double, double> span_interval(const PreviewScene& scene, const PreviewSpan& s) {
+    if (!scene.timing)
+        throw std::invalid_argument("build_track_state: a scene with spans needs its song timing");
+    const double end_ms =
+        scene.timing->ms_index().ms_at_tick_f(static_cast<double>(s.end_tick) + kSpanEndTicks);
+    return {s_of(s.start_ms), s_of(end_ms)};
+}
+
 namespace {
 
 // One path-free moment: a note, a beat, or an SP phrase, solo or drum lane
@@ -121,17 +158,6 @@ struct Event {
     Kind kind;
     size_t index;  // into scene.notes or scene.beats; unused for an edge
 };
-
-// A span's [start, end] in seconds. The end edge comes from the span's end
-// tick through the song's own timing (the display-only sub-tick lookup),
-// never from its end ms.
-std::pair<double, double> span_interval(const PreviewScene& scene, const PreviewSpan& s) {
-    if (!scene.timing)
-        throw std::invalid_argument("build_track_state: a scene with spans needs its song timing");
-    const double end_ms =
-        scene.timing->ms_index().ms_at_tick_f(static_cast<double>(s.end_tick) + kSpanEndTicks);
-    return {s_of(s.start_ms), s_of(end_ms)};
-}
 
 // The overlay's span edges in list order, sorted by time with that order kept
 // among equal times. NaN edges have no place in time order and are left out;
@@ -218,7 +244,7 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
         fill_ghost_.push_back(span_interval(scene, scene.fills[i].span));
     for (const PreviewActivation& a : scene.activations) {
         // The tinted floor and the lit railings: the activation's sp_window,
-        // their owner.
+        // which SpRunSweep asks app::sp_running_in about.
         if (const std::optional<std::pair<double, double>> w = a.sp_window())
             sp_active_.push_back({s_of(w->first), s_of(w->second)});
         // The taken fill lights the activation note's lane. The scene
@@ -243,7 +269,7 @@ void TrackState::sweep_span_fields() {
     sweep_.fill = SpanSweep(fill_);
     sweep_.fill_taken = SpanSweep(fill_taken_);
     sweep_.fill_ghost = SpanSweep(fill_ghost_);
-    sweep_.sp_active = SpanSweep(sp_active_);
+    sweep_.sp_active = SpRunSweep(sp_active_);
     sweep_.fill_lane = SpanSweep(fill_lane_ivs_);
     sweep_.lane_pad = LaneSweep(fill_lane_ivs_);
     sweep_.fill_pick = LaneSweep(fill_);

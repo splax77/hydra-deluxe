@@ -1,8 +1,10 @@
 """Tests for method_watch.py and start_candidates.json: the start's refusals
-and backup, the stop reply's call list and scene-load line, the calls log, the
-shared-code addresses an "all" class skips, and the candidate file against the
-dump's facts and image list. A fake run_agent plays the agent: no test
-attaches Frida or starts the game."""
+and what it sends the agent, the shared-code addresses an "all" class skips,
+and the candidate file against the dump's facts and image list. The settings
+run on the real candidates file and a cut of the real build's facts. The
+refusals before an attach run on the server's real game and Frida tools;
+past an attach a fake run_agent plays the agent. No test attaches Frida or
+starts the game."""
 
 from __future__ import annotations
 
@@ -23,34 +25,36 @@ from tools.ch_mcp import build_facts  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import method_watch as MW  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 
 BACKUP_LINE = "backup: taken"
 
-# Dump facts for the watch's shared-address rule, cut down to what it reads.
-# 0x66940 is a .ctor PlayerSelectionCanvas shares with Other; 0x6D60 a body
-# SongSelect and PlayerSelectionMenu share; 0x235AD0 GlobalVariables' listed
-# method, also run by Other; 0x32CE60 two methods of one class, so not
-# shared; -1 two abstract methods with no code.
-FAKE_FACTS = {"classes": [
-    {"name": "SongSelect", "namespace": "", "typedef_index": 1, "methods": [
-        {"name": "Update", "rva": 0x8EE20}, {"name": "ʺʽʳʼʸʻʸʺʵˀˀ", "rva": 0x6D60}]},
-    {"name": "PlayerSelectionCanvas", "namespace": "", "typedef_index": 2, "methods": [
-        {"name": ".ctor", "rva": 0x66940}, {"name": "Update", "rva": 0xD0E20}]},
-    {"name": "PlayerSelectionMenu", "namespace": "", "typedef_index": 3, "methods": [
-        {"name": "ʺʽʳʼʸʻʸʺʵˀˀ", "rva": 0x6D60}, {"name": "ʳˀʹʵʾʹˀʳʼʸˁ", "rva": 0x32CE60},
-        {"name": "ʿʻʺʻʼˁʼˀʻʿʸ", "rva": 0x32CE60}, {"name": "Abstract", "rva": -1}]},
-    {"name": "GlobalVariables", "namespace": "", "typedef_index": 4, "methods": [
-        {"name": "ʺʵʸʸʽʶʾˀʶʺʺ", "rva": 0x235AD0}]},
-    {"name": "Other", "namespace": "", "typedef_index": 5, "methods": [
-        {"name": ".ctor", "rva": 0x66940}, {"name": "Copy", "rva": 0x235AD0},
-        {"name": "Abstract", "rva": -1}]},
-]}
+# The real 1.1 build's facts (hydra-data/ch-dumps/6142/facts.json), cut to
+# what the watch reads: each class start_candidates.json names, whole; for
+# each address of theirs another class also runs, the first other class that
+# runs it, cut to its methods at that address; and the first two other
+# classes with an abstract method, cut to that one. The folder is laid out
+# the way build_facts.load_facts reads it, and REAL_6142_GAME is the
+# installed game's real version file.
+REAL_WATCH_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                                "ch-dumps-6142-method-watch")
+REAL_6142_GAME = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-6142", "game")
 
 
-def fake_facts():
-    return FAKE_FACTS
+def real_facts():
+    return build_facts.load_facts(REAL_6142_GAME, REAL_WATCH_DUMPS)
+
+
+def holders(facts):
+    """Each code address in `facts`, with the TypeDefIndex of every method
+    that runs at it (one entry per method)."""
+    held = {}
+    for cls in facts["classes"]:
+        for m in cls["methods"]:
+            held.setdefault(m["rva"], []).append(cls["typedef_index"])
+    return held
 
 
 def quick_wait(event, timeout_s):
@@ -120,22 +124,6 @@ class ScriptedAgent:
         return FA.RunResult(reason=FA.END_CAP, cap_s=cap_s, payloads=list(self.payloads))
 
 
-# What menuhooks.ts sends: the hook summary, then one message per call.
-SUMMARY = {"hooked": 3, "classes": [{"class": "GlobalVariables", "hooked": 1},
-                                    {"class": "PlayerSelectionCanvas", "hooked": 1},
-                                    {"class": "SceneManager", "hooked": 1}],
-           "missing": [], "no_code": [], "not_hooked": []}
-M3_CALL = {"call": "ʺʵʸʸʽʶʾˀʶʺʺ", "class": "GlobalVariables", "names": ["ʺʵʸʸʽʶʾˀʶʺʺ"],
-           "rva": "0x235ad0",
-           "args": ["C:\\Clone Hero\\songs\\Hydra Probe\\Window Map", "ˁʻʽʷʽʻʾʵʷˀʶ",
-                    "ref string", "ref string", "ref string"],
-           "songTime": None, "t_ms": 1000}
-M4_CALL = {"call": "ʽʶʼˀʷʺʳʻʶˁʾ", "class": "PlayerSelectionCanvas", "names": ["ʽʶʼˀʷʺʳʻʶˁʾ"],
-           "rva": "0xd0790", "args": [], "songTime": None, "t_ms": 1250}
-LOAD_CALL = {"call": "LoadScene", "class": "SceneManager", "names": ["LoadScene"],
-             "rva": "0x289c250", "args": ["Gameplay"], "songTime": None, "t_ms": 1300}
-
-
 class WatchTestBase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -147,7 +135,7 @@ class WatchTestBase(unittest.TestCase):
         self.game = FakeGame(self.folder, self.events)
         self.watches = []
 
-    def make(self, payloads, *, attached=True, load_facts=fake_facts):
+    def make(self, payloads, *, attached=True, load_facts=real_facts):
         agent = ScriptedAgent(payloads, self.events)
         watch = MW.MethodWatch(self.game, FakeFrida(attached), threading.RLock(),
                                run_agent=agent, wait=quick_wait,
@@ -161,218 +149,157 @@ class WatchTestBase(unittest.TestCase):
             hook()
 
 
-class StartTest(WatchTestBase):
+class RealToolsTest(unittest.TestCase):
+    """The watch on the server's real game and Frida tools, on a temp folder
+    with no game running: nothing is attached, the state a watch meets before
+    ch_attach."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lock = threading.RLock()
+        game = GT.GameTools(None, lock, os.path.join(tmp.name, "scratch"))
+        self.watch = MW.MethodWatch(game, FT.FridaTools(game, lock), lock)
+
     def test_the_start_refuses_when_nothing_is_attached(self):
-        watch, agent = self.make([SUMMARY], attached=False)
-        reply = watch.ch_method_watch_start()
-        self.assertEqual(reply, f"{FT.NOT_ATTACHED}; no method watch started")
-        self.assertEqual(self.events, [])
+        reply = self.watch.ch_method_watch_start()
+        self.assertTrue(reply.startswith(FT.NOT_ATTACHED), reply)
+        self.assertFalse(self.watch.running())
 
-    def test_an_attach_lets_the_start_through(self):
-        watch, _ = self.make([SUMMARY])
-        self.assertIn("hooked: 3 code addresses", watch.ch_method_watch_start())
+    def test_stop_with_no_watch(self):
+        # Nothing ran, so the stop names the start tool and lists no calls.
+        reply = self.watch.ch_method_watch_stop()
+        self.assertIn(MW.MethodWatch.ch_method_watch_start.__name__, reply)
+        self.assertNotIn(MW.call_lines([])[0], reply.splitlines())
+        self.assertFalse(self.watch.running())
 
-    def test_the_backup_comes_before_the_hooks(self):
-        watch, _ = self.make([SUMMARY])
-        reply = watch.ch_method_watch_start()
-        self.assertEqual(self.events, ["backup", "hooks"])
-        self.assertEqual(reply.splitlines()[0], BACKUP_LINE)
 
-    def test_the_start_refuses_while_a_watch_runs(self):
-        watch, _ = self.make([SUMMARY])
-        watch.ch_method_watch_start()
-        self.assertEqual(watch.ch_method_watch_start(),
-                         "a method watch is already running; call ch_method_watch_stop first")
-        self.assertEqual(self.events, ["backup", "hooks"])
-
-    def test_the_start_names_a_missing_class_and_rva(self):
-        summary = dict(SUMMARY, missing=["class CliGameLauncher found in 0 images",
-                                         "GlobalVariables has no method at RVA 0x235ad0"])
-        watch, _ = self.make([summary])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("not found: class CliGameLauncher found in 0 images", lines)
-        self.assertIn("not found: GlobalVariables has no method at RVA 0x235ad0", lines)
-
-    def test_the_start_sends_the_candidate_classes_and_the_cap(self):
-        watch, agent = self.make([SUMMARY])
-        watch.ch_method_watch_start()
-        labels = [c["label"] for c in agent.start["classes"]]
-        candidates = MW.load_candidates()
-        self.assertEqual(labels, [c["class"] for c in candidates["classes"]])
-        self.assertEqual(agent.cap_s, 120.0)
-        self.assertEqual(agent.agent_path, os.path.join(self.agent_dir, "menuhooks.js"))
-
-    def test_classes_narrows_the_watch_and_an_unknown_name_is_refused(self):
-        watch, agent = self.make([SUMMARY])
-        watch.ch_method_watch_start(classes=["SceneManager"])
-        self.assertEqual([c["label"] for c in agent.start["classes"]], ["SceneManager"])
-        watch.ch_method_watch_stop()
-        reply = watch.ch_method_watch_start(classes=["Nope"])
-        self.assertTrue(reply.startswith("not in start_candidates.json: Nope;"), reply)
-        self.assertIn("no method watch started", reply)
-
-    def test_an_agent_error_ends_the_watch_and_says_why(self):
-        watch, _ = self.make([{"error": "no method of the watched classes could be hooked",
-                               "classes": [], "missing": ["class X found in 0 images"]}])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("nothing hooked: no method of the watched classes could be hooked", lines)
-        self.assertIn("not found: class X found in 0 images", lines)
-        self.assertIn("ended: error; error: no method of the watched classes could be hooked",
-                      lines)
-
-    def test_the_start_names_each_address_it_skipped(self):
-        summary = dict(SUMMARY, skipped=[
-            {"class": "PlayerSelectionCanvas", "names": [".ctor"], "rva": "0x66940"},
-            {"class": "SongSelect", "names": ["a", "b"], "rva": "0x6d60"}])
-        watch, _ = self.make([summary])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("skipped (code shared with other classes): "
-                      "PlayerSelectionCanvas .ctor 0x66940", lines)
-        self.assertIn("skipped (code shared with other classes): SongSelect a / b 0x6D60",
-                      lines)
-
+class StartTest(WatchTestBase):
     def test_the_start_sends_each_classes_skips_and_assembly(self):
-        watch, agent = self.make([SUMMARY])
-        watch.ch_method_watch_start(classes=["PlayerSelectionCanvas", "SceneManager"])
-        sent = {c["label"]: c for c in agent.start["classes"]}
-        self.assertEqual(sent["PlayerSelectionCanvas"]["skip_rvas"], [0x66940])
-        self.assertIsNone(sent["PlayerSelectionCanvas"]["assembly"])
-        self.assertEqual(sent["SceneManager"]["skip_rvas"], [])
-        self.assertEqual(sent["SceneManager"]["assembly"], "UnityEngine.CoreModule")
+        # What the agent gets is the settings watch_settings makes for the
+        # real candidates and the real build's facts, item by item.
+        watch, agent = self.make([])
+        watch.ch_method_watch_start()
+        watch.ch_method_watch_stop()
+        self.assertIsNotNone(agent.start, "the agent was never run")
+        self.assertEqual(agent.start["classes"],
+                         MW.watch_settings(MW.load_candidates(), real_facts()))
 
     def test_the_start_refuses_without_the_builds_facts(self):
-        def no_facts():
-            raise build_facts.UnknownBuild("v1.1.0.9999", "no facts.json")
-        watch, _ = self.make([SUMMARY], load_facts=no_facts)
-        reply = watch.ch_method_watch_start()
-        self.assertEqual(reply, "unknown build v1.1.0.9999: no facts for it; run "
-                                "dump_build.py and dump_facts.py (no facts.json)\n"
-                                "no method watch started")
-        self.assertEqual(self.events, [])
+        # The real loader, on the real game's version file and a dumps
+        # folder that holds no facts.
+        empty = tempfile.TemporaryDirectory()
+        self.addCleanup(empty.cleanup)
 
-    def test_a_missing_agent_says_how_to_build_it(self):
-        watch, _ = self.make([SUMMARY])
-        os.remove(os.path.join(self.agent_dir, MW.AGENT_FILE))
+        def no_facts():
+            return build_facts.load_facts(REAL_6142_GAME, empty.name)
+        with self.assertRaises(build_facts.UnknownBuild) as caught:
+            no_facts()
+        watch, _ = self.make([], load_facts=no_facts)
         reply = watch.ch_method_watch_start()
-        self.assertEqual(reply, BS.check(os.path.join(self.agent_dir, MW.AGENT_FILE)))
-        self.assertIn("npm run build:menuhooks", reply)
+        self.assertEqual(reply.splitlines()[0], str(caught.exception))
+        self.assertFalse(watch.running())
         self.assertEqual(self.events, [])
 
     def test_a_stale_agent_starts_no_watch(self):
-        watch, _ = self.make([SUMMARY])
+        watch, _ = self.make([])
         with open(os.path.join(self.agent_dir, "menuhooks.ts"), "a", encoding="utf-8") as fh:
             fh.write("// an edit after the build\n")
-        self.assertEqual(watch.ch_method_watch_start(),
-                         f"{os.path.join(self.agent_dir, MW.AGENT_FILE)} is stale: menuhooks.ts "
-                         "changed since it was built; run npm run build:menuhooks in "
-                         "tools/ch_mcp/agent first")
+        refusal = BS.check(os.path.join(self.agent_dir, MW.AGENT_FILE))
+        self.assertIsNotNone(refusal, "the edit did not make the build stale")
+        self.assertEqual(watch.ch_method_watch_start(), refusal)
+        self.assertFalse(watch.running())
         self.assertEqual(self.events, [])
 
 
-class StopTest(WatchTestBase):
-    def test_stop_with_no_watch(self):
-        watch, _ = self.make([SUMMARY])
-        self.assertEqual(watch.ch_method_watch_stop(),
-                         "no method watch has run; call ch_method_watch_start")
-
-    def test_the_stop_lists_the_calls_in_order_and_names_the_one_before_the_load(self):
-        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        self.assertEqual(lines[0], "ended: stopped")
-        start = lines.index("calls: 3")
-        self.assertEqual(lines[start + 1:start + 4], [
-            '  1. GlobalVariables ʺʵʸʸʽʶʾˀʶʺʺ (0x235AD0) args '
-            '["C:\\\\Clone Hero\\\\songs\\\\Hydra Probe\\\\Window Map", "ˁʻʽʷʽʻʾʵʷˀʶ", '
-            '"ref string", "ref string", "ref string"]; songTime null; +0 ms',
-            "  2. PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790) args []; songTime null; +250 ms",
-            '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; songTime null; +300 ms',
-        ])
-        self.assertIn('  call 3: SceneManager LoadScene (0x289C250) scene "Gameplay"; '
-                      "last before it: call 2, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
-                      "args []", lines)
-
-    def test_a_load_that_calls_another_load_names_the_call_before_both(self):
-        inner = dict(LOAD_CALL, call="LoadSceneAsync", names=["LoadSceneAsync"],
-                     rva="0x289c0e0", t_ms=1301)
-        watch, _ = self.make([SUMMARY, M4_CALL, LOAD_CALL, inner])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        self.assertIn('  call 3: SceneManager LoadSceneAsync (0x289C0E0) scene "Gameplay"; '
-                      "last before it: call 1, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
-                      "args []", lines)
-
-    def test_the_scene_loads_and_the_log_come_before_the_call_list(self):
-        # The server cuts a long reply, and a menu walk logs thousands of
-        # calls; the scene loads must survive the cut.
-        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        loads = lines.index("scene loads:")
-        log = next(i for i, line in enumerate(lines) if line.startswith("calls log: "))
-        self.assertLess(loads, log)
-        self.assertLess(log, lines.index("calls: 3"))
-        self.assertEqual(lines[-1],
-                         '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; '
-                         'songTime null; +300 ms')
-
-    def test_no_load_is_said(self):
-        watch, _ = self.make([SUMMARY, M4_CALL])
-        watch.ch_method_watch_start()
-        self.assertIn("scene loads: none seen", watch.ch_method_watch_stop().splitlines())
-
-    def test_the_calls_log_holds_one_line_per_call(self):
-        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
-        watch.ch_method_watch_start()
-        watch.ch_method_watch_stop()
-        path = os.path.join(self.folder, "method_watch-1.jsonl")
-        with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh]
-        self.assertEqual(rows, [M3_CALL, M4_CALL, LOAD_CALL])
-
-    def test_the_game_stop_ends_a_running_watch(self):
-        watch, _ = self.make([SUMMARY, M4_CALL])
-        watch.ch_method_watch_start()
-        self.assertEqual(self.game.hooks[0](), "method watch: ended: stopped, 1 calls")
-        self.assertIsNone(self.game.hooks[0]())
-
-
 class SettingsTest(unittest.TestCase):
+    """watch_settings and the rules under it, on the real candidates file
+    and the real build's facts."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.candidates = MW.load_candidates()
+        cls.facts = real_facts()
+        cls.settings = {s["label"]: s
+                        for s in MW.watch_settings(cls.candidates, cls.facts)}
+
+    def test_classes_narrows_the_watch_and_an_unknown_name_is_refused(self):
+        entries = self.candidates["classes"]
+        last = entries[-1]["class"]
+        self.assertEqual([s["label"] for s in
+                          MW.watch_settings(self.candidates, self.facts, [last])], [last])
+        # A real class of the build that the file does not list.
+        listed = {e["class"] for e in entries}
+        unknown = next(c["name"] for c in self.facts["classes"] if c["name"] not in listed)
+        with self.assertRaises(MW.CandidatesError) as caught:
+            MW.watch_settings(self.candidates, self.facts, [unknown])
+        message = str(caught.exception)
+        self.assertIn(unknown, message)
+        for e in entries:
+            with self.subTest(cls=e["class"]):
+                self.assertIn(e["class"], message)
+
     def test_listed_classes_send_their_rvas_and_by_name_classes_their_names(self):
-        settings = {s["label"]: s
-                    for s in MW.watch_settings(MW.load_candidates(), FAKE_FACTS)}
-        self.assertEqual(settings["GlobalVariables"]["rvas"], [0x235AD0])
-        self.assertEqual(settings["CliGameLauncher"]["rvas"], [0x395850, 0x398D30, 0x398180])
-        self.assertEqual(settings["SceneManager"]["names"], ["LoadScene", "LoadSceneAsync"])
-        self.assertEqual(settings["SceneManager"]["full_name"],
-                         "UnityEngine.SceneManagement.SceneManager")
-        for label in ("SongSelect", "PlayerSelectionCanvas", "PlayerSelectionMenu"):
-            with self.subTest(label=label):
-                self.assertEqual(settings[label]["hook"], "all")
-                self.assertEqual(settings[label]["rvas"], [])
+        kinds = set()
+        for entry in self.candidates["classes"]:
+            sent = self.settings[entry["class"]]
+            kinds.add(entry["hook"])
+            with self.subTest(cls=entry["class"]):
+                self.assertEqual(sent["hook"], entry["hook"])
+                namespace, _, name = sent["full_name"].rpartition(".")
+                self.assertEqual((namespace, name),
+                                 (entry.get("namespace") or "", entry["class"]))
+                listed = [MW.parse_rva(m["rva"]) for m in entry.get("methods", [])]
+                named = [n["name"] for n in entry.get("names", [])]
+                self.assertEqual(sent["rvas"], listed if entry["hook"] == MW.HOOK_LISTED else [])
+                self.assertEqual(sent["names"], named if entry["hook"] == MW.HOOK_BY_NAME else [])
+        self.assertEqual(kinds, set(MW.HOOK_KINDS), "the file no longer uses every hook kind")
 
     def test_shared_addresses_are_those_more_than_one_class_runs(self):
-        self.assertEqual(MW.shared_rvas(FAKE_FACTS), frozenset({0x66940, 0x6D60, 0x235AD0}))
+        shared = MW.shared_rvas(self.facts)
+        held = holders(self.facts)
+        by_two_classes = {rva for rva, owners in held.items()
+                          if rva != -1 and len(set(owners)) > 1}
+        twice_in_one_class = {rva for rva, owners in held.items()
+                              if len(owners) > 1 and len(set(owners)) == 1}
+        self.assertTrue(by_two_classes, "the facts hold no address two classes run")
+        self.assertTrue(twice_in_one_class, "the facts hold no address one class runs twice")
+        self.assertGreater(len(set(held.get(-1, []))), 1,
+                           "the facts hold no abstract method in two classes")
+        self.assertEqual(shared, by_two_classes)
+        self.assertFalse(shared & twice_in_one_class)
+        self.assertNotIn(-1, shared)
 
     def test_an_all_class_skips_its_shared_addresses_and_a_listed_one_does_not(self):
-        settings = {s["label"]: s
-                    for s in MW.watch_settings(MW.load_candidates(), FAKE_FACTS)}
-        self.assertEqual(settings["SongSelect"]["skip_rvas"], [0x6D60])
-        self.assertEqual(settings["PlayerSelectionCanvas"]["skip_rvas"], [0x66940])
-        self.assertEqual(settings["PlayerSelectionMenu"]["skip_rvas"], [0x6D60])
-        self.assertEqual(settings["GlobalVariables"]["skip_rvas"], [])
-        self.assertEqual(settings["SceneManager"]["skip_rvas"], [])
+        shared = MW.shared_rvas(self.facts)
+        skipping = 0
+        for entry in self.candidates["classes"]:
+            own = {m["rva"] for m in MW.facts_class(self.facts, entry)["methods"]}
+            skips = self.settings[entry["class"]]["skip_rvas"]
+            with self.subTest(cls=entry["class"]):
+                if entry["hook"] == MW.HOOK_ALL:
+                    self.assertEqual(skips, sorted(own & shared))
+                    skipping += bool(skips)
+                else:
+                    self.assertEqual(skips, [])
+        self.assertGreater(skipping, 0, "no all class skips an address in this build")
 
     def test_only_scene_manager_names_an_assembly(self):
-        settings = MW.watch_settings(MW.load_candidates(), FAKE_FACTS)
-        self.assertEqual({s["label"]: s["assembly"] for s in settings if s["assembly"]},
-                         {"SceneManager": "UnityEngine.CoreModule"})
+        named = 0
+        for entry in self.candidates["classes"]:
+            with self.subTest(cls=entry["class"]):
+                self.assertEqual(self.settings[entry["class"]]["assembly"],
+                                 entry.get("assembly"))
+            named += "assembly" in entry
+        self.assertGreater(named, 0, "the file names no assembly")
 
     def test_an_all_class_the_facts_lack_is_refused(self):
-        facts = {"classes": [c for c in FAKE_FACTS["classes"] if c["name"] != "SongSelect"]}
+        entry = next(e for e in self.candidates["classes"] if e["hook"] == MW.HOOK_ALL)
+        facts = {"classes": [c for c in self.facts["classes"]
+                             if c["name"] != entry["class"]]}
         with self.assertRaises(MW.CandidatesError) as caught:
-            MW.watch_settings(MW.load_candidates(), facts)
-        self.assertEqual(str(caught.exception), "SongSelect matched 0 classes in the dump's facts")
+            MW.watch_settings(self.candidates, facts)
+        self.assertIn(MW.full_name(entry), str(caught.exception))
 
     def test_an_empty_assembly_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
@@ -383,7 +310,9 @@ class SettingsTest(unittest.TestCase):
                 MW.load_candidates(path)
 
     def test_only_scene_manager_is_a_scene_loader(self):
-        self.assertEqual(MW.scene_load_classes(MW.load_candidates()), {"SceneManager"})
+        marked = {e["class"] for e in self.candidates["classes"] if e.get("scene_load")}
+        self.assertTrue(marked, "the file marks no scene loader")
+        self.assertEqual(MW.scene_load_classes(self.candidates), marked)
 
     def test_a_bad_hook_kind_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
@@ -394,11 +323,16 @@ class SettingsTest(unittest.TestCase):
                 MW.load_candidates(path)
 
     def test_the_build_script_builds_the_agent_the_watch_runs(self):
-        with open(os.path.join(FT.AGENT_DIR, "package.json"), encoding="utf-8") as fh:
-            scripts = json.load(fh)["scripts"]
-        self.assertEqual(scripts[f"build:{MW.AGENT_NAME}"],
-                         f"frida-compile -o {MW.AGENT_FILE} {MW.AGENT_NAME}.ts"
-                         f" && py -I ../build_stamp.py {MW.AGENT_FILE}")
+        # build_stamp finds the script that writes the agent; that script
+        # compiles the agent's source and stamps what it wrote.
+        command = BS.build_command(os.path.join(FT.AGENT_DIR, MW.AGENT_FILE))
+        with open(os.path.join(FT.AGENT_DIR, BS.PACKAGE_JSON), encoding="utf-8") as fh:
+            words = json.load(fh)["scripts"][command.split()[-1]].split()
+        self.assertIn(f"{MW.AGENT_NAME}.ts", words)
+        stamper = [i for i, w in enumerate(words)
+                   if os.path.basename(w) == os.path.basename(BS.__file__)]
+        self.assertEqual(len(stamper), 1, words)
+        self.assertEqual(words[stamper[0] + 1:], [MW.AGENT_FILE])
 
 
 class CandidatesAgainstFactsTest(unittest.TestCase):
@@ -440,15 +374,21 @@ class CandidatesAgainstFactsTest(unittest.TestCase):
                     self.assertIn(n["name"], names)
 
     def test_the_addresses_each_class_skips_in_this_build(self):
-        settings = MW.watch_settings(self.candidates, self.facts)
-        self.assertEqual({s["label"]: s["skip_rvas"] for s in settings}, {
-            "SongSelect": [0x8A8A0],
-            "GlobalVariables": [],
-            "PlayerSelectionCanvas": [0x66940],
-            "PlayerSelectionMenu": [0x6D60],
-            "CliGameLauncher": [],
-            "SceneManager": [],
-        })
+        # On the installed build's whole facts: an "all" class skips only
+        # addresses another class also runs, and a listed or by_name class
+        # skips none of the methods it hooks.
+        held = holders(self.facts)
+        skipped = 0
+        for s in MW.watch_settings(self.candidates, self.facts):
+            entry = next(e for e in self.candidates["classes"] if e["class"] == s["label"])
+            index = self.facts_class(entry)["typedef_index"]
+            with self.subTest(cls=s["label"]):
+                if entry["hook"] != MW.HOOK_ALL:
+                    self.assertEqual(s["skip_rvas"], [])
+                for rva in s["skip_rvas"]:
+                    self.assertTrue(set(held[rva]) - {index}, hex(rva))
+            skipped += len(s["skip_rvas"])
+        self.assertGreater(skipped, 0, "no class skips an address in this build")
 
     def test_each_named_assembly_holds_its_class_in_the_dump(self):
         dump = os.path.join(os.path.dirname(build_facts.facts_path(

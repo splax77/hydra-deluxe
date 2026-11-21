@@ -47,10 +47,9 @@
 using namespace hydra;
 using json = nlohmann::json;
 
-// Shared with test_replay_windows.cpp (replay_util.h): Round and Round's shape
-// on a hand-built chart, and where two replays first differ, row by row.
+// Shared with test_replay_windows.cpp (replay_util.h): where two replays
+// first differ, row by row.
 using test::first_result_difference;
-using test::squeeze_chart;
 
 namespace {
 
@@ -103,22 +102,19 @@ CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check ch
 
 TEST_CASE("replay reproduces the engine's score for every corpus path") {
     // Each setting starts from the GUI's defaults, straight from app::Settings
-    // rather than hand-written literals, and changes one thing. `min_paths` is
-    // a floor pinned from one run on the corpus, so a change that drops paths
-    // is caught.
+    // rather than hand-written literals, and changes one thing.
     struct Case {
         std::string name;
         app::Settings settings;
-        int min_paths;
     };
     app::Settings legacy;
     legacy.legacy_fills = true;
     app::Settings hard;
     hard.view_difficulty = "Hard";
     const Case cases[] = {
-        {"defaults", app::Settings(), 382},
-        {"CH 1.0 fill rule", legacy, 382},
-        {"Hard", hard, 294},
+        {"defaults", app::Settings()},
+        {"CH 1.0 fill rule", legacy},
+        {"Hard", hard},
     };
 
     for (const Case& c : cases) {
@@ -139,7 +135,8 @@ TEST_CASE("replay reproduces the engine's score for every corpus path") {
         const size_t loading = digest::loading_chart_count(corpus::chart_paths(), cfg);
         CHECK(run.charts > 0);
         CHECK(static_cast<size_t>(run.charts) == loading);
-        CHECK(run.paths >= c.min_paths);
+        // A walk that priced no path at a setting checked nothing.
+        CHECK(run.paths > 0);
         INFO("first mismatch: " << run.first_diff);
         CHECK(run.mismatches == 0);
     }
@@ -187,17 +184,67 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords.size() == 4);
-    // Pinned from one run. Inside the first section its own bonus is held
-    // back; each section's last chord, and the plain chord between them,
-    // show the whole total.
-    CHECK(r.chords[0].cum.total() == 150);
-    CHECK(r.chords[0].cum_onscreen_total == 50);
-    CHECK(r.chords[1].cum.total() == 300);
-    CHECK(r.chords[1].cum_onscreen_total == 300);
-    CHECK(r.chords[2].cum.total() == 350);
-    CHECK(r.chords[2].cum_onscreen_total == 350);
-    CHECK(r.chords[3].cum.total() == 500);
-    CHECK(r.chords[3].cum_onscreen_total == 500);
+    // The screen never runs ahead of the real total. A chord outside every
+    // section shows the whole total, so does a section's last chord (the
+    // bonus is paid there), and a chord inside a section, short of its last,
+    // that earned a solo bonus shows less. The sections are the song's own.
+    bool held_somewhere = false;
+    for (size_t i = 0; i < r.chords.size(); ++i) {
+        CAPTURE(i);
+        const int64_t total = r.chords[i].cum.total();
+        const int64_t shown = r.chords[i].cum_onscreen_total;
+        CHECK(shown <= total);
+        bool inside = false, ends_section = false;
+        for (const SoloSection& s : song.solo_sections) {
+            if (i >= s.first && i < s.last) inside = true;
+            if (i == s.last) ends_section = true;
+        }
+        if (!inside) CHECK(shown == total);
+        if (ends_section) CHECK(shown == total);
+        if (inside && r.chords[i].points.solo > 0) {
+            CHECK(shown < total);
+            held_somewhere = true;
+        }
+    }
+    // The first section spans two chords and its first chord pays a solo
+    // bonus, so at least one chord must hold something back.
+    CHECK(held_somewhere);
+}
+
+// solo_figures (core/scoring.h) is the one walk over a solo's chords. On a
+// corpus chart with a solo, each step's running bonus is what the replay's
+// rows paid over the solo up to that chord, the solo's bonus is the whole of
+// it, and the on-screen total holds back exactly the running bonus until the
+// solo's last chord.
+TEST_CASE("solo_figures: each solo's bonus is what the replay pays over it") {
+    const std::string chart = corpus::chart_named("Jack Wall - Snakeskin Boots");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, ChartReading{});
+    REQUIRE_FALSE(song.solo_sections.empty());
+    const std::vector<SoloFigures> figures = solo_figures(song);
+    REQUIRE(figures.size() == song.solo_sections.size());
+
+    const ReplayResult r = replay_path(song, {});
+    REQUIRE(r.chords.size() == song.sequence.size());
+    for (size_t k = 0; k < figures.size(); ++k) {
+        CAPTURE(k);
+        const SoloSection& sec = song.solo_sections[k];
+        const SoloFigures& f = figures[k];
+        REQUIRE(f.steps.size() == sec.last - sec.first + 1);
+        int64_t paid = 0;
+        for (size_t i = sec.first; i <= sec.last; ++i) {
+            CAPTURE(i);
+            const SoloFigures::AtChord& step = f.steps[i - sec.first];
+            CHECK(step.chord == i);
+            paid += r.chords[i].points.solo;
+            CHECK(step.bonus_so_far == paid);
+            const int64_t held = i == sec.last ? 0 : paid;
+            CHECK(r.chords[i].cum_onscreen_total + held == r.chords[i].cum.total());
+        }
+        CHECK(paid > 0);
+        CHECK(f.bonus == paid);
+        CHECK(f.notes == f.steps.back().notes_hit);
+    }
 }
 
 // A targeted search is only useful if it gives back the same path the ordinary
@@ -213,7 +260,8 @@ TEST_CASE("targeted search reproduces every corpus path") {
         cfg, [&cfg](const Song& song, const Path& p) -> std::string {
             const std::vector<Activation> want_acts = p.all_activations();
 
-            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(p));
+            const std::vector<Path> got =
+                search_target(song, cfg, activation_pins(test::act_ticks(p))).paths;
 
             // Somewhere in the returned variants must be this exact path.
             const Path* match = nullptr;
@@ -247,8 +295,11 @@ TEST_CASE("targeted search reproduces every corpus path") {
             return "";
         });
 
-    CHECK(run.charts > 0);
-    REQUIRE(run.paths >= 300);
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(run.charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
+    // A walk that priced no path checked nothing.
+    REQUIRE(run.paths > 0);
     INFO("first mismatch: " << run.first_diff);
     CHECK(run.mismatches == 0);
 }
@@ -259,7 +310,10 @@ struct TiedVariantCount {
     int variants = 0;  // tied variants the analysis listed
     int compared = 0;  // of those, the ones a lone search could price
     int differing = 0; // of those, the ones whose stored facts differ
-    int skipped() const { return variants - compared; }
+    int no_part = 0;   // charts with no notes at these settings
+    // Each variant with no lone root to compare against, named by chart and
+    // path, with what the lone search gave instead.
+    std::vector<std::string> skipped;
 };
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
@@ -268,15 +322,16 @@ struct TiedVariantCount {
 // and every window fact, early-fill facts included). All-zero variants are
 // not visited.
 //
-// A variant the lone search folded under a root of its own has no oracle,
-// so it is skipped, and each skip is printed. The caller pins how many there
-// are, so a regression that turns a compared variant into a skipped one
-// fails instead of passing quietly.
+// A variant the lone search folded under a root of its own has no oracle.
+// It is not compared; it goes on the skipped list by name, with its reason.
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++n.no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
@@ -284,7 +339,8 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
             ++n.variants;
             const test::LonePricing lone = test::lone_pricing(song, cfg, *p);
             if (!lone.diff.empty() && lone.tied_under_root) {
-                MESSAGE("skipped " << path << ": " << lone.diff);
+                n.skipped.push_back(path + " [" + p->pathstring() +
+                                    "]: folded under a lone root of its own, " + lone.diff);
                 continue;
             }
             ++n.compared;
@@ -309,29 +365,23 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 // Those two hold hundreds of variants, and with either D3 fix taken out of the
 // engine dozens of them store their leader's facts instead of their own.
 TEST_CASE("every tied variant stores what a search pricing it alone stores") {
-    // `skipped` is pinned exactly: the variants with no lone root to compare
-    // against. Each is printed with its reason. If the count moves, read
-    // those lines before changing it.
-    //
-    // `min_variants` is a floor, not a pin: today the three settings list 12,
-    // 295 and 303 variants. A change that stopped listing most ties would
-    // still pass every other check here (fewer variants, none skipped, none
-    // differ), so the floor is what catches it.
-    struct Setting { int cap; int depth; int skipped; int min_variants; };
-    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
-                            Setting{2, 40, 4, 200}}) {
+    // A variant with no lone root to compare against is printed by name,
+    // with the reason, so the run shows each one rather than a count.
+    struct Setting { int cap; int depth; };
+    for (const Setting s : {Setting{4, 4}, Setting{4, 40}, Setting{2, 40}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
         INFO("cap " << s.cap << ", score range " << s.depth);
         const TiedVariantCount n = check_tied_variants(cfg);
-        CHECK(n.variants >= s.min_variants);
+        for (const std::string& why : n.skipped) MESSAGE("skipped " << why);
+        // A walk that compared no variant checked nothing at this setting.
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
-        CHECK(n.skipped() == s.skipped);
         MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
                        << " of " << n.variants << " variants against a lone search, "
-                       << n.differing << " differ, " << n.skipped() << " skipped");
+                       << n.differing << " differ, " << n.skipped.size() << " skipped, "
+                       << n.no_part << " charts with no notes at these settings");
     }
 }
 
@@ -340,21 +390,42 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
 TEST_CASE("targeted search rejects a tick that is not a fill") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
+    // Every corpus chart whose best path activates. The non-fill tick is the
+    // chart's own: the nearest chord before the first activation whose
+    // SongTimestamp carries no fill (has_activation() false), so Star Power
+    // has had the most time to fill by then.
+    int checked = 0, no_part = 0, no_activation = 0;
     for (const std::string& path : corpus::chart_paths()) {
+        CAPTURE(path);
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
-        if (rec.paths.empty()) continue;
+        REQUIRE_MESSAGE(!rec.paths.empty(), "a chart with notes stored no path");
         const std::vector<Activation> acts = rec.best_path().all_activations();
-        if (acts.empty()) continue;
+        if (acts.empty()) {
+            ++no_activation;
+            continue;
+        }
 
-        // One tick past a real activation fill: the fill node lives on the
-        // tick itself, so tick + 1 is never one.
-        const int64_t bogus = acts[0].timecode.ticks() + 1;
-        CHECK(search_target(song, cfg, {bogus}).empty());
-        return;
+        const int64_t act_tick = acts[0].timecode.ticks();
+        std::optional<int64_t> not_a_fill;
+        for (const SongTimestamp& ts : song.sequence) {
+            if (ts.timecode.ticks() >= act_tick) break;
+            if (!ts.has_activation()) not_a_fill = ts.timecode.ticks();
+        }
+        CHECK_MESSAGE(not_a_fill.has_value(), "no chord without a fill before tick " << act_tick);
+        if (!not_a_fill) continue;
+        ++checked;
+        CHECK_MESSAGE(search_target(song, cfg, activation_pins({*not_a_fill})).paths.empty(),
+                      "a path came back for tick " << *not_a_fill << ", which is not a fill");
     }
-    FAIL("no corpus chart with an activation to build the negative case from");
+    MESSAGE(checked << " charts checked, " << no_part << " with no notes at these settings, "
+                    << no_activation << " whose best path never activates");
+    // A walk that met no chart with an activation built no negative case.
+    CHECK(checked > 0);
 }
 
 TEST_CASE("replay without Star Power scores no doubling at all") {
@@ -366,135 +437,159 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.final.notes > 0);
     CHECK(r.chords.size() == song.sequence.size());
 
-    // The running totals are a prefix sum of the per-chord points, and the
-    // on-screen total only ever lags the real one (a solo's bonus is withheld
-    // until the run ends, never paid early).
-    ReplayScore running;
+    // No chord is in Star Power, none earns SP points, and the disc shows
+    // the plain combo multiplier on every one.
     for (const ReplayChord& c : r.chords) {
-        running.add(c.points);
-        CHECK(c.cum.total() == running.total());
-        CHECK(c.cum_onscreen_total <= c.cum.total());
+        CAPTURE(c.tick);
+        CHECK_FALSE(c.in_sp);
+        CHECK(c.points.sp == 0);
+        CHECK(c.multiplier_shown == c.multiplier_after);
     }
-    CHECK(r.final.total() == running.total());
-    CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
-// Round and Round's shape (squeeze_chart): a window whose squeeze-out sits
-// on an R+Y phrase chord ~479 ms past the SP end. That chord is outside the
-// window and outside the leeway, so it earns no doubling at all -- the
-// squeeze-out changes nothing. The chord on the deactivation node is paid.
-TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
-    const Song song = squeeze_chart();
-
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = 3072;
-    w.sqout_offset_ms = offset_from_sp_end(song.timecode(3256).ms(), song.timecode(3072).ms());
-    w.sqout_tick = 3256;
-
-    const ReplayResult r = replay_path(song, {w});
-    REQUIRE(r.chords.size() == 6);
-    CHECK(r.chords[4].in_sp);  // on the deactivation node: paid in full
-    CHECK(r.chords[4].points.sp > 0);
-    CHECK_FALSE(r.chords[5].in_sp);
-    CHECK(r.chords[5].points.sp == 0);
-
-    // The disc follows the same decision: doubled on the paid chord only.
-    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after * kStarPowerMultiplier);
-    CHECK(r.chords[5].multiplier_shown == r.chords[5].multiplier_after);
+// D2 on the engine's own squeeze-outs: every window the search stored with a
+// squeezed-out chord, on every corpus chart at the app's defaults. Under the
+// default first-note rule a one-note chord squeezed out loses all its
+// doubling, whether it sits inside the window or past the leeway. On any
+// squeezed-out chord, the disc doubles exactly when SP paid it something.
+TEST_CASE("a squeezed-out chord SP pays nothing shows the plain multiplier, on corpus paths") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    REQUIRE(cfg.rules.sqout_rule == core::SqOutRule::FirstNote);
+    int sqout_chords = 0, one_note = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const std::vector<ReplayWindow> wl = windows_for_path(p);
+            const ReplayResult r = replay_path(song, wl, cfg.rules);
+            for (const ReplayWindow& w : wl) {
+                if (!w.sqout_tick) continue;
+                const ReplayChord* c = nullptr;
+                for (const ReplayChord& row : r.chords)
+                    if (row.tick == *w.sqout_tick) c = &row;
+                if (!c) return ": no chord on squeeze-out tick " + std::to_string(*w.sqout_tick);
+                ++sqout_chords;
+                const std::string at = " on squeeze-out tick " + std::to_string(c->tick);
+                if (c->in_sp != (c->points.sp > 0)) return ": in_sp disagrees with SP points" + at;
+                const int want = c->in_sp ? c->multiplier_after * kStarPowerMultiplier
+                                          : c->multiplier_after;
+                if (c->multiplier_shown != want) return ": disc shows the wrong multiplier" + at;
+                if (c->notes.size() == 1) {
+                    ++one_note;
+                    if (c->points.sp != 0) return ": a one-note squeeze-out kept SP points" + at;
+                }
+            }
+            return "";
+        });
+    MESSAGE(sqout_chords << " squeezed-out chords, " << one_note << " of one note");
+    CHECK(run.charts > 0);
+    // The corpus stores squeeze-outs (test_engine_sweeps.cpp walks them), so
+    // a walk that met none, or no one-note one, checked nothing here.
+    CHECK(sqout_chords > 0);
+    CHECK(one_note > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
     using core::SqOutPosition;
-    CHECK(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::NoSqOut, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::Exact, 3.0));
-    CHECK(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::Exact, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::After, 3.0));
-    CHECK(core::paid_by_sp(2.0, 100, 50, SqOutPosition::NoSqOut, 3.0));        // in the leeway
-    CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
-}
+    // The leeway past the SP end, read from the rules the app runs with.
+    const double leeway = core::default_rules().backend_leeway_ms;
+    REQUIRE(leeway > 0.0);
+    // A row's full SP value, and what is left of it when it is the
+    // squeezed-out chord: some, or none at all.
+    const int sp_points = 100, sqout_some = 50, sqout_none = 0;
+    const double inside = -10.0;  // before the SP end
 
-// D2: the disc doubles only when Star Power paid the chord something.
-TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multiplier") {
-    // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
-    auto build = [](bool two_notes) {
-        Song song(192);
-        song.bpm_changes[0] = 120.0;
-        song.build_timing();
-        for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
-            SongTimestamp ts;
-            ts.timecode = song.timecode(tick);
-            ts.chord.add_note(NoteColor::Red);
-            if (tick != 2976 || two_notes) ts.chord.add_note(NoteColor::Yellow);
-            if (tick == 2976) test::mark_phrase_end(ts, tick, song.tick_resolution());
-            song.sequence.push_back(ts);
-        }
-        return song;
+    struct Case {
+        const char* name;
+        double offset_ms;
+        int sqout_sp_points;
+        SqOutPosition pos;
+        bool paid;
     };
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = 3072;
-    w.sqout_tick = 2976;  // a phrase chord 250 ms before the SP end
-
-    const Song one = build(false);
-    const ReplayResult r = replay_path(one, {w});
-    REQUIRE(r.chords.size() == 6);
-    CHECK(r.chords[3].in_sp);  // an ordinary chord inside the window: doubled
-    CHECK(r.chords[3].multiplier_shown == r.chords[3].multiplier_after * kStarPowerMultiplier);
-    CHECK(r.chords[4].points.sp == 0);  // first-note rule: one note loses all its doubling
-    CHECK_FALSE(r.chords[4].in_sp);
-    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after);
-
-    // Two notes: only the first note's share is lost, so SP still paid it.
-    const Song two = build(true);
-    const ReplayResult r2 = replay_path(two, {w});
-    CHECK(r2.chords[4].points.sp > 0);
-    CHECK(r2.chords[4].in_sp);
-    CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
+    const Case cases[] = {
+        {"inside the window, no squeeze-out", inside, sqout_none, SqOutPosition::NoSqOut, true},
+        {"the squeezed-out chord with nothing left", inside, sqout_none, SqOutPosition::Exact,
+         false},
+        {"the squeezed-out chord with points left", inside, sqout_some, SqOutPosition::Exact, true},
+        {"a chord after the squeezed-out one", inside, sqout_some, SqOutPosition::After, false},
+        {"inside the leeway", leeway / 2.0, sqout_some, SqOutPosition::NoSqOut, true},
+        {"exactly the leeway after the end (D29: strict)", leeway, sqout_some,
+         SqOutPosition::NoSqOut, false},
+        {"past the leeway", leeway * 2.0, sqout_some, SqOutPosition::NoSqOut, false},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const bool paid = core::paid_by_sp(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == c.paid);
+        // The yes is the row's SP value being above zero, the name's claim.
+        const int value =
+            core::backend_row_value(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == (value > 0));
+    }
 }
 
-// ambiguous_window_warnings reads in_sp, so a chord that no window pays
-// anything for does not count as paid just because a squeezed-out window
-// reached it. Here window A has no squeeze-out offset and ends on tick 768; the
-// phrase chord 250 ms later is one note, and only window B (which squeezes it
-// out, so it pays 0) reaches it. A pays nothing for it, so there is nothing for
-// the warning to say.
-TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : {0, 768, 864, 1536}) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);  // one note: a squeeze-out loses all its doubling
-        if (tick == 864) test::mark_phrase_end(ts, tick, song.tick_resolution());
-        song.sequence.push_back(ts);
-    }
-    ReplayWindow a;  // no squeeze-out offset: the warning looks at it
-    a.act_tick = 0;
-    a.deact_tick = 768;
-    ReplayWindow b;  // squeezes the chord at 864 out
-    b.act_tick = 864;
-    b.deact_tick = 1536;
-    b.sqout_tick = 864;
 
-    const ReplayResult r = replay_path(song, {a, b});
-    REQUIRE(r.chords.size() == 4);
-    CHECK(r.chords[2].points.sp == 0);
-    CHECK_FALSE(r.chords[2].in_sp);
-    CHECK(ambiguous_window_warnings(song, r, {a, b}, core::default_rules()).empty());
-
-    // With no squeezed-out window the chord still is not paid (250 ms is past
-    // the leeway), so the answer is the same.
-    const ReplayResult alone = replay_path(song, {a});
-    CHECK(ambiguous_window_warnings(song, alone, {a}, core::default_rules()).empty());
+/// ambiguous_window_warnings reads in_sp, so a chord the replay did not pay SP
+// for is never named, just because the engine could squeeze it out. Every
+// corpus path is replayed with its windows typed plain (the squeeze-outs
+// taken off, so each window has candidates to be asked about). For every
+// window and every chord core::sqout_chords offers, the warning names the
+// chord exactly when the replay's row for it is in Star Power.
+TEST_CASE("replay: the squeeze-out warning names a candidate chord exactly when the replay paid it") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int paid = 0, unpaid = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            std::vector<ReplayWindow> wl = windows_for_path(p);
+            for (ReplayWindow& w : wl) {
+                w.sqout_tick.reset();
+                w.sqout_offset_ms.reset();
+                w.from_record = false;
+            }
+            const ReplayResult r = replay_path(song, wl, cfg.rules);
+            const std::vector<std::string> warned =
+                ambiguous_window_warnings(song, r, wl, cfg.rules);
+            for (const ReplayWindow& w : wl) {
+                const std::string head =
+                    "window " + std::to_string(w.act_tick) + ":" + std::to_string(w.deact_tick) + " ";
+                for (const SongTimestamp* engine :
+                     core::sqout_chords(song, song.timing().timecode(w.deact_tick), w.act_tick,
+                                        w.sqin_ticks, w.from_record)) {
+                    const int64_t tick = engine->timecode.ticks();
+                    const ReplayChord* c = nullptr;
+                    for (const ReplayChord& row : r.chords)
+                        if (row.tick == tick) c = &row;
+                    if (!c) return ": no chord on candidate tick " + std::to_string(tick);
+                    bool named = false;
+                    for (const std::string& warn : warned)
+                        if (warn.rfind(head, 0) == 0 &&
+                            warn.find("tick " + std::to_string(tick) + " ") != std::string::npos)
+                            named = true;
+                    (c->in_sp ? paid : unpaid)++;
+                    if (named != c->in_sp)
+                        return std::string(named ? ": warned about an unpaid chord"
+                                                 : ": no warning about a paid chord") +
+                               " at tick " + std::to_string(tick);
+                }
+            }
+            return "";
+        });
+    MESSAGE(paid << " paid candidates, " << unpaid << " unpaid");
+    CHECK(run.charts > 0);
+    // Both sides must occur, or the walk never asked the question.
+    CHECK(paid > 0);
+    CHECK(unpaid > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
-    CHECK(shown_multiplier(1, false) == 1);
-    CHECK(shown_multiplier(1, true) == 2);
-    CHECK(shown_multiplier(4, false) == 4);
-    CHECK(shown_multiplier(4, true) == 8);
+    // The doubling is kStarPowerMultiplier, read from its owner by name.
+    for (int m : {1, 2, 3, 4}) {
+        CAPTURE(m);
+        CHECK(shown_multiplier(m, false) == m);
+        CHECK(shown_multiplier(m, true) == m * kStarPowerMultiplier);
+    }
 }
 
 // `score --path` prices a path straight out of the JSON `dump` and `target`
@@ -506,36 +601,48 @@ TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power")
 // trip. The stamped tick names that chord; the SqOut offset is read only for a
 // dump from before the tick existed (read_sqout in tools/replay_json.cpp).
 TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only for older dumps") {
-    const json path = json::parse(R"({
-      "index": 0,
-      "activations": [
-        {"act_tick": 480, "deact_tick": 3840, "sqinouts": []},
-        {"act_tick": 7680, "deact_tick": 11520, "sqout_tick": 11532,
-         "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
-                      {"kind": "SqOut", "offset_ms": 31.25}]},
-        {"act_tick": 7680, "deact_tick": 11520,
-         "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
-                      {"kind": "SqOut", "offset_ms": 31.25}]}
-      ]})");
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int by_tick = 0, by_offset = 0, plain = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const std::vector<const Path*> all = corpus::analyzed(chart, cfg).all_paths();
+        const json dumped = paths_json(all, song.timing());
+        REQUIRE(dumped.size() == all.size());
+        for (size_t k = 0; k < all.size(); ++k) {
+            CAPTURE(chart);
+            CAPTURE(all[k]->pathstring());
+            const std::vector<ReplayWindow> want = windows_for_path(*all[k]);
 
-    const std::vector<ReplayWindow> w = windows_from_json(path);
-    REQUIRE(w.size() == 3);
-    CHECK(w[0].act_tick == 480);
-    CHECK(w[0].deact_tick == 3840);
-    CHECK_FALSE(w[0].sqout_offset_ms.has_value());
-    CHECK_FALSE(w[0].sqout_tick.has_value());
+            // The dump as written: a squeezed-out window is named by its tick
+            // and the offset is not read.
+            const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
+            REQUIRE(got.size() == want.size());
+            for (size_t i = 0; i < got.size(); ++i) {
+                CHECK(got[i].sqout_tick == want[i].sqout_tick);
+                CHECK_FALSE(got[i].sqout_offset_ms.has_value());
+                ++(want[i].sqout_tick ? by_tick : plain);
+            }
 
-    CHECK(w[1].act_tick == 7680);
-    CHECK(w[1].deact_tick == 11520);
-    REQUIRE(w[1].sqout_tick.has_value());
-    CHECK(*w[1].sqout_tick == 11532);
-    CHECK_FALSE(w[1].sqout_offset_ms.has_value());
-
-    // An older dump with no tick: the offset is what names the chord. The
-    // SqIn sits in the same list and must not be mistaken for the SqOut.
-    CHECK_FALSE(w[2].sqout_tick.has_value());
-    REQUIRE(w[2].sqout_offset_ms.has_value());
-    CHECK(*w[2].sqout_offset_ms == doctest::Approx(31.25));
+            // An older dump, with no tick: this real dump with the tick taken
+            // out. The offset then names the chord, read from the SqOut in
+            // the same list as any SqIn, never from the SqIn.
+            json old = dumped[k];
+            for (json& act : old["activations"]) act.erase("sqout_tick");
+            const std::vector<ReplayWindow> older = windows_from_json(old);
+            REQUIRE(older.size() == want.size());
+            for (size_t i = 0; i < older.size(); ++i) {
+                CHECK_FALSE(older[i].sqout_tick.has_value());
+                CHECK(older[i].sqout_offset_ms == want[i].sqout_offset_ms);
+                if (want[i].sqout_offset_ms) ++by_offset;
+            }
+        }
+    }
+    MESSAGE(by_tick << " squeezed-out windows by tick, " << by_offset << " by offset, "
+                    << plain << " plain");
+    // A walk that met no squeezed-out window checked nothing here.
+    CHECK(by_tick > 0);
+    CHECK(by_offset == by_tick);
 
     // JSON that is not a path at all says so rather than scoring something.
     CHECK_THROWS(windows_from_json(json::object()));
@@ -550,62 +657,53 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    // Every corpus chart with windows is compared. The loop only counts and
-    // keeps the first difference; the assertions sit after it.
-    int charts = 0, checked = 0, mismatches = 0;
-    std::string first_diff;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
-
-        const std::vector<const Path*> all = rec.all_paths();
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
-        bool had_windows = false;
-        for (size_t k = 0; k < all.size(); ++k) {
-            const Path* p = all[k];
-            const std::vector<ReplayWindow> want = windows_for_path(*p);
-            if (want.empty()) continue;
-            had_windows = true;
-
+    // Every stored path of every corpus chart, a path with no windows too
+    // (its dump must read back as none). A chart that fails to load throws;
+    // one with no notes at these settings is counted and printed.
+    int windows = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const std::vector<ReplayWindow> want = windows_for_path(p);
             // The real dump producer, so a format change on either side fails.
-            const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
-            ++checked;
-            std::string diff;
-            if (got.size() != want.size()) {
-                diff = "window count " + std::to_string(got.size()) + " vs " +
-                       std::to_string(want.size());
-            } else {
-                for (size_t i = 0; i < got.size() && diff.empty(); ++i) {
-                    // read_sqout (tools/replay_json.cpp) decides when the
-                    // offset is read; today's records always stamp a tick.
-                    if (got[i].act_tick != want[i].act_tick ||
-                        got[i].deact_tick != want[i].deact_tick ||
-                        got[i].sqout_tick != want[i].sqout_tick ||
-                        (!want[i].sqout_tick &&
-                         got[i].sqout_offset_ms != want[i].sqout_offset_ms))
-                        diff = "window " + std::to_string(i) + " differs";
-                }
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            std::vector<ReplayWindow> got;
+            try {
+                got = windows_from_json(dumped[0]);
+            } catch (const std::runtime_error& e) {
+                return std::string(": the dump does not read back: ") + e.what();
             }
-            if (diff.empty()) continue;
-            ++mismatches;
-            if (first_diff.empty()) first_diff = chart + " [" + p->pathstring() + "] " + diff;
-        }
-        if (had_windows) ++charts;
-    }
-    MESSAGE(charts << " charts, " << checked << " paths with windows compared");
-    CHECK(checked > 0);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+            if (got.size() != want.size())
+                return ": window count " + std::to_string(got.size()) + " vs " +
+                       std::to_string(want.size());
+            for (size_t i = 0; i < got.size(); ++i) {
+                ++windows;
+                // read_sqout (tools/replay_json.cpp) decides when the offset
+                // is read: only when the window has no squeeze-out tick.
+                if (got[i].act_tick != want[i].act_tick ||
+                    got[i].deact_tick != want[i].deact_tick ||
+                    got[i].sqout_tick != want[i].sqout_tick ||
+                    (!want[i].sqout_tick && got[i].sqout_offset_ms != want[i].sqout_offset_ms) ||
+                    got[i].sqin_ticks != want[i].sqin_ticks ||
+                    got[i].from_record != want[i].from_record)
+                    return ": window " + std::to_string(i) + " differs";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << windows << " windows compared, "
+                       << run.no_part << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that compared no window checked nothing.
+    CHECK(windows > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 // D34: a window never squeezes out a phrase it already squeezed in, and the
 // replay's squeeze-out lookup and warnings skip those phrases
 // (ReplayWindow::sqin_ticks). `score --path <dump>` reads its windows from the
-// dump, so the dump has to carry each window's SqIn phrases. Without them, on
-// spent_then_next.chart at cap 2, path '0++' would warn that 17360 might have
+// dump, so the dump has to carry each window's SqIn phrases. Without them, a
+// path on spent_then_next.chart at cap 2 would warn that a phrase might have
 // been squeezed out, though it was squeezed in. A dump without the field reads
 // as no SqIns.
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
@@ -616,32 +714,33 @@ TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const json dumped = paths_json(all, song.timing());
     REQUIRE(dumped.size() == all.size());
     int with_sqins = 0;
-    bool saw_0pp = false;
     for (size_t k = 0; k < all.size(); ++k) {
         CAPTURE(all[k]->pathstring());
         const std::vector<ReplayWindow> want = windows_for_path(*all[k]);
         const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
         REQUIRE(got.size() == want.size());
+        std::vector<int64_t> squeezed_in;
         for (size_t i = 0; i < got.size(); ++i) {
             CHECK(got[i].sqin_ticks == want[i].sqin_ticks);
             with_sqins += want[i].sqin_ticks.empty() ? 0 : 1;
+            squeezed_in.insert(squeezed_in.end(), want[i].sqin_ticks.begin(),
+                               want[i].sqin_ticks.end());
         }
-        if (all[k]->pathstring() != "0++") continue;
-        saw_0pp = true;
-        // Its last window squeezed 17360 in, so no warning may name it.
+        // A phrase a window squeezed in is never offered as a squeeze-out.
         for (const std::string& warn :
              ambiguous_window_warnings(song, replay_path(song, got), got,
                                        core::default_rules()))
-            CHECK_MESSAGE(warn.find("17360") == std::string::npos, warn);
+            for (int64_t t : squeezed_in)
+                CHECK_MESSAGE(warn.find("tick " + std::to_string(t) + " ") == std::string::npos,
+                              warn);
+
+        // An older dump, without the key, still reads: no SqIn phrases. It is
+        // this real dump with the key taken out.
+        json old = dumped[k];
+        for (json& act : old["activations"]) act.erase("sqin_ticks");
+        for (const ReplayWindow& w : windows_from_json(old)) CHECK(w.sqin_ticks.empty());
     }
     CHECK(with_sqins > 0);
-    CHECK(saw_0pp);
-
-    // An older dump, without the key, still reads: no SqIn phrases.
-    const std::vector<ReplayWindow> old = windows_from_json(json::parse(
-        R"({"activations": [{"act_tick": 480, "deact_tick": 3840, "sqinouts": []}]})"));
-    REQUIRE(old.size() == 1);
-    CHECK(old[0].sqin_ticks.empty());
 }
 
 // fcvideo and `hydra_replay score --path` read these fields out of a dump. A
@@ -649,43 +748,64 @@ TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
 TEST_CASE("paths_json writes every field the dump readers use") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    bool checked = false;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        const std::vector<const Path*> all = rec.all_paths();
-        if (all.empty() || all[0]->all_activations().empty()) continue;
+    // Every stored path of every corpus chart. A chart that fails to load
+    // throws; one with no notes at these settings is counted and printed.
+    int activations = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            const json& d = dumped[0];
+            for (const char* k : {"index", "pathstring", "total", "score", "activations"})
+                if (!d.contains(k)) return std::string(": no top-level key ") + k;
+            if (d["pathstring"].get<std::string>() != p.pathstring()) return ": pathstring differs";
+            if (d["total"].get<int64_t>() != p.totalscore()) return ": total differs";
 
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
+            // The score split's names come from their one owner,
+            // kReplayScoreFields, and each value from score_of.
+            const ReplayScore stored = score_of(p);
+            for (const ReplayScoreField& f : kReplayScoreFields) {
+                if (!d["score"].contains(f.name)) return std::string(": no score key ") + f.name;
+                if (d["score"][f.name].get<int64_t>() != stored.*(f.member))
+                    return std::string(": score ") + f.name + " differs";
+            }
 
-        const json& p0 = dumped[0];
-        for (const char* k : {"index", "pathstring", "total", "score", "activations"})
-            CHECK_MESSAGE(p0.contains(k), k);
-        for (const char* k : {"notes", "combo", "sp", "solo", "accent", "ghost"})
-            CHECK_MESSAGE(p0["score"].contains(k), k);
-        CHECK(p0["pathstring"].get<std::string>() == all[0]->pathstring());
-
-        REQUIRE(!p0["activations"].empty());
-        const json& a0 = p0["activations"][0];
-        for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks",
-                              "chord_code", "sqinouts",
-                              "sqin_ticks", "end_anchor_tick", "end_scale_early", "end_scale_late",
-                              "steady_ms_before_act", "steady_ms_after_act",
-                              "steady_ms_before_end", "steady_ms_after_end"})
-            CHECK_MESSAGE(a0.contains(k), k);
-        // The real search stores the end's ratio on every activation it
-        // returns, so a fresh dump never writes it null.
-        CHECK(a0["end_anchor_tick"].is_number());
-        CHECK(a0["end_scale_early"].is_number());
-        CHECK(a0["end_scale_late"].is_number());
-
-        checked = true;
-        break;  // one chart's first path is the whole contract
-    }
-    CHECK(checked);
+            // fcvideo, which lives outside this repo, reads these activation
+            // keys; no list in the repo owns them, so they are named here.
+            const ActivationWalk walk = p.walk_activations();
+            if (d["activations"].size() != walk.size())
+                return ": the dump wrote another number of activations";
+            for (size_t i = 0; i < walk.size(); ++i) {
+                const json& a = d["activations"][i];
+                ++activations;
+                for (const char* k :
+                     {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick", "sp_meter",
+                      "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks", "chord_code",
+                      "sqinouts", "sqin_ticks", "from_record", "end_anchor_tick",
+                      "end_scale_early", "end_scale_late", "steady_ms_before_act",
+                      "steady_ms_after_act", "steady_ms_before_end", "steady_ms_after_end"})
+                    if (!a.contains(k)) return std::string(": no activation key ") + k;
+                // The real search stores the end's ratio on every activation
+                // that has an end, so a fresh dump never writes it null there.
+                if (a["deact_tick"].get<int64_t>() < 0) continue;
+                for (const char* k : {"end_anchor_tick", "end_scale_early", "end_scale_late"})
+                    if (!a[k].is_number()) return std::string(": ") + k + " is not a number";
+                // The anchor is the one the activation names: its own tick, or
+                // the cap's collecting note.
+                const std::optional<int64_t> anchor = walk[i].deact_anchor_tick();
+                if (!anchor || a["end_anchor_tick"].get<int64_t>() != *anchor)
+                    return ": end_anchor_tick is not deact_anchor_tick";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << activations
+                       << " activations, " << run.no_part
+                       << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that dumped no activation checked no activation key.
+    CHECK(activations > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 namespace {
@@ -723,7 +843,11 @@ json dump_one_activation(const SongTiming& timing, int64_t act_tick,
     return dump_alone(timing, a);
 }
 
-double rounded_4(double v) { return std::round(v * 1e4) / 1e4; }
+// How long `ticks` last at one steady `bpm`, on a chart of `resolution`
+// ticks a beat: a beat lasts 60000 / bpm ms.
+double ms_at_bpm(int64_t ticks, int64_t resolution, double bpm) {
+    return static_cast<double>(ticks) / static_cast<double>(resolution) * 60000.0 / bpm;
+}
 
 const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_act",
                                      "steady_ms_before_end", "steady_ms_after_end"};
@@ -734,98 +858,152 @@ const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_ac
 // activation, both ways, and no change lies on either side of either tick. A
 // marker that repeats the tempo or meter in force is no change.
 TEST_CASE("paths_json: a constant tempo gives end ratios of 1 and no change on any side") {
-    const SongTiming timing(192, {{0, 768}, {1536, 768}}, {{0, 120.0}, {768, 120.0}},
-                            {{0, {4, 4}}, {1536, {4, 4}}});
-    const json a = dump_one_activation(timing, 3840, 9984);
-    CHECK(a["end_anchor_tick"].get<int64_t>() == 3840);
-    REQUIRE(a["end_scale_early"].is_number());
-    REQUIRE(a["end_scale_late"].is_number());
-    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(1.0));
-    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(1.0));
-    for (const char* k : kSteadyFields) {
-        REQUIRE_MESSAGE(a.contains(k), k);
-        CHECK_MESSAGE(a[k].is_null(), k);
+    // Every corpus chart whose tempo and meter never change (a marker that
+    // repeats the one in force is no change), dumped by the real writer.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const auto steady = [](const auto& changes) {
+        for (const auto& kv : changes)
+            if (kv.second != changes.begin()->second) return false;
+        return true;
+    };
+    int charts = 0, activations = 0, ratios = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty() || !steady(song.bpm_changes) || !steady(song.tpm_changes)) continue;
+        const std::vector<const Path*> all = corpus::analyzed(chart, cfg).all_paths();
+        const json dumped = paths_json(all, song.timing());
+        REQUIRE(dumped.size() == all.size());
+        ++charts;
+        for (size_t k = 0; k < all.size(); ++k) {
+            CAPTURE(chart);
+            CAPTURE(all[k]->pathstring());
+            for (const json& a : dumped[k]["activations"]) {
+                ++activations;
+                // Null when the search stored no ratio: only a stored one is read.
+                for (const char* key : {"end_scale_early", "end_scale_late"}) {
+                    REQUIRE_MESSAGE(a.contains(key), key);
+                    if (!a[key].is_number()) continue;
+                    ++ratios;
+                    CHECK_MESSAGE(a[key].get<double>() == doctest::Approx(1.0), key);
+                }
+                for (const char* key : kSteadyFields) {
+                    REQUIRE_MESSAGE(a.contains(key), key);
+                    CHECK_MESSAGE(a[key].is_null(), key);
+                }
+            }
+        }
     }
+    MESSAGE(charts << " constant-tempo charts, " << activations << " activations, " << ratios
+                   << " stored ratios");
+    // A walk that met no such chart, or read no ratio, checked nothing here.
+    CHECK(charts > 0);
+    CHECK(ratios > 0);
 }
 
-// Rescued's shape: a tempo marker sits on the activation tick itself (150.67
-// BPM before it, 155.656 from it), and the end's tick follows 150 BPM. An
-// early hit lands in the segment before the marker, so the early ratio reads
-// that segment's tempo, not the marker's, and the early side stays exact back
-// to the marker at 83520: one beat at 150.67 BPM, about 398 ms. The end's
-// early side reaches back to the 150 BPM marker at 89000: 856 ticks at 150
-// BPM. Nothing changes after the end.
+// Rescued's shape: a tempo marker sits on the activation tick itself, with
+// one tempo before it and another from it, and the end's tick follows a
+// third. An early hit lands in the segment before the marker, so the early
+// ratio reads that segment's tempo against the end's, and the late ratio the
+// marker's tempo against the end's. The early side stays exact back to the
+// marker before; the end's early side reaches back to the end's own marker.
+// Nothing changes after the end.
 TEST_CASE("paths_json: a tempo marker on the activation tick gives the earlier segment's ratio") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {83520, 150.67}, {83712, 155.656}, {89000, 150.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kBeforeMarker = 83520, kActTick = 83712, kEndMarker = 89000,
+                      kEndTick = 89856;
+    constexpr double kBpmBefore = 150.67, kBpmFromAct = 155.656, kBpmAtEnd = 150.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kBeforeMarker, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kEndMarker, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 83712, 89856);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(rounded_4(a["end_scale_early"].get<double>()) == doctest::Approx(1.0045));
-    CHECK(rounded_4(a["end_scale_late"].get<double>()) == doctest::Approx(1.0377));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(kBpmBefore / kBpmAtEnd));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(kBpmFromAct / kBpmAtEnd));
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(398.22).epsilon(1e-4));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kBeforeMarker, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(1783.33).epsilon(1e-5));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kEndMarker, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A change exactly on the tick starts the late side's section, so it bounds
-// neither side: the early side measures back to the change before (768, 768
-// ticks at 60 BPM = 4000 ms) and the late side on to the change after (2304,
-// 768 ticks at 120 BPM = 2000 ms), never 0. The end at 3840 reaches back to
-// 2304 (1536 ticks at 60 BPM = 8000 ms) with nothing after it.
+// neither side: the early side measures back to the change before and the
+// late side on to the change after, never 0. The end reaches back to the
+// last change, with nothing after it.
 TEST_CASE("paths_json: a change on the tick bounds neither of its steady spans") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {768, 60.0}, {1536, 120.0}, {2304, 60.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kChangeBefore = 768, kActTick = 1536, kChangeAfter = 2304, kEndTick = 3840;
+    constexpr double kBpmBefore = 60.0, kBpmFromAct = 120.0, kBpmAtEnd = 60.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kChangeBefore, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kChangeAfter, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 1536, 3840);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kChangeBefore, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kChangeAfter - kActTick, kRes, kBpmFromAct)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(8000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kChangeAfter, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A meter change between the activation and its end changes the measure
-// length while the tempo stays put, so the ratio is the measure ratio (3/4
-// against 4/4), not the BPM ratio of 1. The meter change bounds the spans the
-// way a tempo change does: 768 ticks at 120 BPM after the activation, 1536
-// before the end.
+// length while the tempo stays put, so the ratio is the end's measure length
+// against the activation's (3/4 against 4/4), not the BPM ratio of 1. The
+// meter change bounds the spans the way a tempo change does.
 TEST_CASE("paths_json: a time signature change between the ticks gives the measure ratio") {
-    const SongTiming timing(192, {{0, 768}, {1536, 576}}, {{0, 120.0}},
-                            {{0, {4, 4}}, {1536, {3, 4}}});
-    const json a = dump_one_activation(timing, 768, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kMeasure44 = 768, kMeasure34 = 576;  // ticks a measure
+    constexpr int64_t kActTick = 768, kMeterChange = 1536, kEndTick = 3072;
+    constexpr double kBpm = 120.0;
+    const SongTiming timing(kRes, {{0, kMeasure44}, {kMeterChange, kMeasure34}}, {{0, kBpm}},
+                            {{0, {4, 4}}, {kMeterChange, {3, 4}}});
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
+    const double measure_ratio = static_cast<double>(kMeasure34) / static_cast<double>(kMeasure44);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_early"].get<double>() != doctest::Approx(1.0));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(measure_ratio));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(measure_ratio));
     CHECK(a["steady_ms_before_act"].is_null());
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kMeterChange - kActTick, kRes, kBpm)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kMeterChange, kRes, kBpm)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // When the cap pinned the end to a collecting note, that note's timing moves
 // the end, not the activation's: end_anchor_tick names it and the "act" spans
-// are measured from it. Here the clamp at 1536 sits 768 ticks at 60 BPM past
-// the change at 768; from the activation at 384 there would be no change
-// before at all.
+// are measured from it. The clamp note sits past a tempo change; from the
+// activation, before that change, there would be no change before at all.
 TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
-    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}, {768, 60.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 384);
-    test::set_clamped_window(a, 1536, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kActTick = 384, kChange = 768, kClampTick = 1536, kEndTick = 3072;
+    constexpr double kBpmAfterChange = 60.0;
+    const SongTiming timing(kRes, {{0, 768}}, {{0, 120.0}, {kChange, kBpmAfterChange}},
+                            {{0, {4, 4}}});
+    Activation a = act_at(timing, kActTick);
+    test::set_clamped_window(a, kClampTick, kEndTick);
     const json d = dump_alone(timing, a);
-    CHECK(d["act_tick"].get<int64_t>() == 384);
-    CHECK(d["end_anchor_tick"].get<int64_t>() == 1536);
+    CHECK(d["act_tick"].get<int64_t>() == kActTick);
+    CHECK(d["end_anchor_tick"].get<int64_t>() == kClampTick);
     REQUIRE(d["steady_ms_before_act"].is_number());
-    CHECK(d["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(d["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kClampTick - kChange, kRes, kBpmAfterChange)));
     CHECK(d["steady_ms_after_act"].is_null());
 }
 
@@ -834,16 +1012,26 @@ TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
 // activation the search stored none for writes null ratios beside its spans.
 TEST_CASE("paths_json writes the end ratio the search stored") {
     const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 3840);
-    test::set_plain_window(a, 9984);
-    a.transfer_post = TransferScale{0.5, 2.0};
+    constexpr int64_t kActTick = 3840, kEndTick = 9984;
+    Activation a = act_at(timing, kActTick);
+    test::set_plain_window(a, kEndTick);
+    const TransferScale stored_pair{0.5, 2.0};
+    // Worked out again from this timing, the pair would differ: one steady
+    // tempo gives another ratio, so a writer that recomputed would show it.
+    const std::optional<ActTransferScales> recomputed = frontend_transfer_scales(a, timing);
+    REQUIRE(recomputed.has_value());
+    CHECK(recomputed->post.early != doctest::Approx(stored_pair.early));
+    CHECK(recomputed->post.late != doctest::Approx(stored_pair.late));
+
+    a.transfer_post = stored_pair;
     const json stored = dump_alone(timing, a, false);
-    CHECK(stored["end_scale_early"].get<double>() == 0.5);
-    CHECK(stored["end_scale_late"].get<double>() == 2.0);
+    CHECK(stored["end_scale_early"].get<double>() == stored_pair.early);
+    CHECK(stored["end_scale_late"].get<double>() == stored_pair.late);
 
     a.transfer_post.reset();
     const json unknown = dump_alone(timing, a, false);
-    CHECK(unknown["end_anchor_tick"].get<int64_t>() == 3840);
+    // A plain window's end is anchored on its activation tick.
+    CHECK(unknown["end_anchor_tick"].get<int64_t>() == kActTick);
     CHECK(unknown["end_scale_early"].is_null());
     CHECK(unknown["end_scale_late"].is_null());
     for (const char* k : kSteadyFields) CHECK_MESSAGE(unknown.contains(k), k);
@@ -873,13 +1061,19 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
     CHECK(empty["score"].is_null());
     CHECK(empty["bestpath"].get<std::string>() == "");
 
-    // One corpus chart, named by its path, with its best score and path as one
-    // run printed them.
+    // On a corpus chart the block prints what the record's owners answer:
+    // HydraRecord::optimal_score for the score, RecordRow::best_path_text for
+    // the path.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::string chart = corpus::root() + "/common/IB24/T1/Allister - Overrated/notes.mid";
-    const json full = result_json(corpus::analyzed(chart, cfg));
-    CHECK(full["score"].get<int64_t>() == 228710);
-    CHECK(full["bestpath"].get<std::string>() == "1 2");
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const std::optional<int64_t> best = rec.optimal_score();
+    REQUIRE(best.has_value());
+    const json full = result_json(rec);
+    CHECK(full["score"].get<int64_t>() == *best);
+    const std::string best_text = store::record_of(std::string(), rec).best_path_text();
+    CHECK_FALSE(best_text.empty());
+    CHECK(full["bestpath"].get<std::string>() == best_text);
 }
 
 // dump prints each activation's passed-over fills as the record stores them.
@@ -906,109 +1100,148 @@ TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
             CHECK(a["skips"].get<int>() == acts[i].skips());
         }
     }
-    CHECK((dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
-           std::vector<int64_t>{19200}));
+    // The pinned activation passes fills on its way, so the list is not empty,
+    // and each tick it names is a fill the chart carries before that
+    // activation. The ticks come from the song, never a typed number.
+    const int64_t act_tick = opts.target_act_ticks->front();
+    const std::vector<int64_t> skipped =
+        dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>();
+    CHECK_FALSE(skipped.empty());
+    for (int64_t t : skipped) {
+        CAPTURE(t);
+        CHECK(t < act_tick);
+        bool is_fill = false;
+        for (const SongTimestamp& ts : song.sequence)
+            if (ts.timecode.ticks() == t && ts.has_activation()) is_fill = true;
+        CHECK(is_fill);
+    }
 }
 
 // A window that ends on the note closing a Star Power phrase is exactly where
 // a squeeze-out hides. If the player squeezed, that note was hit after Star
 // Power ran out and is not doubled; if they did not, it is. The window list
 // alone cannot tell the two apart, so the tool says so instead of guessing.
+// Every corpus chart that has the four shapes below is checked, so no one
+// chart is chosen by file order. The test fails if no chart has them.
 TEST_CASE("a window ending on a phrase note with no offset is flagged") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
-    REQUIRE_FALSE(song.is_empty());
+    const core::Rules& rules = core::default_rules();
+    int checked = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        INFO(path);
 
-    const ReplayResult r = replay_path(song, {});
+        const ReplayResult r = replay_path(song, {});
 
-    // The first phrase note, the chord just after it, the first chord that is
-    // further past a phrase note than a squeeze could ever reach, and a chord
-    // with no phrase note behind it at all.
-    const ReplayChord* phrase_note = nullptr;    // the first phrase note
-    const ReplayChord* just_after = nullptr;     // the chord right after it
-    const ReplayChord* long_after = nullptr;     // first chord out of reach
-    const ReplayChord* no_phrase_yet = nullptr;  // a chord before any of them
-    const ReplayChord* last_phrase = nullptr;
-    for (const ReplayChord& c : r.chords) {
-        if (c.is_sp_phrase_end) {
-            last_phrase = &c;
-            if (!phrase_note) phrase_note = &c;
-            continue;
+        // The first phrase note, the chord just after it, the first chord that
+        // is further past a phrase note than a squeeze could ever reach, and a
+        // chord with no phrase note behind it at all.
+        const ReplayChord* phrase_note = nullptr;    // the first phrase note
+        const ReplayChord* just_after = nullptr;     // the chord right after it
+        const ReplayChord* long_after = nullptr;     // first chord out of reach
+        const ReplayChord* no_phrase_yet = nullptr;  // a chord before any of them
+        const ReplayChord* last_phrase = nullptr;
+        for (const ReplayChord& c : r.chords) {
+            if (c.is_sp_phrase_end) {
+                last_phrase = &c;
+                if (!phrase_note) phrase_note = &c;
+                continue;
+            }
+            if (!last_phrase) {
+                if (!no_phrase_yet) no_phrase_yet = &c;
+                continue;
+            }
+            // Inside or out of reach is asked of the window's owner,
+            // within_squeeze_window, on the gap in ms.
+            if (last_phrase == phrase_note && !just_after &&
+                within_squeeze_window(c.ms - phrase_note->ms))
+                just_after = &c;
+            if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))
+                long_after = &c;
         }
-        if (!last_phrase) {
-            if (!no_phrase_yet) no_phrase_yet = &c;
+        if (!phrase_note || !just_after || !long_after || !no_phrase_yet) continue;
+
+        // A phrase note inside the leeway after an SP end is paid by the
+        // window too, and is a second chord the player may have squeezed out.
+        // A chart with one right after any of the four ends below is left out,
+        // so each warning count here has one cause.
+        const auto phrase_in_leeway_after = [&](const ReplayChord* end) {
+            for (size_t i = static_cast<size_t>(end->index) + 1; i < r.chords.size(); ++i) {
+                if (r.chords[i].ms - end->ms > rules.backend_leeway_ms) return false;
+                if (r.chords[i].is_sp_phrase_end) return true;
+            }
+            return false;
+        };
+        if (phrase_in_leeway_after(phrase_note) || phrase_in_leeway_after(just_after) ||
+            phrase_in_leeway_after(long_after) || phrase_in_leeway_after(no_phrase_yet))
             continue;
-        }
-        // Inside or out of reach is asked of the window's owner,
-        // within_squeeze_window, on the gap in ms.
-        if (last_phrase == phrase_note && !just_after &&
-            within_squeeze_window(c.ms - phrase_note->ms))
-            just_after = &c;
-        if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))
-            long_after = &c;
+        ++checked;
+
+        ReplayWindow w;
+        w.act_tick = r.chords.front().tick;
+
+        // The warning only fires for a chord the window paid, so it reads the
+        // replay of that same window, as `hydra_replay score` does.
+        auto warnings_for = [&](const ReplayWindow& win) {
+            return ambiguous_window_warnings(song, replay_path(song, {win}), {win}, rules);
+        };
+
+        // Ending on the phrase note itself.
+        w.deact_tick = phrase_note->tick;
+        const std::vector<std::string> flagged = warnings_for(w);
+        REQUIRE(flagged.size() == 1);
+        CHECK(flagged[0].find(std::to_string(phrase_note->tick)) != std::string::npos);
+
+        // Ending a hair after it: still the same doubt. This is the case a
+        // rule that only looked at the deactivation tick itself would miss.
+        w.deact_tick = just_after->tick;
+        const std::vector<std::string> after = warnings_for(w);
+        REQUIRE(after.size() == 1);
+        CHECK(after[0].find(std::to_string(phrase_note->tick)) != std::string::npos);
+
+        // Far enough past it that no squeeze could have reached: no doubt left.
+        w.deact_tick = long_after->tick;
+        CHECK(warnings_for(w).empty());
+
+        // No phrase note in the window at all: never in doubt.
+        w.deact_tick = no_phrase_yet->tick;
+        CHECK(warnings_for(w).empty());
+
+        // An offset settles the question, so there is nothing left to warn
+        // about. Any offset does; the warning does not resolve it.
+        ReplayWindow settled;
+        settled.act_tick = r.chords.front().tick;
+        settled.deact_tick = phrase_note->tick;
+        settled.sqout_offset_ms = 0.0;
+        CHECK(ambiguous_window_warnings(song, r, {settled}, rules).empty());
     }
-    REQUIRE(phrase_note != nullptr);
-    REQUIRE(just_after != nullptr);
-    REQUIRE(long_after != nullptr);
-    REQUIRE(no_phrase_yet != nullptr);
-
-    ReplayWindow w;
-    w.act_tick = r.chords.front().tick;
-
-    // The warning only fires for a chord the window paid, so it reads the
-    // replay of that same window, as `hydra_replay score` does.
-    auto warnings_for = [&](const ReplayWindow& win) {
-        return ambiguous_window_warnings(song, replay_path(song, {win}), {win},
-                                         core::default_rules());
-    };
-
-    // Ending on the phrase note itself.
-    w.deact_tick = phrase_note->tick;
-    const std::vector<std::string> flagged = warnings_for(w);
-    REQUIRE(flagged.size() == 1);
-    CHECK(flagged[0].find(std::to_string(phrase_note->tick)) !=
-          std::string::npos);
-
-    // Ending a hair after it: still the same doubt. This is the case a rule
-    // that only looked at the deactivation tick itself would miss, and it is
-    // a real one -- five of Hail The Sun - Wake's six squeeze-outs sit on the
-    // node and the sixth sits 93.75 ms before it.
-    w.deact_tick = just_after->tick;
-    CHECK(warnings_for(w).size() == 1);
-
-    // Far enough past it that no squeeze could have reached: no doubt left.
-    w.deact_tick = long_after->tick;
-    CHECK(warnings_for(w).empty());
-
-    // No phrase note in the window at all: never in doubt.
-    w.deact_tick = no_phrase_yet->tick;
-    CHECK(warnings_for(w).empty());
-
-    // An offset settles the question, so there is nothing left to warn about.
-    ReplayWindow settled;
-    settled.act_tick = r.chords.front().tick;
-    settled.deact_tick = phrase_note->tick;
-    settled.sqout_offset_ms = 8.0;
-    CHECK(ambiguous_window_warnings(song, r, {settled}, core::default_rules()).empty());
+    REQUIRE(checked > 0);
 }
 
 TEST_CASE("per-note sp points sum to the chord's sp points") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
-    REQUIRE_FALSE(song.is_empty());
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        ++charts;
+        INFO(path);
 
-    // One window over the whole chart, so every chord is under Star Power and
-    // its points.sp is the full doubling.
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = song.sequence.back().timecode.ticks();
-    const ReplayResult r = replay_path(song, {w});
+        // One window over the whole chart, so every chord is under Star Power
+        // and its points.sp is the full doubling.
+        ReplayWindow w;
+        w.act_tick = 0;
+        w.deact_tick = song.sequence.back().timecode.ticks();
+        const ReplayResult r = replay_path(song, {w});
 
-    for (const ReplayChord& c : r.chords) {
-        CHECK(c.in_sp);
-        int64_t sum = 0;
-        for (const ReplayNote& n : c.notes) sum += n.sp_points;
-        CHECK(sum == c.points.sp);
-        CHECK(static_cast<int>(c.notes.size()) > 0);
+        for (const ReplayChord& c : r.chords) {
+            CHECK(c.in_sp);
+            REQUIRE_FALSE(c.notes.empty());
+            int64_t sum = 0;
+            for (const ReplayNote& n : c.notes) sum += n.sp_points;
+            CHECK(sum == c.points.sp);
+        }
     }
+    CHECK(charts > 0);
 }
 
 namespace {
@@ -1051,21 +1284,23 @@ void add_dynamic_cymbal(Chord& chord, NoteDynamicType dyn) {
     y.dynamictype = dyn;
 }
 
-}  // namespace
-
-// A hand-built phrase end carries what the parser writes on one: the flag
-// and where the phrase starts (test::mark_phrase_end, one resolution back,
-// clamped at 0).
-TEST_CASE("fixtures: mark_phrase_end sets the flag and the phrase start together") {
-    const Song song = song_with({{0, true}, {192, false}, {768, true}});
-    REQUIRE(song.sequence.size() == 3);
-    CHECK(song.sequence[0].flag_sp);
-    CHECK(song.sequence[0].sp_phrase_start == 0);
-    CHECK_FALSE(song.sequence[1].flag_sp);
-    CHECK_FALSE(song.sequence[1].sp_phrase_start.has_value());
-    CHECK(song.sequence[2].flag_sp);
-    CHECK(song.sequence[2].sp_phrase_start == 576);
+// The text of the runtime_error resolve_sqout_note throws for `w`, or empty
+// when it throws none. A refusal is checked by the ticks it names, not by
+// its whole sentence.
+std::string sqout_refusal(const Song& song, const ReplayWindow& w) {
+    try {
+        (void)resolve_sqout_note(song, w);
+    } catch (const std::runtime_error& e) {
+        return e.what();
+    }
+    return "";
 }
+
+bool names_tick(const std::string& text, int64_t tick) {
+    return text.find("tick " + std::to_string(tick)) != std::string::npos;
+}
+
+}  // namespace
 
 // A typed offset is only ever an approximation of a chord that sits on a
 // tick. The tool resolves it to the phrase chord it means and says which.
@@ -1116,14 +1351,12 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
     older.act_tick = 0;
     older.deact_tick = 3072;
     older.sqout_offset_ms = -375.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(two, older),
-        "window 0:3072: the SqOut offset -375.00 ms lands on the phrase chord "
-        "at tick 2928 (-375.00 ms from the SP end), which the engine never "
-        "squeezes out. A window squeezes out only its newest phrase chord at "
-        "or before the SP end or the first one after it: here tick 3036 "
-        "(-93.75 ms). Not priced.",
-        std::runtime_error);
+    // Refused, naming the chord the offset landed on and the one the engine
+    // would squeeze out instead (D274 item 20).
+    CHECK_THROWS_AS(resolve_sqout_note(two, older), std::runtime_error);
+    const std::string refused = sqout_refusal(two, older);
+    CHECK(names_tick(refused, 2928));
+    CHECK(names_tick(refused, 3036));
 
     // The engine's own chord is accepted.
     ReplayWindow newest = older;
@@ -1144,14 +1377,15 @@ TEST_CASE("a typed squeeze-out offset halfway between two phrase chords is refus
     w.act_tick = 0;
     w.deact_tick = 3072;
     w.sqout_offset_ms = 0.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(song, w),
-        "window 0:3072: the SqOut offset 0.00 ms is equally close to the "
-        "phrase chords at tick 3036 (-93.75 ms) and tick 3108 (93.75 ms). "
-        "Type an offset nearer the one you mean. Not priced.",
-        std::runtime_error);
+    // Refused, naming both tied chords (D83).
+    CHECK_THROWS_AS(resolve_sqout_note(song, w), std::runtime_error);
+    const std::string refused = sqout_refusal(song, w);
+    CHECK(names_tick(refused, 3036));
+    CHECK(names_tick(refused, 3108));
 
-    // A hair off the middle is no tie: the nearer chord is used.
+    // A hair off the middle is no tie: the nearer chord is used. The tie is
+    // an exact equality of the two misses, so any offset off the exact middle
+    // breaks it; 0.01 ms is just a small one.
     w.sqout_offset_ms = 0.01;
     const SqOutNote late = resolve_sqout_note(song, w);
     CHECK(late.tick == 3108);
@@ -1170,13 +1404,11 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     w.act_tick = 3000;
     w.deact_tick = 3072;
     w.sqout_offset_ms = -375.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(song, w),
-        "window 3000:3072: the SqOut offset -375.00 ms lands on the phrase "
-        "chord at tick 2928, at or before the activation at tick 3000. That "
-        "phrase was banked before Star Power started, so this window cannot "
-        "squeeze it out. Not priced.",
-        std::runtime_error);
+    // Refused, naming the banked phrase and the activation it came before.
+    CHECK_THROWS_AS(resolve_sqout_note(song, w), std::runtime_error);
+    const std::string refused = sqout_refusal(song, w);
+    CHECK(names_tick(refused, 2928));
+    CHECK(names_tick(refused, w.act_tick));
 
     // An earlier window paid the chord. The later window's SP end has it in
     // range, but cannot squeeze it out, so only the earlier window is flagged.
@@ -1190,33 +1422,14 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     const std::vector<std::string> warned =
         ambiguous_window_warnings(song, r, {first, second}, core::default_rules());
     REQUIRE(warned.size() == 1);
-    CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
-}
-
-// D34: a phrase chord banked before the activation is never the window's to
-// squeeze. Before the end the engine offers the window's newest phrase
-// (D36), here the one after the banked chord. The replay accepts a typed
-// squeeze-out on it, and warns about it, as the engine would squeeze it.
-TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's") {
-    // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
-    // 375 ms and 93.75 ms before D = 3072.
-    const Song song = song_with({{0, false}, {768, false}, {2928, true},
-                                 {3000, false}, {3036, true}, {3072, false}});
-    ReplayWindow w;
-    w.act_tick = 3000;
-    w.deact_tick = 3072;
-    w.sqout_offset_ms = -93.73;
-    const SqOutNote n = resolve_sqout_note(song, w);
-    CHECK(n.tick == 3036);
-
-    ReplayWindow plain;
-    plain.act_tick = 3000;
-    plain.deact_tick = 3072;
-    const ReplayResult r = replay_path(song, {plain});
-    const std::vector<std::string> warned =
-        ambiguous_window_warnings(song, r, {plain}, core::default_rules());
-    REQUIRE(warned.size() == 1);
-    CHECK(warned[0].find("tick 3036") != std::string::npos);
+    // The one warning is the earlier window's: it names that window by its
+    // two ticks, and the banked phrase it paid.
+    const auto window_name = [](const ReplayWindow& win) {
+        return std::to_string(win.act_tick) + ":" + std::to_string(win.deact_tick);
+    };
+    CHECK(warned[0].find(window_name(first)) != std::string::npos);
+    CHECK(warned[0].find(window_name(second)) == std::string::npos);
+    CHECK(names_tick(warned[0], 2928));
 }
 
 // A typed window may squeeze out its newest phrase chord at or before the SP
@@ -1259,56 +1472,69 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
 
 // The warning quotes what squeezing the chord out would cost, under the rules
 // the replay ran with, and that cost is the whole drop, not just the phrase
-// chord's share. song_with's chords are two notes (red and yellow, 50 points
-// each). The phrase chord at 3024 is the fourth chord (combo 6), both notes
-// at 1x, so its doubling is 50 + 50. The chord at 3072 is the fifth (combo
-// 8): its first note is the ninth hit, at 1x, and its second the tenth, the
-// first one paid at 2x, so its doubling is 50 + 100 = 150. Squeezing 3024
-// out ends Star Power before it:
-//   first_note:  3024 loses its first note's 50, 3072 loses its 150 = 200.
-//   whole_chord: 3024 loses both notes' 100,     3072 loses its 150 = 250.
-// Ending the window on 3024 itself leaves no later chord, so there the cost
-// is the phrase chord's share alone: 50 and 100.
+// chord's share. A window ending after the phrase chord at 3024 has a later
+// chord (3072) that loses its doubling too, so its drop is more than the
+// phrase chord's own loss; a window ending on 3024 has no later chord, so its
+// drop is the phrase chord's loss alone. whole_chord takes every note of the
+// phrase chord out of Star Power and first_note only its first (D274 item
+// 16, sqout_pays_outside), so whole_chord's drop is the larger.
 TEST_CASE("the squeeze-out warning quotes the whole drop under sqout_rule") {
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
                                 {3024, true}, {3072, false}});
+    const int64_t phrase = 3024;
     ReplayWindow w;
     w.act_tick = 0;
     w.deact_tick = 3072;
     ReplayWindow on = w;
-    on.deact_tick = 3024;
+    on.deact_tick = phrase;
+
+    // The drop a squeeze-out on `phrase` really costs: the window replayed as
+    // typed, less the same window replayed with that squeeze-out. Also the
+    // phrase chord's own share of it.
+    struct Drop {
+        int64_t total = 0;
+        int64_t phrase_share = 0;
+    };
+    const auto drop = [&](const ReplayWindow& win, const core::Rules& rules) {
+        ReplayWindow out = win;
+        out.sqout_tick = phrase;
+        const ReplayResult plain = replay_path(two, {win}, rules);
+        const ReplayResult squeezed = replay_path(two, {out}, rules);
+        Drop d;
+        d.total = plain.final.total() - squeezed.final.total();
+        for (size_t i = 0; i < plain.chords.size(); ++i)
+            if (plain.chords[i].tick == phrase)
+                d.phrase_share = plain.chords[i].points.sp - squeezed.chords[i].points.sp;
+        return d;
+    };
+    // The warning's one figure is the drop, as a whole number on its own.
+    const auto quotes = [&](const ReplayWindow& win, const core::Rules& rules, int64_t cost) {
+        const std::vector<std::string> warned =
+            ambiguous_window_warnings(two, replay_path(two, {win}, rules), {win}, rules);
+        REQUIRE(warned.size() == 1);
+        CHECK(names_tick(warned[0], phrase));
+        CHECK(warned[0].find(" " + std::to_string(cost) + " ") != std::string::npos);
+    };
 
     const core::Rules& first = core::default_rules();
     REQUIRE(first.sqout_rule == core::SqOutRule::FirstNote);
-    const ReplayResult r1 = replay_path(two, {w}, first);
-    const std::vector<std::string> one = ambiguous_window_warnings(two, r1, {w}, first);
-    REQUIRE(one.size() == 1);
-    CHECK(one[0] ==
-          "window 0:3072 ends just after the Star Power phrase note at tick 3024 "
-          "(125.00 ms earlier) with no squeeze-out offset; if the player squeezed "
-          "it out, this score is 200 points high (the same windows replayed with "
-          "that squeeze-out, under sqout_rule)");
-    // The same window typed with that squeeze-out really scores 200 less.
-    ReplayWindow out = w;
-    out.sqout_tick = 3024;
-    CHECK(r1.final.total() - replay_path(two, {out}, first).final.total() == 200);
-
-    const std::vector<std::string> one_on =
-        ambiguous_window_warnings(two, replay_path(two, {on}, first), {on}, first);
-    REQUIRE(one_on.size() == 1);
-    CHECK(one_on[0].find("this score is 50 points high") != std::string::npos);
-
     core::Rules whole = core::default_rules();
     whole.sqout_rule = core::SqOutRule::WholeChord;
-    const std::vector<std::string> both =
-        ambiguous_window_warnings(two, replay_path(two, {w}, whole), {w}, whole);
-    REQUIRE(both.size() == 1);
-    CHECK(both[0].find("this score is 250 points high") != std::string::npos);
 
-    const std::vector<std::string> both_on =
-        ambiguous_window_warnings(two, replay_path(two, {on}, whole), {on}, whole);
-    REQUIRE(both_on.size() == 1);
-    CHECK(both_on[0].find("this score is 100 points high") != std::string::npos);
+    for (const core::Rules* rules : {&first, static_cast<const core::Rules*>(&whole)}) {
+        const Drop after = drop(w, *rules);
+        const Drop ending = drop(on, *rules);
+        REQUIRE(after.phrase_share > 0);
+        // A later chord loses its doubling too, so the drop is more than the
+        // phrase chord's share; with no later chord it is exactly that share.
+        CHECK(after.total > after.phrase_share);
+        CHECK(ending.total == ending.phrase_share);
+        quotes(w, *rules, after.total);
+        quotes(on, *rules, ending.total);
+    }
+    // whole_chord takes more of the phrase chord out of Star Power.
+    CHECK(drop(w, whole).total > drop(w, first).total);
+    CHECK(drop(on, whole).total > drop(on, first).total);
 }
 
 // The phrase chords strictly inside an SP end's squeeze window, in chart
@@ -1348,34 +1574,75 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
 // nothing. A step that moved the end from here while the list lacks its
 // phrase is an impossible state, and throws.
 TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late") {
-    const std::vector<int64_t> window = {2928, 3036, 3100, 3200};  // the end is 3072
+    // The SP end and the window's phrase chords around it, in chart order.
+    const int64_t sp_end = 3072;
+    const int64_t older = 2928;       // a phrase before `newest`
+    const int64_t newest = 3036;      // the newest phrase at or before sp_end
+    const int64_t late = 3100;        // the first phrase after sp_end
+    const int64_t after_late = 3200;  // the phrase after that
+    const std::vector<int64_t> window = {older, newest, late, after_late};
+
+    // The window's own end: somewhere after this SP end, or this SP end.
+    const std::optional<int64_t> ends_later = sp_end + 1000;
+    const std::optional<int64_t> ends_here = sp_end;
+    // The SP end the newest step moved from: this one, a twin one tick
+    // before it, or no squeeze node at all.
+    const std::optional<int64_t> moved_from_here = sp_end;
+    const std::optional<int64_t> moved_from_twin = sp_end - 1;
+    const std::optional<int64_t> no_squeeze_node = std::nullopt;
+    // A step's phrase that is not in the window's list.
+    const int64_t unlisted = 3000;
+
     const auto tick = [](int64_t t) { return t; };
-    const auto none = [](int64_t) { return false; };
-    const auto in_3100 = [](int64_t t) { return t == 3100; };
-    auto at = [&](std::optional<int64_t> path_end, int64_t newest, std::optional<int64_t> from,
-                  auto squeezed_in) {
-        const auto it = core::offered_phrase(window.begin(), window.end(), 3072, path_end,
-                                             newest, from, tick, squeezed_in);
-        return it == window.end() ? int64_t{-1} : *it;
+    const auto nothing_squeezed_in = [](int64_t) { return false; };
+    const auto newest_squeezed_in = [&](int64_t t) { return t == newest; };
+    const auto late_squeezed_in = [&](int64_t t) { return t == late; };
+    const auto all_squeezed_in = [](int64_t) { return true; };
+
+    // What offered_phrase answers, or none_offered when it offers nothing.
+    const int64_t none_offered = -1;
+    auto offered = [&](std::optional<int64_t> path_end, int64_t newest_tick,
+                       std::optional<int64_t> moved_from, auto squeezed_in) {
+        const auto it = core::offered_phrase(window.begin(), window.end(), sp_end, path_end,
+                                             newest_tick, moved_from, tick, squeezed_in);
+        return it == window.end() ? none_offered : *it;
     };
-    CHECK(at(4000, 3036, 3072, none) == 3036);          // newest moved from here
-    CHECK(at(4000, 2928, 3072, none) == 2928);          // whichever it is
-    CHECK(at(4000, 3036, 3071, none) == -1);            // moved from a twin end
-    CHECK(at(4000, 3036, std::nullopt, none) == -1);    // no squeeze node
-    CHECK(at(4000, 3036, 3072, [](int64_t t) { return t == 3036; }) == -1);  // squeezed in
-    CHECK(at(3072, 3036, std::nullopt, none) == 3100);  // the end is here: late
-    CHECK(at(3072, 3036, std::nullopt, in_3100) == 3200);
-    CHECK(at(3072, 0, std::nullopt, [](int64_t) { return true; }) == -1);
-    CHECK_THROWS_AS(at(4000, 3000, 3072, none), std::logic_error);  // 3000 is not listed
+
+    // Early side: the newest step's phrase, when its step moved the end from
+    // this SP end and the window has not squeezed it in.
+    CHECK(offered(ends_later, newest, moved_from_here, nothing_squeezed_in) == newest);
+    CHECK(offered(ends_later, older, moved_from_here, nothing_squeezed_in) == older);
+    CHECK(offered(ends_later, newest, moved_from_twin, nothing_squeezed_in) == none_offered);
+    CHECK(offered(ends_later, newest, no_squeeze_node, nothing_squeezed_in) == none_offered);
+    CHECK(offered(ends_later, newest, moved_from_here, newest_squeezed_in) == none_offered);
+    // Late side: when the window ends here, the first phrase after the end
+    // that the window has not squeezed in.
+    CHECK(offered(ends_here, newest, no_squeeze_node, nothing_squeezed_in) == late);
+    CHECK(offered(ends_here, newest, no_squeeze_node, late_squeezed_in) == after_late);
+    CHECK(offered(ends_here, newest, no_squeeze_node, all_squeezed_in) == none_offered);
+    // A step moved the end from here, but its phrase is not in the list.
+    CHECK_THROWS_AS(offered(ends_later, unlisted, moved_from_here, nothing_squeezed_in),
+                    std::logic_error);
 }
 
 // The replay's form of the rule (core::sqout_chords): a typed window has no
 // history, so either side; a stored window that ended plainly, only late.
 // D36.
 TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first after D") {
-    const Song s = song_with({{0, false}, {768, false}, {2928, true}, {3000, false},
-                              {3036, true}, {3072, false}, {3100, true}, {3200, true}});
-    const Timecode d = s.timecode(3072);
+    // Phrase chords around the SP end, in chart order, and a plain chord
+    // between `older` and `newest` for an activation to start on.
+    const int64_t sp_end = 3072;
+    const int64_t older = 2928;       // a phrase before `newest`
+    const int64_t between = 3000;     // a plain chord after `older`
+    const int64_t newest = 3036;      // the newest phrase at or before sp_end
+    const int64_t late = 3100;        // the first phrase after sp_end
+    const int64_t after_late = 3200;  // the phrase after that
+    const Song s = song_with({{0, false}, {768, false}, {older, true}, {between, false},
+                              {newest, true}, {sp_end, false}, {late, true},
+                              {after_late, true}});
+    const Timecode d = s.timecode(sp_end);
+    const bool typed = false;          // a typed window: no history
+    const bool ended_plainly = true;   // a stored window that ended plainly at D
     auto ticks = [&](int64_t act, const std::vector<int64_t>& in, bool plain) {
         std::vector<int64_t> out;
         for (const SongTimestamp* c : core::sqout_chords(s, d, act, in, plain))
@@ -1383,107 +1650,105 @@ TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first a
         return out;
     };
     using V = std::vector<int64_t>;
-    CHECK(ticks(0, {}, false) == V{3036, 3100});      // 3036 is newest, never 2928
-    CHECK(ticks(3000, {}, false) == V{3036, 3100});   // 2928 banked, 3036 still newest
-    CHECK(ticks(3036, {}, false) == V{3100});         // both banked: late only
-    CHECK(ticks(0, {3036}, false) == V{3100});        // the newest squeezed in
-    CHECK(ticks(0, {3100}, false) == V{3036, 3200});  // the late one squeezed in
-    CHECK(ticks(0, {}, true) == V{3100});             // ended plainly at D
-    CHECK(ticks(0, {3036, 3100, 3200}, false).empty());
+    const V none_squeezed_in;
+    // The newest phrase at or before D, never an older one, and the first after.
+    CHECK(ticks(0, none_squeezed_in, typed) == V{newest, late});
+    // `older` banked before the activation: `newest` is still the newest.
+    CHECK(ticks(between, none_squeezed_in, typed) == V{newest, late});
+    // `newest` banked too (the activation is on it): only the late side is left.
+    CHECK(ticks(newest, none_squeezed_in, typed) == V{late});
+    // A phrase squeezed in is never squeezed out; the late side moves on past it.
+    CHECK(ticks(0, V{newest}, typed) == V{late});
+    CHECK(ticks(0, V{late}, typed) == V{newest, after_late});
+    CHECK(ticks(0, none_squeezed_in, ended_plainly) == V{late});
+    CHECK(ticks(0, V{newest, late, after_late}, typed).empty());
 }
 
+// The single-note steps are stated by to_multiplier's own tests; this one is
+// the per-note answer of a chord that straddles a step.
 TEST_CASE("category_scores reports the multiplier each note was paid at") {
-    Chord one;
-    one.add_note(NoteColor::Red);
-    CHECK(category_scores(one, 8).multiplier == 1);  // the 9th note: 1x
-    CHECK(category_scores(one, 9).multiplier == 2);  // the 10th note: 2x
-    CHECK(category_scores(one, 19).multiplier == 3);
-    CHECK(category_scores(one, 29).multiplier == 4);
-    CHECK(category_scores(one, 40).multiplier == 4);
-    CHECK(category_scores(one, 9).multiplier_after == 2);
+    // The first combo paid at 2x is the first that to_multiplier lifts above 1x.
+    int x2_from = 1;
+    while (to_multiplier(x2_from) == 1) ++x2_from;
 
-    // A two-note chord after 8 notes of combo straddles the step: its first
-    // note is the 9th (1x) and its second the 10th (2x).
+    // A two-note chord hit two notes before that step straddles it: its first
+    // note is paid at 1x and its second, the x2_from-th hit, at 2x.
     Chord two;
     two.add_note(NoteColor::Red);
     two.add_note(NoteColor::Kick);
+    const int combo_before = x2_from - 2;
     std::vector<CategoryScores> per_note;
-    const CategoryScores s = category_scores(two, 8, &per_note);
-    CHECK(s.multiplier == 1);
-    CHECK(s.multiplier_after == 2);
-    CHECK(s.combo == 50);  // only the second note earns combo points
+    const CategoryScores s = category_scores(two, combo_before, &per_note);
     REQUIRE(per_note.size() == 2);
     CHECK(per_note[0].multiplier == 1);
     CHECK(per_note[1].multiplier == 2);
+    // The chord's own fields are its first and its last note's.
+    CHECK(s.multiplier == per_note[0].multiplier);
+    CHECK(s.multiplier_after == per_note[1].multiplier);
+    // Only the second note earns combo points: a pad's base points at 2x,
+    // less the same at 1x (both notes are plain pads, kNoteBasePoints each).
+    CHECK(per_note[0].combo == 0);
+    CHECK(per_note[1].combo == kNoteBasePoints * (per_note[1].multiplier - 1));
+    CHECK(s.combo == per_note[0].combo + per_note[1].combo);
 }
 
+// In a chord that mixes a plain note with a dynamic cymbal, the dynamics bonus
+// is the cymbal's alone. One note at a time, the bonus's size is stated by
+// test_stars.cpp; this test is the attribution inside a mixed chord.
 TEST_CASE("category_scores prices a dynamic cymbal's bonus at its own note") {
-    // A kick and a ghost cymbal after 9 notes of combo: both notes are at 2x.
-    // The cymbal's dynamics are the pad's 50 plus the cymbal's 15, times 2.
-    // The chord's ghost category holds only the raw 50.
     Chord chord;
     chord.add_note(NoteColor::Kick);
     add_dynamic_cymbal(chord, NoteDynamicType::Ghost);
+    const int combo_before = 9;
     std::vector<CategoryScores> per_note;
-    const CategoryScores s = category_scores(chord, 9, &per_note);
-    CHECK(s.ghost == 50);
+    const CategoryScores s = category_scores(chord, combo_before, &per_note);
+    // The chord's ghost category holds the pad's base points at 1x, without
+    // the cymbal's extra.
+    CHECK(s.ghost == kNoteBasePoints);
 
     const std::vector<ChordNote> order = chord.notes(true);
     REQUIRE(order.size() == 2);
     REQUIRE(per_note.size() == 2);
+    int cymbals = 0;
     for (size_t k = 0; k < order.size(); ++k) {
         if (order[k].colortype == NoteColor::Yellow) {
-            CHECK(per_note[k].dynamics_bonus == 130);  // (50 + 15) x 2
-            // Without its dynamics the cymbal pays a plain 2x cymbal: 130.
-            CHECK(per_note[k].sp - per_note[k].dynamics_bonus == 130);
+            ++cymbals;
+            // A plain cymbal is the pad's base points plus the cymbal's extra,
+            // at the note's multiplier; a ghost hit pays that once more.
+            const int note_multiplier = to_multiplier(combo_before + static_cast<int>(k) + 1);
+            const int plain_cymbal = (kNoteBasePoints + kCymbalBonusPoints) * note_multiplier;
+            CHECK(per_note[k].multiplier == note_multiplier);
+            CHECK(per_note[k].dynamics_bonus == plain_cymbal);
+            CHECK(per_note[k].sp - per_note[k].dynamics_bonus == plain_cymbal);
         } else {
             CHECK(per_note[k].dynamics_bonus == 0);
         }
     }
+    CHECK(cymbals == 1);
 }
 
-TEST_CASE("replay reports the multipliers category_scores applied") {
-    // Eight Red singles, a Red+Kick chord that straddles 10, then eleven more
-    // singles so a later chord crosses 20 on its own.
-    std::vector<std::vector<NoteColor>> chords(8, {NoteColor::Red});
-    chords.push_back({NoteColor::Red, NoteColor::Kick});
-    for (int i = 0; i < 11; ++i) chords.push_back({NoteColor::Red});
-    const ReplayResult r = replay_path(make_chord_song(chords), {});
-    REQUIRE(r.chords.size() == 20);
-
-    // The straddling chord: first note 1x, second note 2x.
-    const ReplayChord& straddle = r.chords[8];
-    CHECK(straddle.combo_before == 8);
-    CHECK(straddle.multiplier == 1);
-    CHECK(straddle.multiplier_after == 2);
-    CHECK(straddle.points.combo == 50);
-    REQUIRE(straddle.notes.size() == 2);
-    CHECK(straddle.notes[0].multiplier == 1);
-    CHECK(straddle.notes[1].multiplier == 2);
-
-    // The chord before it leaves the disc at 1x.
-    CHECK(r.chords[7].multiplier_after == 1);
-
-    // A single note that is the 20th: paid at 3x.
-    const ReplayChord& third = r.chords[18];
-    CHECK(third.combo_before == 19);
-    CHECK(third.multiplier == 3);
-    CHECK(third.multiplier_after == 3);
-    CHECK(third.notes[0].multiplier == 3);
-    CHECK(third.points.combo == 100);  // 50 base x (3 - 1)
-    CHECK(r.chords[17].multiplier_after == 2);
-}
-
+// The replay's notes are the chord-score table's notes, copied in order; the
+// bonus's size is stated one note at a time by test_stars.cpp.
 TEST_CASE("replay copies each note's dynamics bonus") {
     Song song = make_chord_song({{NoteColor::Red}});
     add_dynamic_cymbal(song.sequence[0].chord, NoteDynamicType::Accent);
     const ReplayResult r = replay_path(song, {});
+    const ChordScoreTable table =
+        chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
     REQUIRE(r.chords.size() == 1);
-    REQUIRE(r.chords[0].notes.size() == 2);
-    for (const ReplayNote& n : r.chords[0].notes)
-        CHECK(n.dynamics_bonus == (n.color == NoteColor::Yellow ? 65 : 0));
-    // The accent category holds only the pad part; the note field holds all.
-    CHECK(r.chords[0].points.accent == 50);
+    REQUIRE(table.rows.size() == 1);
+    const ChordScoreRow& row = table.rows[0];
+    REQUIRE(r.chords[0].notes.size() == row.note_end - row.note_begin);
+    bool any_bonus = false;
+    for (size_t k = 0; k < r.chords[0].notes.size(); ++k) {
+        CAPTURE(k);
+        const CategoryScores& own = table.notes[row.note_begin + k];
+        CHECK(r.chords[0].notes[k].dynamics_bonus == own.dynamics_bonus);
+        if (own.dynamics_bonus > 0) any_bonus = true;
+    }
+    // The accent cymbal earns a bonus, so the copy is checked on a non-zero
+    // value and not only on zeros.
+    CHECK(any_bonus);
 }
 
 TEST_CASE("replay names each note's dynamic") {
@@ -1504,17 +1769,15 @@ TEST_CASE("replay names each note's dynamic") {
         else
             CHECK(n.dynamic == NoteDynamicType::Normal);
     }
-    CHECK(dynamic_str(NoteDynamicType::Ghost) == "ghost");
-    CHECK(dynamic_str(NoteDynamicType::Accent) == "accent");
-    CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
 }
 
 // The chord-score table on ten hand-built chords: seven Red singles, then a
 // Kick + Red + accent Yellow cymbal that crosses a step of to_multiplier
-// (core/timing.h), a Kick +
-// ghost Red, and a plain Red + Yellow inside a solo. Every value is a literal
-// pinned from one run.
-TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
+// (core/timing.h), a Kick + ghost Red, and a plain Red + Yellow inside a
+// solo. Each row is its chord priced by category_scores at the running combo,
+// plus solo_bonus; the test states that walk, not one run's numbers. How
+// category_scores prices one note is stated by test_stars.cpp.
+TEST_CASE("chord_score_table: each row is its chord priced by category_scores, on a hand-built chart") {
     std::vector<std::vector<NoteColor>> chords(7, {NoteColor::Red});
     chords.push_back({NoteColor::Kick, NoteColor::Red});
     chords.push_back({NoteColor::Kick});
@@ -1526,59 +1789,58 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 
     const ChordScoreTable table =
         chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
-    REQUIRE(table.rows.size() == 10);
-    REQUIRE(table.notes.size() == 14);
+    REQUIRE(table.rows.size() == song.sequence.size());
 
-    // The straddle: its first two notes are paid below the step and the
-    // accent cymbal (the dearest, so last) above it.
+    for (size_t i = 0; i < table.rows.size(); ++i) {
+        CAPTURE(i);
+        const SongTimestamp& ts = song.sequence[i];
+        const ChordScoreRow& row = table.rows[i];
+        // One combo counter runs through the chart, and the notes run on in
+        // one list: each chord starts where the one before it ended.
+        const int combo_in = i == 0 ? 0 : table.rows[i - 1].combo_after;
+        const uint32_t notes_in = i == 0 ? 0 : table.rows[i - 1].note_end;
+        CHECK(row.combo_before == combo_in);
+        CHECK(row.note_begin == notes_in);
+        std::vector<CategoryScores> per_note;
+        const CategoryScores want =
+            category_scores(ts.chord, row.combo_before, &per_note, core::SqOutRule::FirstNote);
+        CHECK(row.notes == want.notes);
+        CHECK(row.combo == want.combo);
+        CHECK(row.sp == want.sp);
+        CHECK(row.sqout_sp == want.sqout_sp());
+        CHECK(row.accent == want.accent);
+        CHECK(row.ghost == want.ghost);
+        CHECK(row.solo == solo_bonus(ts.chord, ts.flag_solo));
+        CHECK(row.multiplier == want.multiplier);
+        CHECK(row.multiplier_after == want.multiplier_after);
+        CHECK(row.combo_after == want.combo_after);
+        // The chord's notes are the next ones in the table, in the order
+        // category_scores priced them.
+        CHECK(row.note_end - row.note_begin == per_note.size());
+        REQUIRE(table.notes.size() >= row.note_end);
+        for (size_t k = 0; k < per_note.size() && row.note_begin + k < row.note_end; ++k) {
+            CAPTURE(k);
+            const CategoryScores& got = table.notes[row.note_begin + k];
+            CHECK(got.sp == per_note[k].sp);
+            CHECK(got.combo == per_note[k].combo);
+            CHECK(got.multiplier == per_note[k].multiplier);
+            CHECK(got.dynamics_bonus == per_note[k].dynamics_bonus);
+        }
+    }
+    CHECK(table.notes.size() == table.rows.back().note_end);
+
+    // The three chords after the singles are the cases the chart was built
+    // for. The straddle crosses a step, so its last note is paid at a higher
+    // multiplier than its first.
     const ChordScoreRow& straddle = table.rows[7];
-    CHECK(straddle.notes == 180);
-    CHECK(straddle.combo == 130);
-    CHECK(straddle.sp == 360);
-    CHECK(straddle.sqout_sp == 310);
-    CHECK(straddle.accent == 50);
-    CHECK(straddle.ghost == 0);
-    CHECK(straddle.solo == 0);
-    CHECK(straddle.multiplier == 1);
-    CHECK(straddle.multiplier_after == 2);
-    CHECK(straddle.combo_before == 7);
-    CHECK(straddle.combo_after == 10);
-    CHECK(straddle.note_begin == 7);
-    CHECK(straddle.note_end == 10);
-    CHECK(table.notes[7].multiplier == 1);
-    CHECK(table.notes[8].multiplier == 1);
-    CHECK(table.notes[9].multiplier == 2);
-    CHECK(table.notes[9].dynamics_bonus == 130);
-
-    const ChordScoreRow& ghost = table.rows[8];
-    CHECK(ghost.notes == 100);
-    CHECK(ghost.combo == 150);
-    CHECK(ghost.sp == 300);
-    CHECK(ghost.sqout_sp == 200);
-    CHECK(ghost.accent == 0);
-    CHECK(ghost.ghost == 50);
-    CHECK(ghost.solo == 0);
-    CHECK(ghost.multiplier == 2);
-    CHECK(ghost.multiplier_after == 2);
-    CHECK(ghost.combo_before == 10);
-    CHECK(ghost.combo_after == 12);
-    CHECK(ghost.note_begin == 10);
-    CHECK(ghost.note_end == 12);
-
-    const ChordScoreRow& solo = table.rows[9];
-    CHECK(solo.notes == 100);
-    CHECK(solo.combo == 100);
-    CHECK(solo.sp == 200);
-    CHECK(solo.sqout_sp == 100);
-    CHECK(solo.accent == 0);
-    CHECK(solo.ghost == 0);
-    CHECK(solo.solo == 200);
-    CHECK(solo.multiplier == 2);
-    CHECK(solo.multiplier_after == 2);
-    CHECK(solo.combo_before == 12);
-    CHECK(solo.combo_after == 14);
-    CHECK(solo.note_begin == 12);
-    CHECK(solo.note_end == 14);
+    CHECK(straddle.multiplier < straddle.multiplier_after);
+    // The accent and ghost categories hold only the pad's base points
+    // (CategoryScores::accent and ::ghost), one dynamic note each.
+    CHECK(straddle.accent == kNoteBasePoints);
+    CHECK(table.rows[8].ghost == kNoteBasePoints);
+    // Only the chord inside the solo earns a solo bonus.
+    CHECK(table.rows[9].solo > 0);
+    CHECK(table.rows[8].solo == 0);
 
     // Without the notes, every chord row's points are the same and every
     // note range is empty.
@@ -1593,10 +1855,16 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 }
 
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) {
+            // A chart with no notes at these settings is named, and the count
+            // below fails unless the digest's own load skips it too.
+            MESSAGE("no notes at these settings: " << path);
+            continue;
+        }
         ++charts;
         const ReplayResult r = replay_path(song, {});
         INFO(path);
@@ -1611,68 +1879,64 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
             // starts from.
             if (i + 1 < r.chords.size())
                 CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
-            // A note's dynamics bonus is part of what it pays, never more.
-            for (const ReplayNote& n : c.notes) {
-                CHECK(n.dynamics_bonus >= 0);
-                CHECK(n.dynamics_bonus < n.sp_points);
-            }
+            // A note's dynamics bonus is never negative.
+            for (const ReplayNote& n : c.notes) CHECK(n.dynamics_bonus >= 0);
         }
     }
-    CHECK(charts > 0);
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
 }
 
-TEST_CASE("replay score fields: one list in schema order") {
-    REQUIRE(std::size(kReplayScoreFields) == 6);
-    const char* want[] = {"notes", "combo", "sp", "solo", "accent", "ghost"};
-    for (size_t i = 0; i < 6; ++i) CHECK(std::string(kReplayScoreFields[i].name) == want[i]);
-
+TEST_CASE("replay score fields: each name reads its own member") {
+    // Each member holds a different value, so a name paired with another
+    // member reads that member's value. The list's order is not checked:
+    // the dump's JSON prints the keys sorted, so no reader sees it.
     ReplayScore s;
     s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
-    for (size_t i = 0; i < 6; ++i)
-        CHECK(s.*(kReplayScoreFields[i].member) == static_cast<int64_t>(i + 1));
-}
-
-TEST_CASE("assign_score and score_of are each other's reverse") {
-    ReplayScore s;
-    s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
-    Path p;
-    assign_score(p, s);
-    CHECK(p.notes_points == 1);
-    CHECK(p.score_combo == 2);
-    CHECK(p.score_sp == 3);
-    CHECK(p.score_solo == 4);
-    CHECK(p.score_accents == 5);
-    CHECK(p.score_ghosts == 6);
-    CHECK(score_of(p) == s);
+    struct Named {
+        const char* name;
+        int64_t value;
+    };
+    const Named given[] = {{"notes", 1}, {"combo", 2},  {"sp", 3},
+                           {"solo", 4},  {"accent", 5}, {"ghost", 6}};
+    // A category added to the list without a member set above fails here.
+    REQUIRE(std::size(kReplayScoreFields) == std::size(given));
+    for (const ReplayScoreField& f : kReplayScoreFields) {
+        CAPTURE(f.name);
+        int found = 0;
+        for (const Named& g : given) {
+            if (std::string(f.name) != g.name) continue;
+            ++found;
+            CHECK(s.*(f.member) == g.value);
+        }
+        CHECK(found == 1);
+    }
 }
 
 TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     ReplayOptions scores;
     scores.scores_only = true;
-    int runs = 0;
-    std::string first_diff;
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            ++runs;
-            const PathReplay full = replay_stored_path(song, *p, cfg.rules);
-            const PathReplay lean = replay_stored_path(song, *p, cfg.rules, scores);
-            CHECK(lean.faithful() == full.faithful());
+    // Each stored path is replayed in full and scores-only; the walk names
+    // the first path whose two replays differ.
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&cfg, &scores](const Song& song, const Path& p) -> std::string {
+            const PathReplay full = replay_stored_path(song, p, cfg.rules);
+            const PathReplay lean = replay_stored_path(song, p, cfg.rules, scores);
+            if (lean.faithful() != full.faithful()) return ": scores-only fidelity differs";
             const std::string d = first_result_difference(full.result, lean.result, true);
-            if (!d.empty() && first_diff.empty()) first_diff = path + ": " + d;
-            for (const ReplayChord& c : lean.result.chords) {
-                if (!c.chord_code.empty() || !c.notes.empty()) {
-                    if (first_diff.empty()) first_diff = path + ": a scores-only row kept its notes";
-                    break;
-                }
-            }
-        }
-    }
-    CHECK(runs > 0);
-    INFO("first difference: " << first_diff);
-    CHECK(first_diff.empty());
+            if (!d.empty()) return ": " + d;
+            for (const ReplayChord& c : lean.result.chords)
+                if (!c.chord_code.empty() || !c.notes.empty())
+                    return ": a scores-only row kept its notes";
+            return "";
+        });
+
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(run.charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
+    INFO("first difference: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }

@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -13,10 +15,10 @@
 #include "audio_util.h"
 
 using namespace hydra::audio;
-using testaudio::make_ramp;
+using testaudio::ramp_source;
 
 TEST_CASE("Playhead starts paused at the start with the mix's format") {
-    Playhead t(make_ramp(4800));
+    Playhead t(ramp_source(4800));
     CHECK_FALSE(t.playing());
     CHECK(t.position_frames() == 0);
     CHECK(t.length_frames() == 4800);
@@ -37,10 +39,16 @@ TEST_CASE("ms_of_frames and frames_of_ms convert at the sample rate") {
     CHECK(frames_of_ms(2.5, 1000) == 3);
     CHECK(frames_of_ms(2.4, 1000) == 2);
     CHECK(frames_of_ms(-2.5, 1000) == -3);
+    // One second is `rate` frames at any rate, both ways.
+    for (const int rate : {48000, 44100}) {
+        CAPTURE(rate);
+        CHECK(frames_of_ms(1000.0, rate) == rate);
+        CHECK(ms_of_frames(rate, rate) == 1000.0);
+    }
 }
 
 TEST_CASE("play, pause, and toggle drive the playhead state") {
-    Playhead t(make_ramp(10));
+    Playhead t(ramp_source(10));
     t.play();
     CHECK(t.playing());
     t.pause();
@@ -52,7 +60,7 @@ TEST_CASE("play, pause, and toggle drive the playhead state") {
 }
 
 TEST_CASE("read_frames while paused writes silence and does not advance") {
-    Playhead t(make_ramp(10));
+    Playhead t(ramp_source(10));
     std::vector<float> out(8, -1.0f);  // 4 stereo frames, sentinel-filled
     int64_t got = t.read_frames(out.data(), 4);
     CHECK(got == 0);
@@ -61,20 +69,23 @@ TEST_CASE("read_frames while paused writes silence and does not advance") {
 }
 
 TEST_CASE("read_frames while playing copies frames and advances the clock") {
-    Playhead t(make_ramp(5));
+    Playhead t(ramp_source(5));
     t.play();
 
-    std::vector<float> out(6, -1.0f);  // room for 3 frames
-    int64_t got = t.read_frames(out.data(), 3);
-    CHECK(got == 3);
-    CHECK(t.position_frames() == 3);
+    constexpr int64_t kAsked = 3;
+    std::vector<float> out(static_cast<std::size_t>(kAsked * t.channels()), -1.0f);
+    int64_t got = t.read_frames(out.data(), kAsked);
+    CHECK(got == kAsked);
+    CHECK(t.position_frames() == kAsked);
     const float expect[] = {0, 0.5f, 1, 1.5f, 2, 2.5f};
     for (int i = 0; i < 6; ++i) CHECK(out[i] == doctest::Approx(expect[i]));
-    CHECK(t.position_ms() == doctest::Approx(0.0625));  // 3 frames at 48 kHz
+    // The clock reads the frames served, at the mix's own rate, through the
+    // one frames-to-ms conversion.
+    CHECK(t.position_ms() == ms_of_frames(kAsked, t.sample_rate()));
 }
 
 TEST_CASE("read_frames past the end zero-fills, auto-pauses, clamps position") {
-    Playhead t(make_ramp(5));
+    Playhead t(ramp_source(5));
     t.play();
     t.seek_frames(3);  // two frames left
 
@@ -117,7 +128,7 @@ TEST_CASE("read_frames counts only the frames a short source really gave") {
 }
 
 TEST_CASE("seek clamps to the valid range in both frames and ms") {
-    Playhead t(make_ramp(100));
+    Playhead t(ramp_source(100));
     t.seek_frames(40);
     CHECK(t.position_frames() == 40);
     t.seek_frames(-10);
@@ -128,21 +139,8 @@ TEST_CASE("seek clamps to the valid range in both frames and ms") {
     CHECK(t.position_frames() == 24);
 }
 
-// The pair's Playhead pins at 48000 (seek_ms(0.5) and position_ms after 3
-// frames) and its 44100 pins. The 100 ms / 4800 frames pins are in the
-// "convert at the sample rate" case above.
-TEST_CASE("frames_of_ms and ms_of_frames: pinned at 48000 and 44100") {
-    CHECK(frames_of_ms(0.5, 48000) == 24);
-    CHECK(ms_of_frames(3, 48000) == 0.0625);  // 3 frames: the position_ms pin above
-    CHECK(frames_of_ms(1000.0, 44100) == 44100);
-    CHECK(ms_of_frames(44100, 44100) == 1000.0);
-    CHECK(frames_of_ms(1.0, 44100) == 44);  // pinned from one run
-    // The Playhead's own seek_ms(0.5) pin in the case above now runs through
-    // frames_of_ms, so a changed rounding shows there too.
-}
-
 TEST_CASE("Playhead applies the output gain to served frames") {
-    Playhead t(make_ramp(100));
+    Playhead t(ramp_source(100));
     CHECK(t.gain() == doctest::Approx(1.0f));
     t.set_gain(0.25f);
     CHECK(t.gain() == doctest::Approx(0.25f));

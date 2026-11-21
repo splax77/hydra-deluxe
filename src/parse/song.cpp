@@ -99,7 +99,7 @@ struct LanePads {
 };
 
 // Where a note sits in that bit order: the position of its lane bit
-// (lane_bit, parse/note_shuffle.h), so the order is read off the game's bit
+// (lane_bit, core/model.h), so the order is read off the game's bit
 // table and has no second copy here.
 int lane_bit_rank(const ChordNote& note) {
     int rank = 0;
@@ -362,7 +362,7 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // (0x20CFF60 calling 0x5DE030; finding 315, D30). The candidates are the last
 // chord at or before the fill end, which must not be before the fill start,
 // and the first chord after the end, which must be inside the landing window.
-// When both qualify the closer wins, and a tie goes to the later chord. A fill
+// When both qualify, the pick is chords_around's (core/song.h). A fill
 // with neither is dropped, even when one side has no chord at all (Clone
 // Hero's 0x5DE030 takes that side unbounded; D30 does not copy it). A later
 // fill that picks the same chord replaces the earlier one's length.
@@ -377,20 +377,16 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // event, which each reader finds through is_coda_event. Clone Hero 1.1's track
 // finish marks the fills from the coda on (0x215DA70, the setge at 0x215DB6D)
 // and the landing step passes over a marked fill (0x20CFF60). Build 1.0 skips
-// only a fill on the coda tick (code/4045/fill_generator.cs line 88), and
+// only a fill on the coda tick (code/4045/fill_generator.cs line 90), and
 // FillDeadlineRule::Ch10 follows it (FL-08, FL-39, Q-40). A skipped fill
 // still marks the song (Song::coda_skipped_fill), so no fill is generated.
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                           double slop_beats, std::optional<int64_t> coda_tick,
                           FillDeadlineRule fills_rule) {
     if (fills.empty() || song.sequence.empty()) return;
-    // The chord list with its ticks. Both parsers emit chords in tick order
+    // chords_around needs the chords in tick order. Both parsers emit them so
     // (.mid by its event times, .chart by D47's one sort in ChartParser), so
     // no sort here.
-    std::vector<std::pair<int64_t, size_t>> order;
-    order.reserve(song.sequence.size());
-    for (size_t i = 0; i < song.sequence.size(); ++i)
-        order.emplace_back(song.sequence[i].timecode.ticks(), i);
     const int64_t window_ticks =
         static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
 
@@ -404,18 +400,9 @@ void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                 continue;
             }
         }
-        const auto it = std::upper_bound(
-            order.begin(), order.end(), f.end,
-            [](int64_t t, const std::pair<int64_t, size_t>& c) { return t < c.first; });
-        const std::pair<int64_t, size_t>* after = it != order.end() ? &*it : nullptr;
-        const std::pair<int64_t, size_t>* before = it != order.begin() ? &*(it - 1) : nullptr;
-        if (before && before->first < f.start) before = nullptr;
-        if (after && after->first > f.end + window_ticks) after = nullptr;
-
-        const std::pair<int64_t, size_t>* pick = after ? after : before;
-        if (before && after)
-            pick = (after->first - f.end) <= (f.end - before->first) ? after : before;
-        if (pick) apply_fill_end(song, pick->second, f.start);
+        const ChordsAround around =
+            chords_around(song.sequence, f.end, f.start, f.end + window_ticks);
+        if (around.pick.has_value()) apply_fill_end(song, *around.pick, f.start);
     }
 }
 
@@ -598,9 +585,7 @@ std::string name_or_unknown(std::string name, std::string_view placeholder) {
 }  // namespace
 
 std::string title_or_unknown(std::string title) {
-    // A placeholder library rows from older scans can still hold.
-    static constexpr const char* kOldPlaceholder = "<unknown title>";
-    return name_or_unknown(std::move(title), kOldPlaceholder);
+    return name_or_unknown(std::move(title), kOldTitlePlaceholder);
 }
 
 // ---- rich-text tags ---------------------------------------------------------

@@ -1,0 +1,228 @@
+id	family	question	note
+I7-001	F5	Which GUI check does a change need, by three cases	
+I7-002	F5	Must a layout or spacing change be seen in the real app before merge	
+I7-003	F5	If the user says merge first, the real-app check is still owed	
+I7-004	F3	Which data a render check runs on: test corpus or database copy	
+I7-005	F7	Who builds and runs hydra_uitest	
+I7-006	F4	Build commands for the GUI test and the test exe	
+I7-007	F4	hydra_uitest command-line options	
+I7-008	F1	Default number of test jobs run at once	
+I7-009	F6	Output form and exit code of a GUI test run	
+I7-010	F1	Each test runs as its own process, at most jobs at once	
+I7-011	F1	How long the full GUI suite takes	
+I7-012	F1	How many test charts the corpus holds	
+I7-013	F1	How a test holds a running batch with its gate	Test-harness wait mechanics
+I7-014	F3	Test start state: settings folder, empty database, canned user	
+I7-015	F4	Which command-file verbs exist and what each does	
+I7-016	F4	What counts as a valid number for a timeout or wait	
+I7-017	F4	Where a command line is split at its bar	
+I7-018	F4	Which library-row lookups are refused while search is empty	
+I7-019	F4	Retry rule for a bare label, and when two widgets refuse it	
+I7-020	F4	Which keys are refused while the library has focus and search is empty	
+I7-021	F4	Is scrolling the library blocked by any shell hook	Also a rule for who may scroll (F7)
+I7-022	F4	Does clicking a song start analysis, and does wait-idle wait for it	
+I7-023	F4	Ref syntax for addressing widgets by label	
+I7-024	F4	Which widget label addresses each control on each screen	
+I7-025	F1	How long before a startup screen draws	
+I7-026	F1	How long before the analyzing box shows Cancel	
+I7-027	F4	Ref form for a control inside the analysis settings popup	
+I7-028	F4	How a test finds a report window, and how --open-report works	
+I7-029	F5	Which tests sit in the two report-window groups	
+I7-030	F4	Path Builder test runner and its widget ids	
+I7-031	F4	Command and log name for attached-mode GUI testing	Log file location (F3)
+I7-032	F2	How the MCP server is registered and where its code lives	Also where the file sits (F3)
+I7-033	F4	Command to install the Python mcp package	
+I7-034	F7	Who makes a missing exe when the helper finds none	
+I7-035	F4	Headless versus window mode: what each starts	
+I7-036	F3	Which library folder the window-mode snapshot copies	
+I7-037	F3	How the live database is copied for window mode	
+I7-038	F4	Which guards keep the real database out of window mode	Also a path guard (F3)
+I7-039	F7	Who may run a batch in window mode and under what library-run rule	
+I7-040	F4	What closing or stopping the window does	
+I7-041	F7	Where live test code exists in the build	
+I7-042	F2	Which tools the hydra MCP server offers an agent	
+I7-043	F8	When the scratch folder for a helper session is swept	Also the folder's name and place (F3)
+I7-044	F6	Exact wording of the stop message from a script run	
+I7-045	F6	What the real-app record file holds and where it is written	File location (F3)
+I7-046	F6	Which seven fields a real-app record line holds	
+I7-047	F6	Which session endings write a real-app record	When written (F8)
+I7-048	F6	Format of the open-dialog note line	
+I7-049	F6	Format of the pipe hello line and request and reply JSON	
+I7-050	F1	How long the session-start wait may last	
+I7-051	F1	How long the dev hold-open variable keeps a window open	
+I7-052	F1	How long the helper waits for each reply	
+I7-053	F6	Exact wording of the dead or silent Hydra messages	How long before Hydra counts as silent (F1)
+I7-054	F1	How long a reply may be before it is cut	
+I7-055	F7	Who owns the command rules: C++ or the helper	
+I7-056	F3	Where a new GUI test goes and how it is registered	
+I7-057	F7	Rules of thumb for writing GUI tests	
+I7-058	F3	Set-up steps and folders for the real app copy	
+I7-059	F4	Does the live window take a real mouse click	Input rule (F7)
+I7-060	F7	Which known traps bite GUI testing, and who owns each	Mixed kinds of trap
+I7-061	F3	Where Hydra's settings and ini files are read from	
+I7-062	F2	Which process runs the Clone Hero server	Also the plan files (F3)
+I7-063	F7	When may a live Clone Hero run start	
+I7-064	F7	Which agent may run hydra_replay, and who makes its file	
+I7-065	F2	Where the list of Clone Hero tools lives	
+I7-066	F8	What the Clone Hero server backs up and restores	
+I7-067	F8	Which game files the server leaves alone	Also their folder (F3)
+I7-068	F8	What the user ruled about the game save file	Also who decides the design (F7)
+I7-069	F1	How long the machine-quiet check takes, and when it refuses	Also refusal (F7)
+I7-070	F1	How long the machine recorder may run and its exit cap	
+I7-071	F8	Which registry key is backed up and put back on stop	
+I7-072	F8	Whether the game settings line is put back after a run	
+I7-073	F4	How the game is launched so its window never comes forward	
+I7-074	F7	Whether the keyboard and mouse are switched off for a run	
+I7-075	F4	What the virtual kit's map and bindings are	
+I7-076	F5	Which typed phrase lets a key-press call through	Refusal shape (F4)
+I7-077	F4	Which launch command the offline patch allows	
+I7-078	F5	Which library charts a live run may play, by plan	Also user approvals (F7)
+I7-079	F4	Which game menus the song-open tool refuses to open	
+I7-080	F2	Which game-method calls each agent may make	
+I7-081	F4	When the launch agent may write the patch	Who decides (F7)
+I7-082	F4	Which game methods the method watch skips	
+I7-083	F4	When an online-menu check counts as refused or closed	
+I7-084	F1	Does every wait have a cap, and are tool retries automatic	Also the library rule (F4)
+I7-085	F7	What a live-run plan must name before a run starts	Plan form (F6)
+I7-086	F1	What caps the direct-start route for a human player	Route shape (F4)
+I7-087	F2	Which player the kit uses for a human launch	
+I7-088	F1	What gap or half threshold the Star Power watch uses	
+I7-089	F7	Who works out the timing windows for the auto-player	Timing values (F1)
+I7-090	F4	Which timing argument the chart-play calls drop	
+I7-091	F6	Contract for the run-chart call: arguments and output file names	Command signature (F4)
+I7-092	F6	Format of the edge-probe input and its chart folder	
+I7-093	F6	Format and status of the menu walk steps file	
+I7-094	F1	What cap the trace uses	
+I7-095	F7	Must the main session show the call list before asking for a run	Record shape (F6)
+I7-096	F8	How the game's stats file is handled around a menu run	Folder (F3)
+I7-097	F4	Which four comparison settings a compare call needs	
+I7-098	F4	When the reload tool refuses, and when a reconnect is needed	
+I7-099	F4	Which tool names the generic call refuses	Also key-lock judging (F5)
+I7-100	F1	What cap applies to the engine search	
+I7-101	F8	Which menu-walk and candidate files stay on disk	
+I7-102	F4	When the state agent skips a destroyed game object	
+I7-103	F4	How the game version is checked before a tool runs	
+I7-104	F7	Who asks the test questions	
+I7-105	F7	Which numbers are acceptable in tests	Number reasons (F1)
+I7-106	F6	Shape of an answer to a test question	
+I7-107	F7	What the twelve test questions are and who asks them	
+I7-108	F7	Where the engine's record is read, and who fetches it	
+I7-109	F6	Required two-line shape of the Q3 answer	
+I7-110	F5	What verdict follows when the claim and the record differ	Who decides (F7)
+I7-111	F7	What happens when a decision and the engine record disagree	
+I7-112	F5	What counts as a direct check that passes	
+I7-113	F5	What gives a test number its reason	
+I7-114	F5	Are golden expected-output files allowed in tests	Ruling (F7)
+I7-115	F7	Must a display test expect the engine's recorded value	
+I7-116	F5	How a failing test is traced back to the commit that added it	
+I7-117	F6	How claims are marked reasoned or confirmed	Who may mark (F7)
+I7-118	F5	Which stand-ins a review must flag	
+I7-119	F5	How to search for every test that covers one rule	
+I7-120	F5	What the four verdicts are and what blocks Keep	
+I7-121	F6	Format of a production-code finding line	
+I7-122	F6	Field list of a filled-in test record	
+I7-123	F5	Which test helpers may produce an expected result	
+I7-124	F7	Who runs the first two audit checks, and in what order	Set-up order (F8)
+I7-125	F5	Which rules have no test, found by a coverage pass	
+I7-126	F1	How many saved rows and charts the audit examples cite	
+I7-127	F1	Which engine ticks the Pitch Dark examples quote	
+I7-128	F1	Which chord and tick the Pitch Dark squeeze example quotes	
+I7-129	F1	How many charts the corpus check counts	
+I7-130	F1	How many charts the GUI shown-count check expects	
+I7-131	F1	What loop floor the example test uses	
+I7-132	F1	Which chord and ticks the Blight example quotes	
+I7-133	F1	Which bank-rise ticks the example quotes	
+I7-134	F1	Which fill-reach numbers the example quotes	
+I7-135	F1	Which combo multiplier steps the example quotes	
+I7-136	F7	Which code owns the score-multiplier rule	
+I7-137	F8	Which old test commit the examples cite	
+I7-138	F8	What the examples page says it removed and why	
+I7-139	F8	When the score-multiplier example comes off its page	
+I7-140	F5	What the display test for the preview fix must check	
+I7-141	F3	Which Python runs the scripts	
+I7-142	F3	Where the GitHub CLI is, its version, and its account	Account (F2)
+I7-143	F5	How and where text is posted to GitHub	
+I7-144	F5	What a release tag and its two files are	Version home (F3)
+I7-145	F3	Where the hook folder lives	
+I7-146	F3	Where Ghidra and Java are, and their versions	
+I7-147	F2	How the REA tool is registered for agents	Its folder (F3)
+I7-148	F3	Where the Clone Hero decompile lives	
+I7-149	F3	Which Visual Studio installs and folders exist	
+I7-150	F3	How cmake is found on this machine	Command fallback (F4)
+I7-151	F4	Which shell commands are refused because the shell is not elevated	
+I7-152	F3	Which PowerShell runs, and its execution policy	Policy (F4)
+I7-153	F3	Where the Clone Hero log files are	
+I7-154	F4	Which WinDbg command shapes are used	Folder (F3)
+I7-155	F1	How often the offline stall harness may attach	Its path (F3)
+I7-156	F2	Which model agents run on	
+I7-157	F3	Where the database files live	
+I7-158	F3	Read a copy of the database, never the live file	Read command (F4)
+I7-159	F6	Which database tables exist and how rows join	
+I7-160	F4	Command shape for a one-chart re-analysis	Library-run permission (F5)
+I7-161	F7	Which numbers may a report quote	
+I7-162	F8	When a page's path and version lines are rechecked and fixed	
+I7-163	F6	Where the Premise map shape lives	
+I7-164	F6	Columns and layout of the Premise map table	
+I7-165	F6	Row rules for the Premise map	
+I7-166	F6	The six Kind words of a Premise map row	
+I7-167	F6	What counts as a source in a Premise map row	Who checks (F5)
+I7-168	F6	Shape of a live step's call list	
+I7-169	F5	What the plan reviewer checks	
+I7-170	F7	Does the go request show the call list	
+I7-171	F6	Where the Owner map shape lives	
+I7-172	F5	When a plan needs an Owner map	Who decides (F7)
+I7-173	F7	Who writes the Owner map	
+I7-174	F6	Table shape and status words of the Owner map	
+I7-175	F6	Wording rule for Owner map questions	
+I7-176	F7	What happens when a question has no owner	
+I7-177	F7	What happens when an owner contradicts the user's words	
+I7-178	F7	What a planner may do with an owner row	
+I7-179	F5	What the plan reviewer checks in an Owner map	
+I7-180	F7	Example of an owner that says "not this one"	
+I7-181	F5	Which pages are public	Also the project rule (F3)
+I7-182	F5	Voice rules for public pages	
+I7-183	F5	Banned words for public pages	Gate word matching (F4)
+I7-184	F5	Sentence-shape rules for public pages	
+I7-185	F5	Heading, label and format rules for public pages	
+I7-186	F5	Structure rules for public pages	
+I7-187	F5	Rule for release notes	
+I7-188	F5	Do-not list for public writing	
+I7-189	F1	When and from where the public style rules were sourced	
+I7-190	F7	Who owns the plain-English rules	
+I7-191	F3	Where a handoff file lives and what it is named	
+I7-192	F6	Shape of a handoff file	
+I7-193	F6	The seven claim kinds in a handoff	
+I7-194	F6	Heading the checker writes its output under	
+I7-195	F6	How many characters a hash must have	
+I7-196	F6	Whether scratch paths may appear in a handoff	
+I7-197	F4	Checker command and its exit codes	
+I7-198	F6	Sections and summary line of the checker's scrape mode	
+I7-199	F7	Who runs the handoff checker, and when	Which session (F2)
+I7-200	F7	What an integrator agent may and may not change	Role (F2)
+I7-201	F4	Git commands an integrator uses to see what main gained	
+I7-202	F7	When an integrator folds copies into owners	
+I7-203	F4	Join procedure: merge flags, commit form and hold rules	Trailers (F2)
+I7-204	F5	Which precheck runs on a joined branch	
+I7-205	F5	Which tests the main session runs after hand-over	
+I7-206	F5	What happens when a build or test fails in the join	
+I7-207	F5	When and to whom a joined tree goes for review	
+I7-208	F7	What an integrator's report must contain	
+I7-209	F4	How to create, comment on and list GitHub issues	Where they live (F3)
+I7-210	F5	Which route text takes to GitHub	
+I7-211	F7	Whether pull requests count as a request surface	Flag read by triage (F5)
+I7-212	F7	Which outside pull requests the triage step keeps	
+I7-213	F6	Label names and line conventions for wayfinder maps	
+I7-214	F6	The five triage label strings	
+I7-215	F6	How a skill role maps to a label string	
+I7-216	F3	Which files an exploring skill reads first	
+I7-217	F7	What a skill does when domain files are missing	
+I7-218	F7	Who may change what a glossary term means	
+I7-219	F7	How an ADR conflict is raised	
+I7-220	F4	Command that retakes all doc pictures	
+I7-221	F3	Where the one list of doc pictures lives	
+I7-222	F3	Which data and settings the picture runner uses	
+I7-223	F6	Shape of the crop rectangle lines for a picture	
+I7-224	F1	What size limits the picture shrink step enforces	Shrink script (F3)
+I7-225	F7	Who runs the doc picture script	
+I7-226	F1	How often the doc pictures are retaken	
+I7-227	F4	Which UI steps reset the settings before a picture	

@@ -68,6 +68,10 @@ PROCESS_OPTIONAL = ("name",)
 
 NO_ROWS_NAME = "(no rows)"
 NO_NAME = "(no name)"
+LATE_MARK = ("across late samples: the span counts the recorder's lateness, "
+             "so it is an upper bound on any wait")
+NO_THREAD_ROWS = "no thread rows in the window"
+NO_LONG_STEP = "no clock step has an excess that long, so none is listed"
 
 
 class Refused(Exception):
@@ -275,7 +279,8 @@ def _recording_lines(rec: Recording, folder: str, whole: Window) -> List[str]:
         lines.append("recorder stopped: not said, the last row of samples.csv is missing, "
                      "so the recorder was probably terminated")
     if rec.half_rows:
-        lines.append(f"left out {rec.half_rows} half-written rows")
+        lines.append(f"left out {rec.half_rows} half-written row"
+                     f"{'' if rec.half_rows == 1 else 's'}")
 
     gaps = [_ms(b.wall_s - a.wall_s) for a, b in zip(samples, samples[1:])]
     over = gap_summary([{"wall_s": s.wall_s, "clock_s": 0} for s in samples], GAP_MS).count
@@ -388,8 +393,7 @@ def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
     longest = max(stretches, key=lambda run: walls[run[-1]] - walls[run[0]])
     # A sample's gain covers the slice before it, so the first one's came before the stretch.
     inside = sum(switches[number] for number in longest[1:])
-    late = (", across late samples: the span counts the recorder's lateness, "
-            "so it is an upper bound on any wait"
+    late = (f", {LATE_MARK}"
             if _across_late_samples(longest, walls, period_ms) else "")
     rows = [row for number in longest for row in by_sample.get(number, ())]
     gained = _gained(rows, slices, "cpu_ms")
@@ -398,7 +402,8 @@ def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
            if ms > 0]
     return (f"longest ready stretch: ready in {len(longest)} consecutive samples spanning "
             f"{float(_ms(walls[longest[-1]] - walls[longest[0]])):.1f} ms "
-            f"from wall {_wall(walls[longest[0]])}, {inside} context switches gained inside"
+            f"from wall {_wall(walls[longest[0]])}, {inside} context "
+            f"switch{'' if inside == 1 else 'es'} gained inside"
             f"{late}, CPU gained in those samples: {', '.join(who) or 'by nobody'}")
 
 
@@ -414,7 +419,7 @@ def _thread_lines(rec: Recording, whole: Window, window: Window, pids: Sequence[
         label = " and ".join(roles[pid])
         rows = [row for row in rec.threads if row.pid == pid and row.sample in numbers]
         if not rows:
-            lines.append(f"  {label} pid {pid}: no thread rows in the window")
+            lines.append(f"  {label} pid {pid}: {NO_THREAD_ROWS}")
         for tid in sorted({row.tid for row in rows}):
             mine = [row for row in rows if row.tid == tid]
             running = sum(row.reads_as == READS_RUNNING for row in mine)
@@ -495,7 +500,7 @@ def _clock_lines(rec: Recording, window: Window) -> List[str]:
         lines.append("largest of those, as detail (one step's excess can be the measurement; "
                      "the lead above judges the game):")
     else:
-        lines.append("no clock step has an excess that long, so none is listed")
+        lines.append(NO_LONG_STEP)
     for pair in sorted(long_pairs, key=lambda p: -abs(p.excess_ms))[:LONGEST_LISTED]:
         lines.append(f"  wall {_wall(pair.later.wall_s)}: step {float(pair.step_ms):.1f} ms, "
                      f"wall gap {float(pair.wall_gap_ms):.1f} ms, "
@@ -538,8 +543,9 @@ def report_lines(folder: str, pid: int, worker: Optional[int] = None,
         raise Refused(f"{first}\nrefused: no thread rows for pid {pid}, "
                       "so this recording is not of that process")
     if len(rec.samples) < 2:
-        raise Refused(f"{first}\nrefused: {SAMPLES_FILE} holds {len(rec.samples)} whole samples, "
-                      "and a slice needs two")
+        held = len(rec.samples)
+        raise Refused(f"{first}\nrefused: {SAMPLES_FILE} holds {held} whole "
+                      f"sample{'' if held == 1 else 's'}, and a slice needs two")
 
     whole = window_of(rec.samples, None, None)
     window = window_of(rec.samples, start, end)

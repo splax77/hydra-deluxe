@@ -120,9 +120,8 @@ MeasureIndex::MeasureIndex(const std::map<int64_t, std::pair<int, int>>& sig_map
         Span s;
         s.numerator = sig.first;
         s.denominator = sig.second;
-        // Clone Hero's beat step: trunc(resolution * 4 / denominator).
-        s.step = tick_r * 4 / static_cast<int64_t>(sig.second);
-        if (s.step <= 0)
+        s.step = beat_step_ticks(tick_r, sig.second);
+        if (beat_under_a_tick(tick_r, sig.second))
             throw std::out_of_range("grid: a signature at tick " + std::to_string(tick) +
                                     " makes a beat shorter than one tick");
         s.length = s.step * static_cast<int64_t>(sig.first);
@@ -231,12 +230,6 @@ double MeasureCount::measures_at(double ticks) const {
     return elapsed_[i] + whole + (rel - whole * tpm) / tpm;
 }
 
-double MeasureCount::tick_at(double measures) const {
-    const int i = index_at(elapsed_, measures, kSelf);
-    return static_cast<double>(starts_[i]) +
-           (measures - elapsed_[i]) * static_cast<double>(tpm_[i]);
-}
-
 int64_t MeasureCount::tick_after(int64_t ticks, int64_t add) const {
     if (add == 0) return ticks;
     // The measures still to walk, as the reduced fraction num / den.
@@ -334,17 +327,6 @@ double SongTiming::ms_per_measure_at(int64_t ticks) const {
 }
 
 double SongTiming::measures_at_tick_f(double ticks) const { return count_.measures_at(ticks); }
-
-double SongTiming::tick_at_measures_f(double measures) const { return count_.tick_at(measures); }
-
-double SongTiming::sp_end_ms(double act_hit_ms, int64_t end_measures) const {
-    // ms -> tick -> measure position, + the SP length in measures, and back.
-    // Every step is continuous piecewise-linear, so the composition is the
-    // exact E(h) map the transfer-scale ratio linearizes.
-    double t = ms_.tick_at_ms(act_hit_ms);
-    double m = measures_at_tick_f(t) + static_cast<double>(end_measures);
-    return ms_.ms_at_tick_f(tick_at_measures_f(m));
-}
 
 int64_t SongTiming::display_tick_at_ms(double ms) const {
     const int64_t tick = std::llround(ms_.tick_at_ms(ms));

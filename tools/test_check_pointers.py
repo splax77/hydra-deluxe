@@ -6,6 +6,8 @@ files, runs the script the way a session does and reads its printed lines and ex
 Run with: py -I tools/test_check_pointers.py
 """
 
+import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -17,6 +19,9 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "check_pointers.py")
+sys.path.insert(0, HERE)  # -I keeps this folder off the path
+import check_pointers  # noqa: E402
+
 SHOWN = os.path.join("memory", "note.md")  # how note.md in the temp memory folder is named in a line
 
 
@@ -27,6 +32,39 @@ def git(repo, *args):
     if r.returncode != 0:
         raise RuntimeError("git %s failed: %s" % (" ".join(args), r.stderr))
     return r.stdout.strip()
+
+
+TEXT = object()  # stands in for the free text of a hook reply when its shape is built
+
+
+def hook_shapes():
+    """The gates' common.py, which builds the hook replies every gate prints (common.context(),
+    common.system_message()). It is read from the gates folder check_pointers.py defaults to."""
+    spec =importlib.util.spec_from_file_location("gates_common",
+                                                  os.path.join(check_pointers.GATES_DEFAULT, "common.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reply_text(reply, shape):
+    """The text in reply where shape holds TEXT. Every key and every other value of the
+    reply must equal the shape's."""
+    if shape is TEXT:
+        if not isinstance(reply, str):
+            raise AssertionError("expected text, got %r" % (reply,))
+        return reply
+    if not isinstance(reply, dict) or sorted(reply) != sorted(shape):
+        raise AssertionError("reply %r does not have the shape %r" % (reply, shape))
+    found = []
+    for key, want in shape.items():
+        if want is TEXT or isinstance(want, dict):
+            found.append(reply_text(reply[key], want))
+        elif reply[key] != want:
+            raise AssertionError("reply %r: %s is %r, not %r" % (reply, key, reply[key], want))
+    if len(found) != 1:
+        raise AssertionError("shape %r holds %d text slots, not 1" % (shape, len(found)))
+    return found[0]
 
 
 def write(path, text):
@@ -123,18 +161,18 @@ class TestPointers(Base):
         self.assertEqual(code, 0, err)
         lines = out.splitlines()
         self.assertEqual(len(lines), 1, out)
-        reply = json.loads(lines[0])
-        self.assertEqual(list(reply), ["hookSpecificOutput"])
-        self.assertEqual(reply["hookSpecificOutput"]["hookEventName"], "SessionStart")
-        self.assertIn("src/gone.cpp (missing)", reply["hookSpecificOutput"]["additionalContext"])
+        # The reply has the shape the gates' common.context() gives a SessionStart hook, and
+        # its context text names the broken pointer.
+        context = reply_text(json.loads(lines[0]), hook_shapes().context("SessionStart", TEXT))
+        self.assertIn(os.path.join("memory", "second.md") + ":1: src/gone.cpp (missing)", context)
         # A run that cannot check anything (here the repo given is not a git repo; the last
         # --repo wins) says so to the user and still exits 0, so a session never starts on a
-        # failed hook.
+        # failed hook. The reply has the shape of the gates' common.system_message().
         code, out, err = self.run_check("--session-start", "--repo", self.memory)
         self.assertEqual(code, 0, err)
-        reply = json.loads(out.splitlines()[0])
-        self.assertEqual(list(reply), ["systemMessage"])
-        self.assertIn("check_pointers.py", reply["systemMessage"])
+        message = reply_text(json.loads(out.splitlines()[0]), hook_shapes().system_message(TEXT))
+        self.assertIn(os.path.basename(SCRIPT), message)  # says which hook could not check
+        self.assertIn(self.memory, message)  # and names the folder that is not a git repo
 
     def test_wrong_case_is_broken(self):
         self.note("`SRC/Real.cpp`\n")
@@ -259,10 +297,16 @@ class TestPointers(Base):
         self.assertIn("pointers: 7 checked, 7 broken", out)
 
     def test_bad_argument(self):
-        r = subprocess.run([sys.executable, "-I", SCRIPT, "--memory", os.path.join(self.tmp, "no-such")],
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-        self.assertIn("usage", r.stderr)
+        no_such = os.path.join(self.tmp, "no-such")
+        code, out, err = self.run_check("--memory", no_such)  # the last --memory wins
+        self.assertEqual((code, out), (2, ""), err)
+        # The refusal is folders()' own, and it names the flag and the folder that are wrong.
+        with self.assertRaises(ValueError) as caught:
+            check_pointers.folders(argparse.Namespace(memory=no_such, gates=self.gates, repo=self.repo))
+        refusal = str(caught.exception)
+        self.assertIn("--memory", refusal)
+        self.assertIn(no_such, refusal)
+        self.assertIn(refusal, err)
 
 
 if __name__ == "__main__":

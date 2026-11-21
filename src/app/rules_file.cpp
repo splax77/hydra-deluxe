@@ -23,9 +23,12 @@ namespace {
 constexpr RetiredKey kRetiredRulesKeys[] = {
     {"auto_cap_ladder", "1.9.0"},  // Auto was removed
     {"auto_budget_s", "1.9.0"},    // Auto was removed
-    // A generated fill starts on its measure line (D115 item 4), so its
-    // length is not a rule.
+    // A generated fill starts where its game version's generator puts it
+    // (D115 item 4; Song::check_activations), so its length is not a rule.
     {"fill_length_measures", "2.8.0"},
+    // Both games step a fixed four measure lines after a generated fill
+    // (kLinesAfterFill in core/song.cpp), so the step is not a rule.
+    {"fill_cooldown_measures", "3.2.0"},
 };
 
 [[noreturn]] void bad(const std::string& path, const std::string& key,

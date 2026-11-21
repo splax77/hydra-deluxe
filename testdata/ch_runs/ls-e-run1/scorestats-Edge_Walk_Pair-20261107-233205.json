@@ -1,0 +1,116 @@
+{
+  "game_version": "v1.1.0.6142-final",
+  "checksum": "880994793484A28C522C7D771FBA470D",
+  "song_name": "Hydra Probe - Edge Walk Pair",
+  "artist_name": "Hydra ch_probe",
+  "charter_name": "ch_probe",
+  "playback_speed": 100,
+  "game_mode": "Quickplay",
+  "score_timestamp": "2026-11-08T04:32:04.8554734Z",
+  "band_score": 12150,
+  "band_stars": 4,
+  "player_count": 1,
+  "players": [
+    {
+      "instrument": "ProDrums",
+      "difficulty": "Expert",
+      "profile_name": "",
+      "modifiers": [
+        "DoubleKick"
+      ],
+      "remote_network_player": false,
+      "lefty_flip": false,
+      "no_fail": true,
+      "video_calibration": 0.0299999993,
+      "audio_calibration": 0,
+      "controller_type": "Drums",
+      "score": 12150,
+      "base_score": 6050,
+      "solo_bonus_total": 0,
+      "squeezed_score": 0,
+      "clean_play_bonus": 0,
+      "note_score": 5850,
+      "sustain_score": 0,
+      "sp_score": 0,
+      "combo_score": 6300,
+      "notes_hit": 117,
+      "total_notes": 121,
+      "max_streak": 40,
+      "end_streak": 40,
+      "excess_hits": 4,
+      "sp_phrases_earned": 0,
+      "sp_phrases_total": 0,
+      "sp_activations": 0,
+      "time_in_sp": 0,
+      "sp_ticks_accumulated": 0,
+      "sp_bar_ticks": 14400,
+      "stars": 4,
+      "avg_multiplier": 2.00826454,
+      "squeezed_notes": 0,
+      "squeeze_note_losses": 0,
+      "frets_ghosted": 0,
+      "accent_notes_hit": 0,
+      "accent_notes_total": 0,
+      "ghost_notes_hit": 0,
+      "ghost_notes_total": 0,
+      "is_fc": false,
+      "versus_winner": true,
+      "is_bot": false,
+      "is_pfc": false,
+      "failed_in_run_time": -1,
+      "section_count": 10,
+      "section_stats": [
+        {
+          "section_name": "0% - 10%",
+          "notes_hit": 10,
+          "notes_count": 10
+        },
+        {
+          "section_name": "10% - 20%",
+          "notes_hit": 12,
+          "notes_count": 12
+        },
+        {
+          "section_name": "20% - 30%",
+          "notes_hit": 11,
+          "notes_count": 12
+        },
+        {
+          "section_name": "30% - 40%",
+          "notes_hit": 12,
+          "notes_count": 13
+        },
+        {
+          "section_name": "40% - 50%",
+          "notes_hit": 12,
+          "notes_count": 12
+        },
+        {
+          "section_name": "50% - 60%",
+          "notes_hit": 11,
+          "notes_count": 12
+        },
+        {
+          "section_name": "60% - 70%",
+          "notes_hit": 11,
+          "notes_count": 12
+        },
+        {
+          "section_name": "70% - 80%",
+          "notes_hit": 13,
+          "notes_count": 13
+        },
+        {
+          "section_name": "80% - 90%",
+          "notes_hit": 12,
+          "notes_count": 12
+        },
+        {
+          "section_name": "90% - 100%",
+          "notes_hit": 13,
+          "notes_count": 13
+        }
+      ]
+    }
+  ]
+}

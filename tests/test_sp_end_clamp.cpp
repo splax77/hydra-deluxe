@@ -6,11 +6,14 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "core/backend_value.h"  // after_sp_end
 #include "core/model.h"
+#include "core/timing.h"  // sp_bars_to_measures
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
@@ -91,23 +94,40 @@ doctest::Approx ms(double v) { return doctest::Approx(v).epsilon(1e-9); }
 }  // namespace
 
 // Where the end moved has one answer, the path's own step (D36). So the step's
-// facts are pinned: end 6528, Clamped, moved from 5376, which can give 3456
-// back.
+// facts are checked from kOneActivation's grid: the end before the phrase is
+// the activation plus the two banked bars, a plain bar would move it one bar
+// on, and the cap's ceiling is the cap's bars past the collecting phrase.
 // Finding 37.
 TEST_CASE("SP end clamp: the squeeze-out edge expects extend_deacts' clamped end") {
+    // kOneActivation's grid: a measure is 768 ticks (build_fast_song), it
+    // activates at 2304 with two bars banked and collects the phrase at 3456.
+    constexpr int64_t kMeasureTicks = 768;
+    constexpr int64_t kActTick = 2304;
+    constexpr int64_t kCollectTick = 3456;
+    constexpr int64_t kBankedBars = 2;
+    // Hydra's Star Power meter cap setting, in bars (SP-24).
+    constexpr int kCapBars = 2;
+    const int64_t end_before = kActTick + sp_bars_to_measures(kBankedBars) * kMeasureTicks;
+    const int64_t plain_end = end_before + sp_bars_to_measures(1) * kMeasureTicks;
+    const int64_t ceiling = kCollectTick + sp_bars_to_measures(kCapBars) * kMeasureTicks;
+    // The fixture is a clamp case: the ceiling comes before the plain bar.
+    REQUIRE(ceiling < plain_end);
+
     const Song song = build_fast_song(kOneActivation);
-    const ScoreGraph graph(song, 2);
-    const ScoreGraphEdge* e = deact_edge_at(graph, 5376);
+    const ScoreGraph graph(song, kCapBars);
+    const ScoreGraphEdge* e = deact_edge_at(graph, end_before);
     REQUIRE(e != nullptr);
-    const SqueezeChoice* c = choice_at(*e, 3456);
+    const SqueezeChoice* c = choice_at(*e, kCollectTick);
     REQUIRE(c != nullptr);
-    CHECK_FALSE(c->late);
-    // min(5376 + 1536, 3456 + 4 * 768) = 6528, and the ceiling won.
-    const std::optional<SpExtension> x = extension_of(graph, 3456, 5376);
+    // The phrase sits before the end it can be squeezed out of.
+    CHECK(c->late == core::after_sp_end(kCollectTick, end_before));
+    const std::optional<SpExtension> x = extension_of(graph, kCollectTick, end_before);
     REQUIRE(x.has_value());
-    CHECK(x->to_tick == 6528);
-    CHECK(x->clamped);
-    CHECK(x->sqout_node);
+    const bool ceiling_won = x->clamped;
+    CHECK(ceiling_won);
+    CHECK(x->to_tick == (std::min)(plain_end, ceiling));
+    const bool end_before_kept_as_node = x->sqout_node;
+    CHECK(end_before_kept_as_node);
 }
 
 // Finding 37.
@@ -132,7 +152,7 @@ TEST_CASE("SP end clamp: two ends clamped to one tick each keep their own squeez
         // no other path can crowd it out of its group, and a wrong squeeze-out
         // would show.
         const std::vector<SqOutSeen> seen =
-            sqouts_of(search_target(song, test::scores_settings(2), {act}), 3456);
+            sqouts_of(search_target(song, test::scores_settings(2), activation_pins({act})).paths, 3456);
         const int64_t own_end = act == 2304 ? 5376 : 5568;
         const double own_ms = act == 2304 ? -250.0 : -275.0;  // 3456 against own_end
         INFO("activation at " << act);
@@ -232,7 +252,8 @@ TEST_CASE("SP end clamp: a plain bar tying the ceiling squeezes out only for its
     CHECK(cx->sqout_node);
 
     for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
-        const std::vector<Path> paths = search_target(song, test::scores_settings(2), {act});
+        const std::vector<Path> paths =
+            search_target(song, test::scores_settings(2), activation_pins({act})).paths;
         const int64_t own_end = act == 1920 ? 4992 : 5184;
         const double own_ms = act == 1920 ? -200.0 : -225.0;  // 3456 against own_end
         INFO("activation at " << act);

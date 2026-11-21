@@ -28,6 +28,7 @@
 
 using namespace hydra::audio;
 using testaudio::max_diff;
+using testaudio::mix_stems;
 using testaudio::read_fixture;
 using testaudio::read_frames;
 
@@ -390,25 +391,6 @@ TEST_CASE("StreamMix: no stems is just the front pad") {
     std::vector<float> got = read_frames(mix, 1000);
     CHECK(got.size() == 960);
     CHECK(std::all_of(got.begin(), got.end(), [](float v) { return v == 0.0f; }));
-}
-
-TEST_CASE("BufferSource plays a decoded buffer and seeks within it") {
-    DecodedAudio a;
-    a.channels = 1;
-    a.sample_rate = 48000;
-    a.samples = {0.f, 1.f, 2.f, 3.f, 4.f};
-    BufferSource src(a);
-    CHECK(src.length_frames() == 5);
-    float out[8] = {};
-    CHECK(src.read(out, 3) == 3);
-    CHECK(out[2] == 2.f);
-    src.seek(4);
-    CHECK(src.read(out, 3) == 1);
-    CHECK(out[0] == 4.f);
-    CHECK(src.read(out, 3) == 0);
-    src.seek(-7);
-    CHECK(src.read(out, 1) == 1);
-    CHECK(out[0] == 0.f);
 }
 
 TEST_CASE("Playhead: a seek only records; the source moves on the next playing read") {

@@ -72,6 +72,35 @@
       "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or a squeeze rule (where a squeeze-in's bar arrives is the stored step's tick; a window's end is Activation::window_end_tick; a squeezed-out bar's arrival is Path::bank_arrivals). Scoped to that one function."
     },
     {
+      "question": "How many bars of SP are left in the meter at a moment while SP runs?",
+      "owner": "Activation::meter_bars_at in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "meter_bars_at",
+      "date": "2026-11-19",
+      "decision": "plan docs/superpowers/plans/2026-11-19-one-sp-end-owner.md (removed; git show 790f1c6d:docs/superpowers/plans/2026-11-19-one-sp-end-owner.md), task T2 criterion 4 (Owner map row E6, which the user approved: \"approve create handoff\")",
+      "added_by": "SPE-T2",
+      "pattern": "\\bmeasures_at_tick_f\\s*\\(",
+      "anchor": "measures_at_tick_f",
+      "owner_files": [
+        "src/core/model.cpp",
+        "src/core/timing.h",
+        "src/core/timing.cpp"
+      ],
+      "must_match": [
+        "const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -",
+        "timing.measures_at_tick_f(static_cast<double>(tick));",
+        "const double left = (scene.timing->measures_at_tick_f(end) - scene.timing->measures_at_tick_f(now)) / kMeasuresPerSpBar;"
+      ],
+      "must_not_match": [
+        "return *rec.meter_bars_at(tick, timing, just_before);",
+        "static_cast<double>(kMeasuresPerSpBar) * timing.ms_per_measure_at(now_tick);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A meter level worked out from two ticks anywhere but the record. The row flags any read of the continuous measure count, not only one on the same line as kMeasuresPerSpBar, because a line scan misses the two when they sit on separate lines, as they did in the Preview's old copy. Outside the timing code that defines the count, only the record's level reads it, so a read under src/app, src/ui, src/pathbuilder or src/render is a second owner. The gauge's own body is the row above's."
+    },
+    {
       "question": "Where does a Preview window's Star Power end?",
       "owner": "Activation::window_end_tick in src/core/model.cpp",
       "owner_file": "src/core/model.cpp",
@@ -746,7 +775,14 @@
         "tools",
         "tests"
       ],
-      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question."
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question.",
+      "owner_lines": [
+        {
+          "file": "tests/test_store_library.cpp",
+          "line_text": "const ChartLibraryEntry e{scanned.md5, scanned.title, scanned.artist, scanned.charter,",
+          "why": "the test of the positional fill itself: it fills an entry by position on purpose, to show the store treats it as the scan's own row, so a field added among the first seven fails here"
+        }
+      ]
     },
     {
       "question": "How many workers does a batch get?",
@@ -1435,12 +1471,17 @@
           "file": "src/parse/song.cpp",
           "line_text": "song.last_note_end_tick = last_note_end_tick_;",
           "why": "the .chart reader stores the last note's end"
+        },
+        {
+          "file": "src/core/song.cpp",
+          "line_text": "return song.last_note_end_tick.value_or(0) + song.tick_resolution();",
+          "why": "ch10_last_line_tick reads the stored value as F10 of the 1.0 game's fill generator does (the end of the latest note plus one beat, 0 with no note); it does not decide whether an end counts"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The end event and the last note's end are read only by app::song_length_ms, through end_event_counts for the one-beat margin, so no second place decides where a song ends. The parsers store both; nothing else in src reads them."
+      "note": "The end event and the last note's end are read by app::song_length_ms, through end_event_counts for the one-beat margin, and by core's ch10_last_line_tick, which takes the stored last note's end plus one beat as the end of 1.0's measure-line walk (F10) and decides nothing about whether an end counts, so no second place decides where a song ends. The parsers store both; nothing else in src reads them."
     },
     {
       "question": "What does a failed length read leave in the store?",
@@ -1616,15 +1657,17 @@
       "date": "2026-10-29",
       "decision": "Path Builder plan, task PB-2a (one owner for the label the Paths tab and the Path Builder share)",
       "added_by": "PB-2a",
-      "pattern": "^[^/]*\"Best all-0 path\"",
-      "anchor": "\"Best all-0 path\"",
+      "pattern": "^[^/]*\"[^\"]*Best all-0 path",
+      "anchor": "Best all-0 path",
       "must_match": [
         ": \"Best all-0 path\";",
-        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),"
+        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),",
+        "return button.notation + \"  (Best all-0 path)\";"
       ],
       "must_not_match": [
         ": app::kBestAllZeroLabel;",
         "add(i == 0 ? std::string(app::kBestAllZeroLabel) : \"All-0 path \" + std::to_string(i + 1),",
+        "return button.notation + \"  (\" + std::string(kBestAllZeroLabel) + \")\";",
         "std::string label;  // \"Best path\", \"Path 2\", \"Best all-0 path\", a branch's name"
       ],
       "owner_lines": [
@@ -1638,7 +1681,7 @@
         "src",
         "tools"
       ],
-      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
+      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name, and the Preview picker's all-0 item typed its own name in brackets; the pattern also catches the name typed inside a longer literal. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
     },
     {
       "question": "Which code lets go of the parked jobs whose threads have ended?",
@@ -2073,7 +2116,7 @@
       "added_by": "UPD-T2a",
       "pattern": "638FCDD7-88E0-438D-9C52-388C6C9CF4E3|\\bInstallLocation\\b",
       "must_match": [
-        "L\"SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\";",
+        "const wchar_t kInstallerAppId[] = L\"638FCDD7-88E0-438D-9C52-388C6C9CF4E3\";",
         "RegGetValueW(key, nullptr, L\"InstallLocation\", RRF_RT_REG_SZ, nullptr, buf, &n);"
       ],
       "must_not_match": [
@@ -2083,8 +2126,8 @@
       "owner_lines": [
         {
           "file": "src/app/config.cpp",
-          "line_text": "L\"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\",",
-          "why": "installed_by_setup, the owner: the installer's uninstall key for Hydra's frozen AppId"
+          "line_text": "const wchar_t kInstallerAppId[] = L\"638FCDD7-88E0-438D-9C52-388C6C9CF4E3\";",
+          "why": "installed_by_setup, the owner: Hydra's frozen installer AppId, which names the uninstall key it opens"
         },
         {
           "file": "src/app/config.cpp",

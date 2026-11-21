@@ -102,11 +102,6 @@ inline ChipToken tier_token(const std::string& tok) {
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
                              const std::vector<size_t>& shown, int64_t library_charts);
 
-// (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2):
-// hydra::tier_for (core/squeeze_rating.h) on a freshly built timing_tiers
-// table. A caller labeling many rows builds the table once and calls
-// hydra::tier_for itself.
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms);
 
 // The Beyond edge (beyond_edge_ms) as every report prints it, in whole ms:
 // the page's payload, its footer, the Past tile and the Timing chip.

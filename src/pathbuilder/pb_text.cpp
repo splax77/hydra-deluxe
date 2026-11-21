@@ -42,6 +42,27 @@ std::string fill_name(const PreviewScene& scene, const PreviewFill& fill) {
     return measure_at(scene_timing(scene), fill.chord_tick);
 }
 
+const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates) {
+    for (const app::CandidateCost& c : candidates)
+        if (app::costs_nothing(c.cost)) return &c;
+    return nullptr;
+}
+
+std::optional<std::string> best_fill_name(const PreviewScene& scene,
+                                          const std::vector<app::CandidateCost>& candidates) {
+    const app::CandidateCost* best = best_candidate(candidates);
+    if (!best) return std::nullopt;
+    const std::optional<size_t> i = app::fill_index_on_chord(scene, best->act_tick);
+    if (!i) return std::nullopt;
+    return fill_name(scene, scene.fills[*i]);
+}
+
+std::string end_line_id(const std::optional<int64_t>& deact_tick, const Activation& act) {
+    return "##end_" + (deact_tick ? std::to_string(*deact_tick) : act.notationstr());
+}
+
+// The gauge's curve holds the record's levels (build_sp_meter_curve reads
+// Path::bank_arrivals and Activation::meter_bars_at), so nothing is counted here.
 int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill) {
     return static_cast<int>(std::floor(app::sp_meter_bars_at(scene.sp_meter, fill.span.end_ms)));
 }
@@ -56,7 +77,8 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index, FillRefusa
         // Whether the fill's chord falls under this window is the engine's
         // side-of-the-end rule (core::after_sp_end), the one the fill's state
         // came from, so a chord on the end tick is still under Star Power.
-        // The end is the Preview's (Activation::window_end_tick).
+        // The end is the engine's, Activation::window_end_tick, which the
+        // scene copies as sp_end_tick.
         const app::PreviewActivation& a = scene.activations[i];
         if (a.sp_window() && fill.chord_tick > a.tick && !core::after_sp_end(fill.chord_tick, a.sp_end_tick))
             return "Star Power is already on here. Activation " + std::to_string(i + 1) +

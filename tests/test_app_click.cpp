@@ -6,6 +6,9 @@
 
 #include "doctest.h"
 
+// Above windows.h, so no Windows macro reaches the src headers it brings in.
+#include "app/song_length.h"  // kSongEndPadMs
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -16,6 +19,7 @@
 #include <filesystem>
 #include <functional>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -89,6 +93,18 @@ int64_t record_writes(const ScratchPaths& paths) {
 std::pair<int64_t, int64_t> records_and_paths_in(const ScratchPaths& paths) {
     return {hydra::test::record_rows_in(paths.db),
             hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM record_paths")};
+}
+
+// Writes `scanned`'s chart again with one more note, and gives its new hash.
+// The added note makes the file longer, so the fingerprint sees the edit by
+// its size with no wait for the file time to move; the first REQUIRE asks
+// the click's own check that it does.
+std::string add_note_after_scan(const std::string& tag, const ChartLibraryEntry& scanned) {
+    write_corpus_chart(tag, /*extra_note=*/true);
+    REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+    return new_md5;
 }
 
 }  // namespace
@@ -585,10 +601,7 @@ TEST_CASE("a click's worker writes a changed chart's hash before it saves") {
     const ChartLibraryEntry scanned = corpus_chart("click_hashfirst");
     std::unique_ptr<AppState> app = app_with(paths, {scanned});
     const Profile profile = app->settings.profile();
-    Sleep(20);
-    write_corpus_chart("click_hashfirst", /*extra_note=*/true);
-    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
-    REQUIRE(new_md5 != scanned.md5);
+    const std::string new_md5 = add_note_after_scan("click_hashfirst", scanned);
 
     {
         SaveGate gate;
@@ -613,13 +626,10 @@ TEST_CASE("a click cancelled before its save saves nothing") {
     ScratchPaths paths("appstate_click_cancel_presave");
     const ChartLibraryEntry song = corpus_chart("click_cancel_presave");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    const Profile profile = app->settings.profile();
-    const RecordStatus before = app->store->lookup_one(song.md5, profile).status;
 
     act_before_save(*app, song, [&] { app->cancel_view(); });
 
     CHECK(app->viewed.state == ViewedSong::State::Cancelled);
-    CHECK(app->store->lookup_one(song.md5, profile).status == before);
     CHECK(hydra::test::record_rows_in(paths.db) == 0);
 }
 
@@ -627,14 +637,11 @@ TEST_CASE("a click closed before its save saves nothing") {
     ScratchPaths paths("appstate_click_close_presave");
     const ChartLibraryEntry song = corpus_chart("click_close_presave");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    const Profile profile = app->settings.profile();
-    const RecordStatus before = app->store->lookup_one(song.md5, profile).status;
 
     act_before_save(*app, song, [&] { app->close_details(); });
 
     CHECK_FALSE(app->show_details);
     CHECK(app->viewed.state == ViewedSong::State::None);
-    CHECK(app->store->lookup_one(song.md5, profile).status == before);
     CHECK(hydra::test::record_rows_in(paths.db) == 0);
 }
 
@@ -745,10 +752,7 @@ TEST_CASE("a dropped click that wrote a new hash still reloads the library") {
     ScratchPaths paths("appstate_click_rehash_insave");
     const ChartLibraryEntry scanned = corpus_chart("click_rehash_insave");
     std::unique_ptr<AppState> app = app_with(paths, {scanned});
-    Sleep(20);  // the mtime has to move for the fingerprint to see the edit
-    write_corpus_chart("click_rehash_insave", /*extra_note=*/true);
-    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
-    REQUIRE(new_md5 != scanned.md5);
+    const std::string new_md5 = add_note_after_scan("click_rehash_insave", scanned);
 
     act_during_save(*app, scanned, [&] { app->close_details(); });
 
@@ -758,22 +762,35 @@ TEST_CASE("a dropped click that wrote a new hash still reloads the library") {
     check_row_shows_saved(*app, new_md5);
 }
 
-// D115 question 4, for a click the user let go: its save changed what both
-// reports read, so both say the library changed.
-TEST_CASE("a dropped click's save marks both reports out of date") {
+// D115 question 4, for a click the user let go: its save changed what the
+// path report read, so it says the library changed. The report is built from
+// one chart's stored result; the window's Cancel on its confirm lists what is
+// stored, so no batch analyzes the second chart before its click. (The
+// comparison's half needs a leaderboard reply, and no saved real one is
+// checked in, so only the path report is checked here.)
+TEST_CASE("a dropped click's save marks the path report out of date") {
     ScratchPaths paths("appstate_click_marks_insave");
-    const ChartLibraryEntry song = corpus_chart("click_marks_insave");
-    std::unique_ptr<AppState> app = app_with(paths, {song});
-    app->path_report.result = std::make_shared<const hydra::app::report::GeneratedReport>();
-    app->dm_report.result = std::make_shared<const hydra::app::dm_report::GeneratedDmReport>();
+    const ChartLibraryEntry built_from = corpus_chart("click_marks_insave");
+    const ChartLibraryEntry song = corpus_chart("click_marks_insave_dropped", true);
+    REQUIRE(built_from.md5 != song.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {built_from, song});
+    click(*app, built_from);
+    REQUIRE(app->viewed.ready());
+    app->report_confirm_above = 0;
+    app->request_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    REQUIRE(app->batch_job == nullptr);
+    app->cancel_path_report();  // the window's Cancel: list what is stored
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
     REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
-    REQUIRE(app->dm_report.out_of_date == ReportOutOfDate::None);
 
     act_during_save(*app, song, [&] { app->close_details(); });
 
     CHECK(app->viewed.state == ViewedSong::State::None);
+    REQUIRE(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+            hydra::store::RecordStatus::Ready);  // the dropped click's save landed
     CHECK(app->path_report.out_of_date == ReportOutOfDate::Library);
-    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Library);
 }
 
 // ---- a failed click (the user's answers 1 and 6, 2026-10-15) ----------------
@@ -840,8 +857,7 @@ TEST_CASE("a click whose song file can't be opened stores nothing") {
 
 // The click's count is the Dynamics count's own parse's (load_dynamics_song).
 // With 2x Bass off the analysis drops the 2x kicks, so the count parses
-// again: the 2x kick row still counts them (37 on this chart, pinned in
-// test_dynamics_breakdown).
+// again: the 2x kick row reads the same with 2x Bass on and off.
 TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
     ScratchPaths paths("appstate_click_dyn");
     const std::string dir = testtemp::temp_dir("click_dyn");
@@ -851,6 +867,7 @@ TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
     write_click_ini(dir);
     const ChartLibraryEntry song = entry_for(dir + "\\notes.mid", "Click dyn");
 
+    std::map<bool, int> kick2x_by_bass2x;
     for (const bool bass2x : {true, false}) {
         CAPTURE(bass2x);
         std::unique_ptr<AppState> app = app_with(paths, {song});
@@ -859,11 +876,16 @@ TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
         click(*app, song);
         REQUIRE(app->viewed.ready());
         REQUIRE(app->viewed.dynamics.has_value());
-        CHECK(app->viewed.dynamics->row(hydra::app::DynamicsRow::Kick2x).normal == 37);
+        kick2x_by_bass2x[bass2x] =
+            app->viewed.dynamics->row(hydra::app::DynamicsRow::Kick2x).normal;
         const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
         CHECK(*app->viewed.dynamics ==
               hydra::app::count_dynamics(hydra::app::load_dynamics_song(song.notespath, as.reading())));
     }
+    // This chart has 2x kicks, so the row counts some, and 2x Bass off does
+    // not drop them from the count.
+    CHECK(kick2x_by_bass2x[true] > 0);
+    CHECK(kick2x_by_bass2x[false] == kick2x_by_bass2x[true]);
 }
 
 // ---- broken rules (D87 item 9) ---------------------------------------------
@@ -1004,7 +1026,11 @@ TEST_CASE("the click reads a chart's stated length") {
     ScratchPaths paths("appstate_length");
     const std::string notes = audiochart::short_chart_with_long_audio("click_length");
     const std::string folder = notes.substr(0, notes.rfind('\\'));
-    audiochart::write_text_file(folder + "\\song.ini", "[song]\nsong_length = 4321\n");
+    // The chart has no Offset and the song.ini no delay, so the stated length
+    // is already in chart time.
+    const int stated_ms = 4321;
+    audiochart::write_text_file(folder + "\\song.ini",
+                                "[song]\nsong_length = " + std::to_string(stated_ms) + "\n");
     audiochart::write_text_file(folder + "\\song.ogg", "not audio at all");
     const ChartLibraryEntry song = entry_for(notes, "Click length");
     std::unique_ptr<AppState> app = app_with(paths, {song});
@@ -1012,11 +1038,13 @@ TEST_CASE("the click reads a chart's stated length") {
     click(*app, song);
 
     REQUIRE(app->viewed.ready());
-    CHECK(app->viewed.song_length_ms == 5321.0);  // with app::kSongEndPadMs
+    REQUIRE(app->viewed.song_length_ms.has_value());
+    CHECK(*app->viewed.song_length_ms ==
+          doctest::Approx(static_cast<double>(stated_ms) + hydra::app::kSongEndPadMs));
 }
 
-// A chart that states no length and has no end event reads its last note
-// (100 ms here, plus app::kSongEndPadMs), with no audio file at all (D255).
+// A chart that states no length and has no end event reads its last note,
+// with no audio file at all (D255).
 TEST_CASE("a chart with no stated length and no audio reads its last note") {
     ScratchPaths paths("appstate_noaudio");
     const std::string notes = audiochart::short_chart_with_long_audio("click_noaudio");
@@ -1028,8 +1056,15 @@ TEST_CASE("a chart with no stated length and no audio reads its last note") {
 
     click(*app, song);
 
+    // The last note's time, read from the chart as the parser reads it.
+    const hydra::Song& parsed = corpus::song(notes, hydra::ChartReading{});
+    REQUIRE(parsed.last_note_end_tick.has_value());
+    const double last_note_ms = parsed.timecode(*parsed.last_note_end_tick).ms();
+
     REQUIRE(app->viewed.ready());
-    CHECK(app->viewed.song_length_ms == 1100.0);
+    REQUIRE(app->viewed.song_length_ms.has_value());
+    CHECK(*app->viewed.song_length_ms ==
+          doctest::Approx(last_note_ms + hydra::app::kSongEndPadMs));
 }
 
 // ---- the panel's other state -----------------------------------------------

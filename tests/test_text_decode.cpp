@@ -6,7 +6,13 @@
 #include <string>
 #include <string_view>
 
+#include "core/winstr.h"  // wide_to_utf8
 #include "parse/text_decode.h"
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>  // MultiByteToWideChar, Windows' code page 1252 decoder
 
 using hydra::decode_chart_text;
 using hydra::decode_chart_text_view;
@@ -59,12 +65,18 @@ TEST_CASE("text_decode: broken UTF-16 still gives valid UTF-8") {
     CHECK(is_valid_utf8(out));
 }
 
-TEST_CASE("text_decode: the Windows-1252 high block maps as the WHATWG table does") {
-    CHECK(decode_chart_text(bytes({0x80})) == "\xE2\x82\xAC");                   // €
-    CHECK(decode_chart_text(bytes({0x93, 0x94})) == "\xE2\x80\x9C\xE2\x80\x9D");  // “ ”
-    // An undefined byte keeps its C1 code point.
-    CHECK(decode_chart_text(bytes({0x81})) == "\xC2\x81");
-    CHECK(decode_chart_text(bytes({0xC6})) == "\xC3\x86");  // Æ
+TEST_CASE("text_decode: every single byte reads as Windows' own code page 1252 reads it") {
+    for (int b = 0x00; b <= 0xFF; ++b) {
+        CAPTURE(b);
+        const char in = static_cast<char>(b);
+        // Windows' decoder for code page 1252. A byte the code page leaves
+        // undefined is refused, and then keeps its own code point.
+        wchar_t wide[4] = {};
+        const int n = MultiByteToWideChar(1252, MB_ERR_INVALID_CHARS, &in, 1, wide, 4);
+        const std::wstring want_wide = n > 0 ? std::wstring(wide, static_cast<size_t>(n))
+                                             : std::wstring(1, static_cast<wchar_t>(b));
+        CHECK(decode_chart_text(std::string(1, in)) == hydra::wide_to_utf8(want_wide));
+    }
 }
 
 TEST_CASE("text_decode: one invalid byte sends the whole text to Windows-1252") {

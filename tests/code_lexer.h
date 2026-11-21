@@ -6,9 +6,8 @@
 // it ends a broken single-line string at the end of its line instead of
 // running on through the file.
 //
-// The docs check in tests/test_docs_match_code.cpp and the single-owner scan
-// in tests/single_owner/ (scan.cpp and engine.cpp) use it. Its own case is "code lexer: ..." in
-// tests/test_docs_match_code.cpp.
+// Tests and tools/precheck include it; a grep for its file name lists them.
+// Its own case is "code lexer: ..." in tests/test_code_lexer.cpp.
 #pragma once
 
 #include <cctype>

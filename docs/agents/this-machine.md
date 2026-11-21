@@ -52,6 +52,12 @@ Run scripts with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShe
 
 Clone Hero writes its logs to `C:\Users\Patrick\AppData\locallow\srylain Inc_\Clone Hero\`, which holds `Player.log` and `Player-prev.log`.
 
+## Who holds a file open: Sysinternals Handle
+
+Handle 5.0 from Microsoft Sysinternals is in `C:\Users\Patrick\tools\sysinternals-handle\`. It was downloaded from `https://download.sysinternals.com/files/Handle.zip` on 2026-11-20, its Authenticode signature checks as valid for Microsoft Corporation, and the user accepted its licence that day. Use `handle64.exe`.
+
+From this unelevated shell it reads one process at a time: `handle64.exe -nobanner -p <pid>` lists that process's open files in a second or two. A search of every process by path (`handle64.exe <path>`) ran past two minutes without printing anything on 2026-11-20 and was stopped, so start it with a time limit (`Start-Process ... -PassThru` and `WaitForExit`), never as a plain call. Use it when a folder or file won't delete: list the likely processes by `-p` and look for the path. A process's current directory shows up as a `File` handle on that folder, and that alone stops Windows deleting the folder.
+
 ## Debugger: WinDbg and cdb
 
 WinDbg is installed from winget as `Microsoft.WinDbg`, a Store-style package, not through the Windows SDK. So `C:\Program Files (x86)\Windows Kits\10\Debuggers` holds nothing, and a look there alone proves nothing. Its command-line debugger, `cdb.exe`, sits in the package folder, whose name carries the version and changes with every update. Find it with this, never from a typed path:

@@ -12,7 +12,7 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-11-15** "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong" (session 63c70014)
 - **2026-11-15** "tests should test their intended behavior directly, not make up an arbitrary meaningless string" (session 63c70014)
 - **2026-10-25** "i want to be able to give explicit approval for a full library run." (session dee9c61e)
-- **2026-10-24** "Fix the doc line, and also add the repo-wide tests (docs-vs-code, single-owner scan, precheck self-test) to every merge run." (session c965ee5e)
+- **2026-10-24** chose "Fix + merge rule" to "Fix the doc line now?" (session c965ee5e)
 - **2026-10-24** "this was supposed to be faster and now you're making it slower??? what the hell is happening here" (session 66725311)
 - **2026-10-14** "why do we need to run the full suite every time a small change is made? this is a big waste of time. all the parts you didnt change will remain the same" (session d5fcf777)
 - **2026-10-14** "you dont need a full library run to check the rendering. this is exactly the kind of time wasting i am trying to avoid." (session d6a46eba)

@@ -1,27 +1,26 @@
 """Tests for the Star Power tools (tools/ch_mcp/sp_tools.py).
 
-No game: a fake opener hands back a fake process, a fake finder stands in
-for the engine search, and a scripted reader serves Snapshots in order, then
-repeats the last one until the watch is told to stop. The watch itself is the
-real sp_watch.watch, on a wall clock that never moves (so neither the frozen
-clock check nor the run cap ends a run) and a sleep that yields for a real
-millisecond.
+No game: SpToolsOnARecordedRunTest runs on the real GameTools, the real watch
+and the real clock, with only the game's reads played back from a real
+recorded run (RecordedRun). GapLineOnARecordedRunTest reads a real watch's
+rows.
 """
 
 from __future__ import annotations
 
-import contextlib
 import csv
 import dataclasses
-import io
+import functools
 import json
+import math
 import os
+import shutil
 import sys
 import tempfile
 import threading
 import time
-import types
 import unittest
+import uuid
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,15 +28,19 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import frida_tools, game_tools, sp_tools  # noqa: E402
+from tools.ch_mcp import bot_run, game_files, game_tools, hydra_end, sp_tools  # noqa: E402
+from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
-from tools.ch_probe import engine_finder as F  # noqa: E402
+from tools.ch_probe import process  # noqa: E402
 from tools.ch_probe.experiments import sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
-from tools.ch_probe.tests import fakes  # noqa: E402
-from tools.ch_mcp import install_chart  # noqa: E402
+from tools.ch_probe.experiments.score_compare import stop_check  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
+# A real watch piece of a corpus chart's run, and Hydra's files for that chart,
+# from the test file that owns them.
+from tools.ch_probe.tests.test_sp_compare import (  # noqa: E402
+    _PITCH_DARK_CHART, _RISE_CSV, _midi_resolution, _replay_file, _within)
 
 
 def setUpModule():
@@ -49,100 +52,98 @@ def tearDownModule():
     FAKE.stop()
 
 
-def song_with_end(folder: str, length_ms) -> None:
-    """Give the song folder `folder` a chart whose fake dump holds `length_ms`
-    as Hydra's song end."""
-    chart = os.path.join(folder, install_chart.CHART_FILES[0])
-    with open(chart, "w", encoding="utf-8") as f:
-        f.write("[Song]\n")
-    FAKE.set_end(chart, length_ms)
-
-
-_PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
-# Mouths path 0's hydra_replay schedule, the file beside its score file.
-_MOUTHS_SCHEDULE = os.path.join(_PROBE_TESTS, "mouths_refine_schedule.json")
-
-BACKUP_LINE = "backup folder: X (taken now)"
-ENGINE = 0x2_0000_1000
 WAIT_S = 5.0
-NO_SONG = "no playing song found in 120 s; start the song and run again"
+# A watch cap short enough to run out well inside WAIT_S. It is a test input,
+# not a value the tools decide.
+SHORT_CAP_S = WAIT_S / 25
 
 
-# The full meter of a chart at resolution 192 (Trippin SP Spike's), from the one
-# place that knows the game's full meter (SP-11), so no test types it again.
-SPIKE_FULL_METER = sp_compare.game_full_meter(192)
+# -- the watch on a recorded run ---------------------------------------------------------
+
+_CH_RUNS = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
+# A real Star Power watch, cut to the rows these tests need: the first row of
+# LS-G3's watch, then the three reads before the run's first activation, the
+# read that shows it and the two after it. Copied from lines 2 and 20842-20847
+# of hydra-data\ch-mcp-runs\2026-11-12\ls-g3-run1\sp_watch-1.csv.
+_LS_G3_WATCH = os.path.join(_CH_RUNS, "ls-g3-run1", "sp_watch-1.csv")
+# The reply line in which LS-D2B's watch named the engine its search found.
+# Copied from line 13 of hydra-data\ch-mcp-runs\2026-11-06\ls-d2b-run1\replies.txt.
+_LS_D2B_REPLIES = os.path.join(_CH_RUNS, "ls-d2b-run1", "replies.txt")
+# Hydra's dump of a corpus chart, the file hydra_end.make_dump writes for it.
+# The main session makes it with:
+#   build-cpp\Release\hydra_replay.exe dump --chart testdata\input\test_pitch_dark_ratio\notes.mid
+#     --cap 4 --ms 10 --out testdata\replay\test_pitch_dark_ratio-dump.json
+_PITCH_DARK_FOLDER = os.path.join(_REPO_ROOT, "testdata", "input", "test_pitch_dark_ratio")
+_PITCH_DARK_DUMP = os.path.join(_REPO_ROOT, "testdata", "replay", "test_pitch_dark_ratio-dump.json")
+# Hydra's schedule of the same chart, beside its dump.
+_PITCH_DARK_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "replay",
+                                    "test_pitch_dark_ratio-schedule.json")
 
 
-def snap_at(clock_s, **fields):
-    """A snapshot of an all-zero object with its clock and any field set."""
+def recorded_snapshots():
+    """Each row of the LS-G3 recording as the Snapshot the watch read then:
+    every field the watch logs, as sp_compare.load_watch_rows reads it, and
+    the fields it does not log left zero."""
     base = engine.decode_snapshot(bytes(engine.SNAPSHOT_SIZE))
-    return dataclasses.replace(base, clock_s=clock_s, **fields)
+    names = {f.name for f in dataclasses.fields(engine.Snapshot)}
+    return [dataclasses.replace(base, **{c: v for c, v in row.items() if c in names})
+            for row in sp_compare.load_watch_rows(_LS_G3_WATCH)]
 
 
-def _row(clock_s, amount, **fields):
-    """A watch row as the watch writes it, from snap_at."""
-    snap = snap_at(clock_s, sp_amount_u64=amount, sp_amount_u32=amount, **fields)
-    return dict(zip(WATCH_COLUMNS, sp_watch.watch_row(100.0 + clock_s, snap)))
+def recorded_engine() -> int:
+    """The engine address LS-D2B's reply named."""
+    with open(_LS_D2B_REPLIES, encoding="utf-8") as f:
+        return int(f.readline().split("engine: ", 1)[1], 16)
 
 
-class FakeGame:
-    """The four GameTools methods SpTools calls, with every call recorded, and
-    the open run SpTools reads the song's length from."""
-
-    def __init__(self, folder, events):
-        self.folder = folder
-        self.events = events
-        self.hooks = []
-        self.cap_calls = []
-        self._run = None
-        # What play_snapshot returns: None when no play session ran.
-        self.play = None
-
-    def play_snapshot(self):
-        return self.play
-
-    def song_length_ms(self):
-        return self._run.length_ms if self._run is not None else None
-
-    def ensure_backup(self):
-        self.events.append("backup")
-        return BACKUP_LINE if self.events.count("backup") == 1 else ""
-
-    def session_dir(self):
-        return self.folder
-
-    def add_stop_hook(self, hook):
-        self.hooks.append(hook)
-
-    def cap_for_end(self, length_ms):
-        self.cap_calls.append(length_ms)
-        return 240.0
+def logged(rows):
+    """Watch rows without their wall time, which differs between two runs of
+    the same reads."""
+    return [{c: v for c, v in row.items() if c != sp_watch.WALL_COLUMN} for row in rows]
 
 
-class FakeProc:
-    def __init__(self, events):
-        self.events = events
-
-    def verify_targets(self):
-        self.events.append("verify")
-
-    def close(self):
-        self.events.append("close")
+def csv_named_in(reply: str) -> str:
+    """The watch CSV a reply names on its csv line."""
+    line = next(line for line in reply.splitlines() if line.startswith("csv: "))
+    return line[len("csv: "):].split(" (not written", 1)[0]
 
 
-class Script:
-    """A reader serving `snaps` in order, then the last one again. `done` is
-    set on the first repeat, so the watch has finished with every scripted
-    snapshot by then."""
+def wait_until(done, cap_s: float) -> bool:
+    """Whether `done()` came true within `cap_s` seconds of wall time."""
+    deadline = time.monotonic() + cap_s
+    while not done():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.001)
+    return True
 
-    def __init__(self, snaps):
-        self.snaps = list(snaps)
+
+class RecordedRun:
+    """The game side of a watch, played back from the LS-G3 recording. The
+    opener hands this back as the open process, its search answers with the
+    engine address LS-D2B recorded, and its reader serves the recorded reads
+    in order, then the last one again, as a game whose song has stopped does.
+    `done` is set on the first repeat, so the watch has read every recorded
+    row by then. No game memory is read."""
+
+    def __init__(self):
+        self.snaps = recorded_snapshots()
+        self.engine_ptr = recorded_engine()
         self.served = 0
         self.done = threading.Event()
+        self.closed = False
+
+    def verify_targets(self):
+        # The recording was taken on a build that passed this check.
+        pass
+
+    def close(self):
+        self.closed = True
+
+    def find_engine(self, proc):
+        return self.engine_ptr
 
     def reader(self, proc, engine_ptr):
-        self.engine_ptr = engine_ptr
-
         def serve():
             i = min(self.served, len(self.snaps) - 1)
             self.served += 1
@@ -152,645 +153,782 @@ class Script:
         return serve
 
 
-class SpToolsTest(unittest.TestCase):
+class SpToolsOnARecordedRunTest(unittest.TestCase):
+    """SpTools on the real GameTools, over a session folder in a temp folder,
+    with the real watch on the real clock. Only the game's reads are played
+    back, from RecordedRun."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.events = []
-        self.game = FakeGame(self.tmp.name, self.events)
-        self.proc = FakeProc(self.events)
-        self.watch_kw = {}
+        self.lock = threading.RLock()
+        # run_reg=None keeps the Rewired key out of the backup (bot_run.Env).
+        # The driver is never pressed: no tool here plays a chart.
+        self.game = game_tools.GameTools(bot_run.Env(run_reg=None), self.lock,
+                                         self.tmp.name, driver=object())
+        self.run = RecordedRun()
+        self.at_open = None
 
     def tearDown(self):
-        for hook in self.game.hooks:
-            hook()
+        self.game.ch_stop()
         self.tmp.cleanup()
 
     def opener(self, **kwargs):
-        self.events.append(("open", kwargs))
-        return self.proc
+        # The backup folders under the temp root when the game was opened.
+        # It walks the folder rather than ask GameTools, whose lock
+        # watch_for_run holds while this runs.
+        self.at_open = (kwargs, sorted(
+            os.path.join(parent, name) for parent, names, _files in os.walk(self.tmp.name)
+            for name in names if name.startswith(game_files.BACKUP_PREFIX)))
+        return self.run
 
-    def recording_watch(self, *args, **kwargs):
-        self.watch_kw.update(kwargs)
-        return sp_watch.watch(*args, **kwargs)
+    def tools(self, **kwargs):
+        kwargs.setdefault("find_engine", self.run.find_engine)
+        return sp_tools.SpTools(self.game, self.lock, opener=self.opener,
+                                reader=self.run.reader, **kwargs)
 
-    def tools(self, script=None, find_engine=None):
-        script = script or Script([snap_at(1.0)])
-        return sp_tools.SpTools(
-            self.game, threading.RLock(), opener=self.opener,
-            find_engine=find_engine or (lambda proc: ENGINE),
-            reader=script.reader, watch=self.recording_watch,
-            now=lambda: 1000.0, sleep=lambda s: time.sleep(0.001))
+    def watched(self, tools, *args):
+        """Start a watch, wait for it to read every recorded row, and stop it.
+        Returns the start's reply and the stop's."""
+        reply = tools.ch_sp_watch_start(*args)
+        self.assertTrue(self.run.done.wait(WAIT_S),
+                        f"the watch did not read past the recording in {WAIT_S:g} s:\n{reply}")
+        return reply, tools.ch_sp_watch_stop()
 
-    def started(self, tools, *args, **kwargs):
-        reply = tools.ch_sp_watch_start(*args, **kwargs)
-        self.assertIn("watching: waiting for a moving clock (cap 120 s", reply)
-        return reply
+    def assert_names_the_recorded_flip(self, text):
+        """`text` holds the activation line of LS-G3's first activation: its
+        flip clock, the multiplier before it and on it, and the end time the
+        flip row reads."""
+        rows = sp_compare.load_watch_rows(_LS_G3_WATCH)
+        flip = next(i for i, row in enumerate(rows) if row["sp_active_byte"])
+        clock = sp_compare.format_ms(C.s_to_ms(rows[flip]["clock_s"]))
+        end = sp_compare.format_ms(C.s_to_ms(rows[flip]["sp_end_s"]))
+        line = next((line for line in text.splitlines()
+                     if line.startswith(f"  activation 1 at {clock}:")), None)
+        self.assertIsNotNone(line, f"no activation at {clock}:\n{text}")
+        self.assertIn(f"multiplier {rows[flip - 1]['sp_mult_u32']} before, "
+                      f"{rows[flip]['sp_mult_u32']} on the flip row", line)
+        self.assertIn(f"end time at the flip {end}", line)
 
     # -- start and stop ----------------------------------------------------------------
 
     def test_start_then_stop_ends_with_stopped_and_writes_the_csv(self):
-        script = Script([snap_at(1.0), snap_at(1.01, sp_amount_u64=2880)])
-        tools = self.tools(script)
-        reply = self.started(tools)
-        csv_path = os.path.join(self.tmp.name, "sp_watch-1.csv")
-        self.assertIn(f"csv: {csv_path}", reply)
-        self.assertTrue(script.done.wait(WAIT_S))
-        stop = tools.ch_sp_watch_stop()
-        self.assertIn("watcher ended: stopped; rows written 3", stop)
-        self.assertIn(f"csv: {csv_path}", stop)
-        self.assertEqual(script.engine_ptr, ENGINE)
+        reply, stop = self.watched(self.tools())
+        csv_path = csv_named_in(reply)
+        self.assertEqual(csv_named_in(stop), csv_path)
         with open(csv_path, newline="", encoding="utf-8") as f:
-            table = list(csv.reader(f))
-        self.assertEqual(tuple(table[0]), WATCH_COLUMNS)
-        # The first read, the change, and the final row for the last read.
-        self.assertEqual([r[1] for r in table[1:]], ["1.0", "1.01", "1.01"])
-        self.assertEqual([r[4] for r in table[1:]], ["0", "2880", "2880"])
-        self.assertEqual(self.events[-1], "close")
+            self.assertEqual(tuple(next(csv.reader(f))), WATCH_COLUMNS)
+        written = sp_compare.load_watch_rows(csv_path)
+        recorded = sp_compare.load_watch_rows(_LS_G3_WATCH)
+        # Every recorded read differs from the one before it, so each is
+        # written once, then the last read the watch made is written again.
+        self.assertEqual(logged(written), logged(recorded) + logged(recorded[-1:]))
+        self.assertIn(f"watcher ended: {sp_watch.STOPPED_REASON}; rows written {len(written)};",
+                      stop)
+        self.assertTrue(self.run.closed)
 
     def test_the_backup_comes_before_the_game_is_opened(self):
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        reply = self.started(tools)
-        self.assertTrue(reply.startswith(BACKUP_LINE))
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertEqual(self.events[:3],
-                         ["backup", ("open", {"read_only": True}), "verify"])
+        reply, _stop = self.watched(self.tools())
+        kwargs, backups = self.at_open
+        self.assertEqual(kwargs, {"read_only": True})
+        self.assertEqual(len(backups), 1, backups)
+        # The reply's first line names the backup the open found already made.
+        self.assertIn(backups[0], reply.splitlines()[0])
 
     def test_a_second_start_while_running_is_refused(self):
-        entered, release = threading.Event(), threading.Event()
-
-        def slow_finder(proc):
-            entered.set()
-            release.wait(WAIT_S)
-            raise F.EngineSearchTimeout(NO_SONG)
-
-        tools = self.tools(find_engine=slow_finder)
-        self.started(tools)
-        self.assertTrue(entered.wait(WAIT_S))
-        self.assertEqual(tools.ch_sp_watch_start(),
-                         "a Star Power watch is already running; "
-                         "call ch_sp_watch_stop first")
-        release.set()
+        tools = self.tools()
+        tools.ch_sp_watch_start()
+        self.assertTrue(self.run.done.wait(WAIT_S))
+        self.assertEqual(tools.ch_sp_watch_start(), sp_tools.WATCH_RUNNING)
         tools.ch_sp_watch_stop()
 
-    def test_the_stop_hook_stops_the_thread(self):
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        self.assertEqual(len(self.game.hooks), 1)
-        said = self.game.hooks[0]()
-        self.assertIn("sp watch: watcher ended: stopped", said)
-        self.assertIn("watcher ended: stopped", tools.ch_sp_watch_status())
-        self.assertIsNone(self.game.hooks[0]())
+    def test_watch_for_run_is_refused_while_a_watch_runs(self):
+        tools = self.tools()
+        tools.ch_sp_watch_start()
+        self.assertTrue(self.run.done.wait(WAIT_S))
+        self.assertTrue(tools.watch_running())
+        opened = self.at_open
+        self.assertEqual(tools.watch_for_run(SHORT_CAP_S, self.run.find_engine),
+                         (None, sp_tools.WATCH_RUNNING))
+        # The refusal started no second watch: the game was opened once, by
+        # the start, and that watch still runs.
+        self.assertIs(self.at_open, opened)
+        self.assertTrue(tools.watch_running())
+        tools.ch_sp_watch_stop()
 
-    def test_the_default_engine_search_writes_nothing_to_stdout(self):
-        # The server's stdout is its protocol channel, so the search's
-        # progress dots must not reach it.
-        stdout = io.StringIO()
-        with fakes.searching_for_no_song(F), contextlib.redirect_stdout(stdout):
-            with self.assertRaises(F.EngineSearchTimeout):
-                frida_tools.find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
-        self.assertEqual(stdout.getvalue(), "")
-
-    def test_a_finder_timeout_is_the_reason_in_the_status(self):
-        def no_song(proc):
-            raise F.EngineSearchTimeout(NO_SONG)
-
-        tools = self.tools(find_engine=no_song)
-        self.started(tools)
-        stop = tools.ch_sp_watch_stop()
-        self.assertIn(f"watcher ended: {NO_SONG}", stop)
-        status = tools.ch_sp_watch_status()
-        self.assertIn(f"watcher ended: {NO_SONG}", status)
-        self.assertIn("(not written: the engine was never found)", status)
-        self.assertIn("engine: not found yet", status)
-        self.assertEqual(self.events[-1], "close")
+    def test_ch_stop_stops_the_watch(self):
+        tools = self.tools()
+        tools.ch_sp_watch_start()
+        self.assertTrue(self.run.done.wait(WAIT_S))
+        said = self.game.ch_stop()
+        self.assertIn(f"watcher ended: {sp_watch.STOPPED_REASON}", said)
+        self.assertFalse(tools.watch_running())
+        self.assertIn(f"watcher ended: {sp_watch.STOPPED_REASON}", tools.ch_sp_watch_status())
+        # A stopped watch says nothing at the next ch_stop.
+        self.assertNotIn("watcher ended", self.game.ch_stop())
 
     # -- the run cap -------------------------------------------------------------------
 
-    def test_a_song_folder_takes_its_cap_from_the_game(self):
-        folder = os.path.join(self.tmp.name, "x")
-        os.makedirs(folder)
-        song_with_end(folder, 4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        dumps_before = len(FAKE.charts)
-        reply = self.started(tools, song_folder=folder)
-        self.assertIn(f"run cap: 240 s (game_tools.cap_for_end of Hydra's end for {folder})", reply)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
+    def test_a_song_folder_takes_its_cap_from_hydras_end(self):
+        if not os.path.exists(_PITCH_DARK_DUMP):
+            self.fail(f"{_PITCH_DARK_DUMP} is missing; make it with the hydra_replay "
+                      "command beside _PITCH_DARK_DUMP")
+        dumps = []
+
+        def checked_in_dump(chart, dump):
+            dumps.append(chart)
+            shutil.copyfile(_PITCH_DARK_DUMP, dump)
+
+        with mock.patch.object(hydra_end, "make_dump", checked_in_dump):
+            reply, _stop = self.watched(self.tools(), _PITCH_DARK_FOLDER)
+        cap = game_tools.cap_for_end(hydra_end.song_length_ms(_PITCH_DARK_DUMP))
+        cap_line = next(line for line in reply.splitlines() if line.startswith("run cap: "))
+        self.assertTrue(cap_line.startswith(f"run cap: {cap:g} s "), cap_line)
+        self.assertIn(_PITCH_DARK_FOLDER, cap_line)
         # One dump of the folder's chart gives both the cap and the gap
         # line's end.
-        self.assertEqual(len(FAKE.charts), dumps_before + 1)
-        self.assertEqual(self.game.cap_calls, [4000])
-        self.assertEqual(self.watch_kw["cap_s"], 240.0)
+        self.assertEqual(len(dumps), 1)
 
     def test_no_song_folder_takes_the_watcher_cap(self):
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        reply = self.started(tools)
-        self.assertIn("run cap: 240 s (sp_watch.RUN_CAP_S; no song folder given)", reply)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertEqual(self.game.cap_calls, [])
-        self.assertEqual(self.watch_kw["cap_s"], sp_watch.RUN_CAP_S)
+        caps = []
+
+        def watch(*args, **kwargs):
+            caps.append(kwargs["cap_s"])
+            return sp_watch.watch(*args, **kwargs)
+
+        with mock.patch.object(self.game, "cap_for_end",
+                               wraps=self.game.cap_for_end) as cap_for_end:
+            reply, _stop = self.watched(self.tools(watch=watch))
+        self.assertIn(f"run cap: {sp_watch.RUN_CAP_S:g} s "
+                      "(sp_watch.RUN_CAP_S; no song folder given)", reply.splitlines())
+        # The game is not asked for a cap, and the watch ran with the default.
+        cap_for_end.assert_not_called()
+        self.assertEqual(caps, [sp_watch.RUN_CAP_S])
+
+    def test_run_cap_line_says_default_when_no_song_length(self):
+        # A folder with no chart file: bot_run.song_length_ms names no end,
+        # so game_tools.cap_for_end gives play_chart's default cap.
+        folder = os.path.join(self.tmp.name, "no-length")
+        os.makedirs(folder)
+        reply, _stop = self.watched(self.tools(), folder)
+        self.assertIn(f"run cap: {play_chart.RUN_CAP_S:g} s (default; no song length for {folder})",
+                      reply.splitlines())
 
     # -- ch_sp -------------------------------------------------------------------------
 
     def test_ch_sp_with_no_watch(self):
-        self.assertEqual(self.tools().ch_sp(),
-                         "no watcher has run; call ch_sp_watch_start")
-
-    def test_ch_sp_before_the_engine_is_found_says_so(self):
-        entered, release = threading.Event(), threading.Event()
-
-        def slow_finder(proc):
-            entered.set()
-            release.wait(WAIT_S)
-            raise F.EngineSearchTimeout(NO_SONG)
-
-        tools = self.tools(find_engine=slow_finder)
-        self.started(tools)
-        self.assertTrue(entered.wait(WAIT_S))
-        reply = tools.ch_sp()
-        self.assertTrue(reply.startswith(
-            "no engine read yet (the watcher is waiting for a moving clock)"))
-        self.assertIn("watcher running: 0 rows so far", reply)
-        release.set()
-        tools.ch_sp_watch_stop()
+        self.assertEqual(self.tools().ch_sp(), sp_tools.NO_WATCH)
 
     def test_ch_sp_prints_the_latest_read(self):
-        script = Script([
-            snap_at(1.0, sp_amount_u64=96, sp_max_u64=SPIKE_FULL_METER, sp_mult_u32=4),
-            snap_at(12.5, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
-                    sp_active_byte=1, sp_mult_u32=8, sp_end_s=61.25, sp_overflow_u32=1)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        reply = tools.ch_sp()
-        tools.ch_sp_watch_stop()
-        self.assertEqual(reply.splitlines()[:10], [
-            "engine clock: 12500.0 ms",
-            "amount: 2880 (sp_amount_u64)",
-            "max: 5760 (sp_max_u64)",
-            "game's half: 2880 (sp_half_u64)",
-            "share of max: 0.500",
-            "ready: yes, the amount is at or over the game's half",
-            "active flag: 1 (on)",
-            "end time: 61250.0 ms, 48750.0 ms ahead of the clock",
-            "multiplier: 8",
-            "overflow flag: 1",
+        tools = self.tools()
+        self.watched(tools)
+        reply = tools.ch_sp().splitlines()
+        # The latest read is the recording's last, which the watch read again
+        # after the song stopped.
+        snap = self.run.snaps[-1]
+        row = dict(zip(WATCH_COLUMNS, sp_watch.watch_row(None, snap)))
+        amount = getattr(snap, sp_tools.AMOUNT_COL)
+        sp_max = getattr(snap, sp_tools.MAX_COL)
+        self.assertGreater(sp_max, 0, "the recording's last read should have a maximum")
+
+        def ms(s):
+            return sp_compare.format_ms(C.s_to_ms(s))
+
+        self.assertEqual(reply[:5], [
+            f"engine clock: {ms(snap.clock_s)}",
+            f"amount: {amount} ({sp_tools.AMOUNT_COL})",
+            f"max: {sp_max} ({sp_tools.MAX_COL})",
+            f"game's half: {getattr(snap, sp_tools.HALF_COL)} ({sp_tools.HALF_COL})",
+            f"share of max: {amount / sp_max:.3f}",
+        ])
+        self.assertTrue(reply[5].startswith(
+            "ready: yes" if sp_tools.game_ready(row) else "ready: no"), reply[5])
+        self.assertEqual(reply[6:10], [
+            f"active flag: {snap.sp_active_byte} "
+            f"({'on' if sp_compare.is_active(row) else 'off'})",
+            f"end time: {ms(snap.sp_end_s)}, {ms(snap.sp_end_s - snap.clock_s)} ahead of the clock",
+            f"multiplier: {snap.sp_mult_u32}",
+            f"overflow flag: {snap.sp_overflow_u32}",
         ])
 
-    def test_sp_lines_below_the_ready_level_and_with_no_maximum(self):
-        below = sp_tools.sp_lines(snap_at(2.0, sp_amount_u64=2879,
-                                          sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880))
-        self.assertIn("ready: no, the amount is below the game's half", below)
-        self.assertIn("active flag: 0 (off)", below)
-        empty = sp_tools.sp_lines(snap_at(2.0))
-        self.assertIn("share of max: none (max is 0)", empty)
-        self.assertIn("ready: unknown (max is 0)", empty)
+    def test_sp_lines_says_ready_and_the_flag_as_the_game_reads_them(self):
+        readies, flags = set(), set()
+        for snap in recorded_snapshots():
+            row = dict(zip(WATCH_COLUMNS, sp_watch.watch_row(None, snap)))
+            lines = sp_tools.sp_lines(snap)
+            ready = sp_tools.game_ready(row)
+            on = sp_compare.is_active(row)
+            readies.add(ready)
+            flags.add(on)
+            ready_line = next(line for line in lines if line.startswith("ready: "))
+            self.assertTrue(ready_line.startswith("ready: yes" if ready else "ready: no"),
+                            ready_line)
+            flag_line = next(line for line in lines if line.startswith("active flag: "))
+            self.assertTrue(flag_line.endswith("(on)" if on else "(off)"), flag_line)
+        # The recording holds reads on both sides of each question.
+        self.assertEqual(readies, {True, False})
+        self.assertEqual(flags, {True, False})
 
     # -- the row questions -------------------------------------------------------------
 
-    def flip_script(self):
-        return Script([
-            snap_at(1.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
-                    sp_mult_u32=4),
-            snap_at(2.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
-                    sp_mult_u32=8, sp_active_byte=1, sp_end_s=10.0)])
-
-    def test_ch_sp_between_reports_a_flip_inside_the_window(self):
-        script = self.flip_script()
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        inside = tools.ch_sp_between(1500.0, 2500.0)
+    def test_ch_sp_between_reports_the_recorded_flip_inside_the_window(self):
+        tools = self.tools()
+        self.watched(tools)
+        rows = sp_compare.load_watch_rows(_LS_G3_WATCH)
+        flip = next(i for i, row in enumerate(rows) if row["sp_active_byte"])
+        before = rows[flip - 1]
+        # From the read before the flip, ready with the flag clear, to the flip.
+        inside = tools.ch_sp_between(C.s_to_ms(before["clock_s"]),
+                                     C.s_to_ms(rows[flip]["clock_s"]))
         self.assertIn("activations inside: 1", inside)
-        self.assertIn("  activation 1 at 2000.0 ms: multiplier 4 before, 8 on the flip "
-                      "row; end time at the flip 10000.0 ms; flag still set at the last row",
-                      inside)
-        self.assertIn("no row inside at the game's half with the flag clear", inside)
+        self.assert_names_the_recorded_flip(inside)
+        self.assertIn(f"first row at the game's half with the flag clear: "
+                      f"{sp_compare.format_ms(C.s_to_ms(before['clock_s']))}", inside)
 
     def test_the_status_activation_line_reads_end_time_at_the_flip(self):
-        script = self.flip_script()
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertIn("  activation 1 at 2000.0 ms: multiplier 4 before, 8 on the flip row; "
-                      "end time at the flip 10000.0 ms; flag still set at the last row",
-                      tools.ch_sp_watch_status().splitlines())
+        tools = self.tools()
+        self.watched(tools)
+        self.assert_names_the_recorded_flip(tools.ch_sp_watch_status())
 
     # -- the watch of a chained run ----------------------------------------------------
 
     def test_watch_for_run_searches_with_the_given_search_and_returns_its_engine(self):
-        script = Script([snap_at(1.0)])
-        own = []
-        tools = self.tools(script, find_engine=lambda proc: own.append(proc) or 0x1)
-        searched = []
-        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: searched.append(proc) or ENGINE)
-        self.assertEqual(engine_ptr, ENGINE)
-        self.assertEqual(text, f"csv: {os.path.join(self.tmp.name, 'sp_watch-1.csv')}")
-        self.assertEqual(searched, [self.proc])
-        self.assertEqual(own, [])
-        self.assertTrue(script.done.wait(WAIT_S))
-        self.assertEqual(script.engine_ptr, ENGINE)
-        self.assertEqual(self.watch_kw["cap_s"], 300.0)
-        tools.ch_sp_watch_stop()
-
-    def test_watch_for_run_says_why_when_no_engine_is_found(self):
-        def no_song(proc):
-            raise F.EngineSearchTimeout(NO_SONG)
-
-        engine_ptr, text = self.tools().watch_for_run(300.0, no_song)
-        self.assertIsNone(engine_ptr)
-        self.assertIn(f"watcher ended: {NO_SONG}", text)
+        # The tools' own search is the real one, which cannot read a recorded
+        # run: had the watch used it, the watch would have failed.
+        tools = sp_tools.SpTools(self.game, self.lock, opener=self.opener,
+                                 reader=self.run.reader)
+        cap_s = SHORT_CAP_S
+        engine_ptr, text = tools.watch_for_run(cap_s, self.run.find_engine)
+        self.assertEqual(engine_ptr, self.run.engine_ptr, text)
+        self.assertTrue(os.path.isfile(csv_named_in(text)), text)
+        # The cap given is the one the watch keeps: it ends on its own, long
+        # before the stopped clock would end it.
+        self.assertTrue(wait_until(lambda: not tools.watch_running(), WAIT_S),
+                        f"the watch was still running {WAIT_S:g} s after a {cap_s:g} s cap")
+        status = tools.ch_sp_watch_status()
+        self.assertNotIn(f"watcher ended: {sp_watch.STOPPED_REASON}", status)
+        self.assertIn(f"{cap_s:g} s", status.splitlines()[0])
 
     def test_watch_for_run_stops_a_search_that_outlasts_its_cap_and_says_so(self):
         release = threading.Event()
 
         def stuck(proc):
+            # A search still running when the watch's wait runs out. It
+            # returns once the test releases it.
             release.wait(WAIT_S)
-            raise F.EngineSearchTimeout(NO_SONG)
+            return self.run.engine_ptr
 
         tools = self.tools()
-        with mock.patch.object(sp_tools.engine_finder, "ENGINE_SEARCH_CAP_S", 0.05), \
-                mock.patch.object(sp_tools, "READ_CAP_S", 0.05):
-            engine_ptr, text = tools.watch_for_run(300.0, stuck)
-        release.set()
+        try:
+            with mock.patch.object(sp_tools.engine_finder, "ENGINE_SEARCH_CAP_S", SHORT_CAP_S), \
+                    mock.patch.object(sp_tools, "READ_CAP_S", SHORT_CAP_S):
+                engine_ptr, text = tools.watch_for_run(WAIT_S, stuck)
+        finally:
+            release.set()
         self.assertIsNone(engine_ptr)
-        self.assertIn("did not settle in 0.1 s", text)
+        self.assertIn("did not settle in ", text)
         self.assertIn("the watch was stopped", text)
-
-    def test_watch_for_run_says_why_when_the_game_cannot_be_opened(self):
-        tools = self.tools()
-        tools._opener = lambda **kw: (_ for _ in ()).throw(OSError("no game"))
-        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: ENGINE)
-        self.assertIsNone(engine_ptr)
-        self.assertIn("could not open the game: OSError: no game", text)
-
-    def test_watch_for_run_fails_when_the_csv_cannot_be_made_after_the_search(self):
-        tools = self.tools()
-        tools._game.session_dir = lambda: os.path.join(self.tmp.name, "a file")
-        with open(os.path.join(self.tmp.name, "a file"), "w", encoding="utf-8"):
-            pass
-        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: ENGINE)
-        self.assertIsNone(engine_ptr)
-        self.assertIn("watcher ended: failed:", text)
-
-    def test_watch_for_run_is_refused_while_a_watch_runs(self):
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertEqual(tools.watch_for_run(300.0, lambda proc: ENGINE),
-                         (None, sp_tools.WATCH_RUNNING))
-        tools.ch_sp_watch_stop()
-
-    def test_ch_sp_between_with_no_flip_says_so(self):
-        script = self.flip_script()
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        before = tools.ch_sp_between(0.0, 1500.0)
-        self.assertIn("no activation inside", before)
-        self.assertIn("first row at the game's half with the flag clear: 1000.0 ms "
-                      "(sp_amount_u64 2880, sp_half_u64 2880)", before)
-        self.assertIn("no rows inside the window", tools.ch_sp_between(3000.0, 4000.0))
+        # The stop took: once the search returns, the watch ends as stopped
+        # at its first poll, not at its run cap.
+        self.assertTrue(wait_until(lambda: not tools.watch_running(), WAIT_S),
+                        f"the watch still ran {WAIT_S:g} s after its search returned")
+        self.assertIn(f"watcher ended: {sp_watch.STOPPED_REASON}", tools.ch_sp_watch_status())
 
     def test_ch_sp_watch_status_lists_activations_and_rises(self):
-        script = Script([
-            snap_at(1.0, sp_amount_u64=0, sp_max_u64=5760, sp_mult_u32=4),
-            snap_at(1.5, sp_amount_u64=1440, sp_max_u64=5760, sp_mult_u32=4),
-            snap_at(2.0, sp_amount_u64=1440, sp_max_u64=5760, sp_mult_u32=8,
-                    sp_active_byte=1, sp_end_s=10.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        status = tools.ch_sp_watch_status()
-        self.assertIn("engine: 0x200001000", status)
-        self.assertIn("activations from 0 ms: 1", status)
-        self.assertIn("rises of sp_amount_u64 from 0 ms: 1", status)
-        self.assertIn("  at 1500.0 ms: +1440 (0 -> 1440)", status)
-        later = tools.ch_sp_watch_status(since_ms=1600)
-        self.assertIn("rises of sp_amount_u64 from 1600 ms: 0", later)
-        self.assertIn("activations from 1600 ms: 1", later)
-
-    # -- the gap line ------------------------------------------------------------------
-
-    def status_over(self, samples, since_ms=0, song_end_ms=60000):
-        """ch_sp_watch_status's lines over a watch that made these (wall_s,
-        clock_s) rows, of a song `song_end_ms` long."""
         tools = self.tools()
-        tools._watch = sp_tools._Watch(csv_path="x.csv", cap_s=1.0, rows=[
-            dict(zip(WATCH_COLUMNS, sp_watch.watch_row(wall_s, snap_at(clock_s))))
-            for wall_s, clock_s in samples], song_end_ms=song_end_ms)
-        return tools.ch_sp_watch_status(since_ms).splitlines()
+        self.watched(tools)
+        status = tools.ch_sp_watch_status().splitlines()
+        self.assertIn(f"engine: {hex(self.run.engine_ptr)}", status)
+        # The recording's steps up of the amount and its flag's turns on,
+        # read row by row.
+        rows = sp_compare.load_watch_rows(_LS_G3_WATCH)
+        col = sp_tools.AMOUNT_COL
+        rises = [(C.s_to_ms(rows[i]["clock_s"]), rows[i - 1][col], rows[i][col])
+                 for i in range(1, len(rows)) if rows[i][col] > rows[i - 1][col]]
+        flips = [C.s_to_ms(rows[i]["clock_s"]) for i in range(1, len(rows))
+                 if rows[i]["sp_active_byte"] and not rows[i - 1]["sp_active_byte"]]
+        self.assertEqual(len(rises), 1, "the recording holds one rise")
+        self.assertEqual(len(flips), 1, "the recording holds one activation")
+        rise_ms, before, after = rises[0]
+        self.assertIn(f"activations from 0 ms: {len(flips)}", status)
+        self.assertIn(f"rises of {col} from 0 ms: 1", status)
+        self.assertIn(f"  at {sp_compare.format_ms(rise_ms)}: +{after - before} "
+                      f"({before} -> {after})", status)
+        # From just past the rise, which comes before the flip: the rise is
+        # left out and the activation kept.
+        self.assertLess(rise_ms, flips[0])
+        since = math.nextafter(rise_ms, math.inf)
+        later = tools.ch_sp_watch_status(since_ms=since).splitlines()
+        self.assertIn(f"rises of {col} from {since:g} ms: 0", later)
+        self.assertIn(f"activations from {since:g} ms: 1", later)
 
-    def gap_line_of_a_finished_watch(self, tools):
-        """The gap line after a watch of three rows, the last two 60 ms apart
-        on the fake wall clock and the last past 4000 ms."""
-        tools._watch.rows[:] = [
-            dict(zip(WATCH_COLUMNS, sp_watch.watch_row(wall_s, snap_at(clock_s))))
-            for wall_s, clock_s in ((100.0, 3.9), (100.06, 3.96), (100.12, 4.02))]
-        return next(line for line in tools.ch_sp_watch_status().splitlines()
-                    if line.startswith("gaps over"))
+    def test_watch_for_run_says_why_when_the_game_cannot_be_opened(self):
+        # The real opener, asked for a process that is not running: the game's
+        # own name with a suffix no running program has.
+        missing = f"{C.PROCESS_NAME}-{uuid.uuid4().hex}.exe"
+        searched = []
+        tools = sp_tools.SpTools(self.game, self.lock,
+                                 opener=functools.partial(process.open_process, missing),
+                                 reader=self.run.reader)
+        engine_ptr, text = tools.watch_for_run(
+            SHORT_CAP_S, lambda proc: searched.append(proc) or self.run.engine_ptr)
+        self.assertIsNone(engine_ptr)
+        self.assertIn(f"watcher ended: failed: could not open the game: "
+                      f"{process.ProcessNotFoundError.__name__}: process {missing!r} "
+                      "is not running", text)
+        # Nothing past the open ran: no search, and no CSV.
+        self.assertEqual(searched, [])
+        self.assertFalse(os.path.exists(csv_named_in(text)), text)
+        self.assertFalse(tools.watch_running())
 
-    def test_the_gap_line_leaves_out_a_gap_past_the_song_end(self):
-        lines = self.status_over([(100.0, 3.9), (100.06, 3.96), (100.12, 4.02)],
-                                 song_end_ms=4000)
-        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, "
-                      "between 3900.0 ms and 3960.0 ms", lines)
+    def test_watch_for_run_fails_when_the_csv_cannot_be_made_after_the_search(self):
+        # A folder in the session folder where the watch's next CSV goes, so
+        # the real open of that file fails after the engine search.
+        tools = self.tools()
+        blocked = os.path.join(self.game.session_dir(),
+                               f"{sp_tools.CSV_PREFIX}{tools._count + 1}.csv")
+        os.makedirs(blocked)
+        engine_ptr, text = tools.watch_for_run(SHORT_CAP_S, self.run.find_engine)
+        self.assertIsNone(engine_ptr)
+        failed = next((line for line in text.splitlines()
+                       if line.startswith("watcher ended: failed: ")), None)
+        self.assertIsNotNone(failed, text)
+        # The error names the file it could not open.
+        self.assertIn(os.path.basename(blocked), failed)
+        self.assertEqual(csv_named_in(text), blocked)
+        self.assertEqual(self.run.served, 0, "the watch read the game with no CSV to write")
+        self.assertTrue(self.run.closed)
 
-    def test_the_gap_line_leaves_out_a_final_frozen_clock_row(self):
-        lines = self.status_over([(100.0, 3.9), (100.004, 4.02), (105.1, 4.02)],
-                                 song_end_ms=4000)
-        self.assertIn("gaps over 50 ms between samples: 0", lines)
+    def test_ch_sp_between_with_no_flip_says_so(self):
+        tools = self.tools()
+        self.watched(tools)
+        rows = sp_compare.load_watch_rows(_LS_G3_WATCH)
+        flip = next(i for i, row in enumerate(rows) if row["sp_active_byte"])
+        # From the first read to the last read before the flip.
+        before = tools.ch_sp_between(C.s_to_ms(rows[0]["clock_s"]),
+                                     C.s_to_ms(rows[flip - 1]["clock_s"]))
+        self.assertIn("no activation inside", before.splitlines())
+        ready = next((row for row in rows[:flip]
+                      if sp_tools.game_ready(row) and not sp_compare.is_active(row)), None)
+        self.assertIsNotNone(ready, "the recording has no ready read before its flip")
+        self.assertIn(f"first row at the game's half with the flag clear: "
+                      f"{sp_compare.format_ms(C.s_to_ms(ready['clock_s']))} "
+                      f"({sp_tools.AMOUNT_COL} {ready[sp_tools.AMOUNT_COL]}, "
+                      f"{sp_tools.HALF_COL} {ready[sp_tools.HALF_COL]})", before)
+        # Everything before the first read: no rows at all.
+        first_ms = C.s_to_ms(rows[0]["clock_s"])
+        empty = tools.ch_sp_between(0.0, math.nextafter(first_ms, 0.0)).splitlines()
+        self.assertIn("no activation inside", empty)
+        self.assertEqual(empty[-1], "no rows inside the window")
 
-    def test_an_unknown_song_length_is_said_on_the_gap_line(self):
-        lines = self.status_over([(100.0, 3.9), (100.06, 3.96)], song_end_ms=None)
-        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, between "
-                      "3900.0 ms and 3960.0 ms (song length not known: every row counted)",
-                      lines)
+    # -- the song end of the gap line --------------------------------------------------
 
-    def test_an_unknown_song_length_is_said_when_no_gap_is_over(self):
-        lines = self.status_over([(100.0, 3.9), (100.004, 3.904)], song_end_ms=None)
-        self.assertIn("gaps over 50 ms between samples: 0 "
-                      "(song length not known: every row counted)", lines)
-
-    def test_the_real_ls_o2_gap_line(self):
-        path = os.path.join(_REPO_ROOT, "testdata", "ch_watch",
-                            "ls-o2-run1-sp_watch-1.csv")
-        with open(path, newline="", encoding="utf-8") as f:
-            rows = [{c: float(r[c]) for c in ("wall_s", "clock_s")}
-                    for r in csv.DictReader(f)]
-        self.assertEqual(sp_tools._gap_line(rows, 62080),
-                         "gaps over 50 ms between samples: 360, longest 243.7 ms, "
-                         "between 2146.8 ms and 40566.2 ms")
+    def gap_line(self, tools):
+        """The gap line of the watch's status, and the rows the watch wrote."""
+        status = tools.ch_sp_watch_status()
+        line = next(line for line in status.splitlines() if line.startswith("gaps over"))
+        return line, sp_compare.load_watch_rows(csv_named_in(status))
 
     def test_the_song_end_comes_from_the_folder_the_watch_was_given(self):
-        folder = os.path.join(self.tmp.name, "song")
-        os.makedirs(folder)
-        song_with_end(folder, 4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools, folder)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
-                         "gaps over 50 ms between samples: 1, longest 60 ms, "
-                         "between 3900.0 ms and 3960.0 ms")
+        def checked_in_dump(chart, dump):
+            shutil.copyfile(_PITCH_DARK_DUMP, dump)
+
+        with mock.patch.object(hydra_end, "make_dump", checked_in_dump):
+            tools = self.tools()
+            self.watched(tools, _PITCH_DARK_FOLDER)
+        line, rows = self.gap_line(tools)
+        self.assertEqual(line, sp_tools._gap_line(
+            rows, hydra_end.song_length_ms(_PITCH_DARK_DUMP)))
 
     def test_a_folder_with_no_length_leaves_the_song_end_unknown(self):
-        folder = os.path.join(self.tmp.name, "no-length")
+        # A folder with no chart file: bot_run.song_length_ms names no end.
+        folder = os.path.join(self.tmp.name, "no-chart")
         os.makedirs(folder)
-        self.game._run = types.SimpleNamespace(length_ms=4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools, folder)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertIn("(song length not known: every row counted)",
-                      self.gap_line_of_a_finished_watch(tools))
-
-    def test_with_no_folder_the_song_end_comes_from_the_open_run(self):
-        self.game._run = types.SimpleNamespace(length_ms=4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
-                         "gaps over 50 ms between samples: 1, longest 60 ms, "
-                         "between 3900.0 ms and 3960.0 ms")
-
-    def test_ch_run_charts_watch_takes_the_song_end_from_the_open_run(self):
-        self.game._run = types.SimpleNamespace(length_ms=4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE)
-        self.assertEqual(engine_ptr, ENGINE)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
-                         "gaps over 50 ms between samples: 1, longest 60 ms, "
-                         "between 3900.0 ms and 3960.0 ms")
+        tools = self.tools()
+        self.watched(tools, folder)
+        line, rows = self.gap_line(tools)
+        self.assertEqual(line, sp_tools._gap_line(rows, None))
 
     def test_ch_run_charts_watch_takes_the_song_end_it_was_given(self):
-        # ch_start with no song, then ch_run_chart: no open-run length, and
-        # the end comes from the run's schedule, with no dump.
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        dumps_before = len(FAKE.charts)
-        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE, 4000.0)
-        self.assertEqual(len(FAKE.charts), dumps_before)
-        self.assertEqual(engine_ptr, ENGINE)
-        self.assertTrue(script.done.wait(WAIT_S))
+        # ch_run_chart's end, read from its schedule with no new dump.
+        _cap_s, song_end_ms = game_tools.schedule_run_cap_s(_PITCH_DARK_SCHEDULE)
+        dumps = []
+        with mock.patch.object(hydra_end, "make_dump",
+                               lambda chart, dump: dumps.append(chart)):
+            tools = self.tools()
+            engine_ptr, text = tools.watch_for_run(WAIT_S, self.run.find_engine,
+                                                   song_end_ms)
+        self.assertEqual(engine_ptr, self.run.engine_ptr, text)
+        # The wait ends as soon as the watch has read past the recording or
+        # has ended, since an ended watch reads no more.
+        wait_until(lambda: self.run.done.is_set() or not tools.watch_running(), WAIT_S)
+        self.assertTrue(self.run.done.is_set(), tools.ch_sp_watch_status())
         tools.ch_sp_watch_stop()
-        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
-                         'gaps over 50 ms between samples: 1, longest 60 ms, '
-                         'between 3900.0 ms and 3960.0 ms')
-
-    def test_the_song_end_outlives_the_run(self):
-        # ch_stop clears the open run, and a status call after it still has
-        # the watch's song end.
-        self.game._run = types.SimpleNamespace(length_ms=4000)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.game._run = None
-        self.assertNotIn("not known", self.gap_line_of_a_finished_watch(tools))
-
-    def test_a_menu_launch_leaves_the_song_end_unknown(self):
-        # bot_run.Run has no length when no song was on the command line.
-        self.game._run = types.SimpleNamespace(length_ms=None)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertIn("(song length not known: every row counted)",
-                      self.gap_line_of_a_finished_watch(tools))
+        self.assertEqual(dumps, [])
+        line, rows = self.gap_line(tools)
+        self.assertEqual(line, sp_tools._gap_line(rows, song_end_ms))
 
     def test_a_watch_with_no_open_run_leaves_the_song_end_unknown(self):
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        self.started(tools)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertIn("(song length not known: every row counted)",
-                      self.gap_line_of_a_finished_watch(tools))
+        # No ch_start ran, so GameTools holds no run to read a length from.
+        self.assertIsNone(self.game.song_length_ms())
+        tools = self.tools()
+        self.watched(tools)
+        line, rows = self.gap_line(tools)
+        self.assertEqual(line, sp_tools._gap_line(rows, None))
 
-    def test_the_real_game_tools_holds_the_run_the_song_end_reads(self):
-        # The fake above stands in for this field, so this pins its real name.
-        game = game_tools.GameTools(None, threading.RLock(), self.tmp.name, driver=object())
-        tools = sp_tools.SpTools(game, threading.RLock())
-        self.assertIsNone(game.song_length_ms())
-        game._run = types.SimpleNamespace(length_ms=62080)
-        self.assertEqual(game.song_length_ms(), 62080)
-        self.assertEqual(tools._open_run_length_ms(), 62080)
-
-    def test_the_status_prints_two_gaps_with_the_clocks_around_them(self):
-        lines = self.status_over([(100.0, 1.0), (100.004, 1.004), (100.064, 1.064),
-                                  (100.068, 1.068), (100.312, 1.312), (100.316, 1.316)])
-        self.assertIn("gaps over 50 ms between samples: 2, longest 244 ms, "
-                      "between 1004.0 ms and 1312.0 ms", lines)
-
-    def test_the_longest_gap_keeps_its_tenth_of_a_ms(self):
-        lines = self.status_over([(100.0, 1.0), (100.2437, 1.2437)])
-        self.assertIn("gaps over 50 ms between samples: 1, longest 243.7 ms, "
-                      "between 1000.0 ms and 1243.7 ms", lines)
-
-    def test_the_status_prints_0_when_no_gap_is_over(self):
-        lines = self.status_over([(100.0, 1.0), (100.004, 1.004), (100.008, 1.008)])
-        self.assertIn("gaps over 50 ms between samples: 0", lines)
-
-    def test_a_gap_of_exactly_gap_ms_is_not_printed(self):
-        self.assertEqual(sp_tools.GAP_MS, 50)
-        lines = self.status_over([(0.0, 1.0), (0.05, 1.05)])
-        self.assertIn("gaps over 50 ms between samples: 0", lines)
-
-    def test_a_watch_with_no_rows_prints_0(self):
-        self.assertIn("gaps over 50 ms between samples: 0", self.status_over([]))
+    def test_a_watch_that_wrote_no_row_counts_no_gap(self):
+        # The real opener, asked for a process that is not running, so the
+        # watch ends before its first read.
+        missing = f"{C.PROCESS_NAME}-{uuid.uuid4().hex}.exe"
+        tools = sp_tools.SpTools(self.game, self.lock,
+                                 opener=functools.partial(process.open_process, missing),
+                                 reader=self.run.reader)
+        engine_ptr, text = tools.watch_for_run(SHORT_CAP_S, self.run.find_engine)
+        self.assertIsNone(engine_ptr, text)
+        status = tools.ch_sp_watch_status().splitlines()
+        self.assertIn("rows: 0", status)
+        line = next(line for line in status if line.startswith("gaps over"))
+        self.assertTrue(line.startswith(
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0"), line)
+        self.assertNotIn("longest", line)
 
     def test_since_ms_does_not_narrow_the_gap_line(self):
-        lines = self.status_over([(100.0, 1.0), (100.06, 1.06)], since_ms=5000)
-        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, "
-                      "between 1000.0 ms and 1060.0 ms", lines)
+        # Each poll sleeps twice GAP_MS on the real clock, so every recorded
+        # read the watch writes comes after a gap over GAP_MS.
+        poll_s = C.ms_to_s(2 * sp_tools.GAP_MS)
+        tools = self.tools(sleep=lambda _s: time.sleep(poll_s))
+        self.watched(tools)
+        status = tools.ch_sp_watch_status()
+        rows = sp_compare.load_watch_rows(csv_named_in(status))
+        self.assertGreater(sp_compare.gap_summary(rows, sp_tools.GAP_MS, None).count, 0)
+        # From just past the last row's clock: nothing is left to list.
+        after_ms = math.nextafter(max(C.s_to_ms(row["clock_s"]) for row in rows), math.inf)
+        later = tools.ch_sp_watch_status(since_ms=after_ms)
+
+        def gap(text):
+            return next(line for line in text.splitlines() if line.startswith("gaps over"))
+
+        def activations(text):
+            line = next(line for line in text.splitlines()
+                        if line.startswith("activations from "))
+            return int(line.rsplit(": ", 1)[1])
+
+        # since_ms narrows the activation list, but not the gap line.
+        self.assertGreater(activations(status), 0, status)
+        self.assertEqual(activations(later), 0, later)
+        self.assertEqual(gap(later), gap(status))
 
     def test_the_gap_line_comes_before_the_lists_a_cut_reply_can_lose(self):
-        lines = self.status_over([(100.0, 1.0)])
-        gap = next(i for i, line in enumerate(lines) if line.startswith("gaps over"))
-        self.assertLess(gap, next(i for i, line in enumerate(lines)
-                                  if line.startswith("activations from")))
+        tools = self.tools()
+        self.watched(tools)
+        lines = tools.ch_sp_watch_status().splitlines()
+
+        def first(prefix):
+            return next(i for i, line in enumerate(lines) if line.startswith(prefix))
+
+        gap = first("gaps over")
+        self.assertLess(gap, first("activations from "))
+        self.assertLess(gap, first(f"rises of {sp_tools.AMOUNT_COL} from "))
+
+    # -- ch_sp_compare on a recorded run -----------------------------------------------
+
+    def rise_files(self):
+        """pitch-dark-ratios-run1's rise piece (test_sp_compare's _RISE_CSV),
+        Hydra's path-0 score of its chart held to the piece's clock span
+        (test_sp_compare._within) and written to the temp folder, and the
+        path's schedule. Returns (rows, score, score_json, schedule_json)."""
+        rows = sp_compare.load_watch_rows(_RISE_CSV)
+        score = _within(sp_compare.load_score(_replay_file("test_pitch_dark_ratio-score.json")),
+                        rows)
+        score_json = os.path.join(self.tmp.name, "rise-score.json")
+        with open(score_json, "w", encoding="utf-8") as f:
+            json.dump(score, f)
+        return rows, score, score_json, _replay_file("test_pitch_dark_ratio-schedule.json")
+
+    def test_ch_sp_compare_refuses_without_a_resolution(self):
+        rows, score, score_json, schedule_json = self.rise_files()
+        tools = self.tools()
+        refused = tools.ch_sp_compare(_RISE_CSV, score_json, schedule_json)
+        self.assertEqual(len(refused.splitlines()), 1, refused)
+        self.assertTrue(refused.startswith("compare refused: "), refused)
+        self.assertIn("resolution", refused)
+        # The same files with the chart's resolution are compared.
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        want = sp_compare.compare(rows, score, resolution=resolution,
+                                  reach=sp_compare.press_reach(schedule_json)).text()
+        reply = tools.ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution)
+        self.assertTrue(reply.startswith(want), reply)
+
+    def test_ch_sp_compare_passes_the_last_plays_stop(self):
+        _rows, _score, score_json, schedule_json = self.rise_files()
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        # No play session has run: the report says no stop was given.
+        self.assertIsNone(self.game.play_snapshot())
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution)
+        self.assertIn(stop_check(None)[1], reply.splitlines())
+        # A real play session on the keys route, whose real player asks the
+        # real opener for a process that is not running, so it ends at once
+        # before any press.
+        missing = f"{C.PROCESS_NAME}-{uuid.uuid4().hex}.exe"
+        game = game_tools.GameTools(
+            bot_run.Env(run_reg=None), self.lock, os.path.join(self.tmp.name, "play"),
+            driver=object(),
+            live_play=functools.partial(
+                play_chart.live_play,
+                open_proc=functools.partial(process.open_process, missing)))
+        self.addCleanup(game.ch_stop)
+        started = game.ch_play_chart(_replay_file("test_pitch_dark_ratio-score.json"),
+                                     schedule_json, route=game_tools.ROUTE_KEYS)
+        self.assertIsNotNone(game.play_snapshot(), started)
+        self.assertTrue(wait_until(lambda: game.play_snapshot()["stop"] is not None, WAIT_S),
+                        f"the play session still ran {WAIT_S:g} s after it started")
+        play = game.play_snapshot()
+        self.assertEqual(play["press_count"], 0, play)
+        self.assertIn(missing, play["stop"])
+        reply = sp_tools.SpTools(game, self.lock).ch_sp_compare(
+            _RISE_CSV, score_json, schedule_json, resolution)
+        ended, line = stop_check(play["stop"], play["message"])
+        self.assertFalse(ended)
+        self.assertIn(line, reply.splitlines())
+        self.assertNotIn(stop_check(None)[1], reply.splitlines())
+
+    def test_ch_sp_compare_finds_the_recorded_rise_after_the_schedules_presses(self):
+        rows, score, score_json, schedule_json = self.rise_files()
+        ends = [c for c in score["chords"] if c["is_sp_phrase_end"]]
+        self.assertEqual(len(ends), 1, "the rise piece should hold one phrase end")
+        rises = sp_compare.phrase_rises(rows, sp_tools.AMOUNT_COL)
+        self.assertTrue(rises, "the rise piece should hold the game's rise")
+        # The rise comes after the schedule's first press of that chord.
+        presses = sp_compare.press_reach(schedule_json)[ends[0]["index"]]
+        self.assertGreaterEqual(rises[0].ms, presses.earliest_ms)
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json,
+                                           _midi_resolution(_PITCH_DARK_CHART))
+        line = [line for line in reply.splitlines() if line.startswith(
+            f"PASS phrase rise after {sp_compare._chord_label(ends[0])}: ")]
+        self.assertEqual(len(line), 1, reply)
+        self.assertIn(f"+{rises[0].size} ({rises[0].before} -> {rises[0].after}) "
+                      f"at {sp_compare.format_ms(rises[0].ms)}", line[0])
+
+    def test_ch_sp_compare_replies_with_the_compare_report_then_the_ready_lines(self):
+        rows, score, score_json, schedule_json = self.rise_files()
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        report = sp_compare.compare(rows, score, resolution=resolution,
+                                    reach=sp_compare.press_reach(schedule_json)).text()
+        ready = sp_tools.ready_lines(rows, play_chart.load_schedule(schedule_json))
+        self.assertTrue(ready, "the schedule should hold an activation")
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution)
+        # Every line of the report, in order, then every ready line.
+        self.assertEqual(reply.splitlines(), report.splitlines() + ready)
 
     def test_ch_sp_compare_names_a_missing_file(self):
         missing = os.path.join(self.tmp.name, "none.csv")
+        # The error the OS gives for opening that path.
+        with self.assertRaises(OSError) as opened:
+            open(missing, encoding="utf-8")
         reply = self.tools().ch_sp_compare(missing, missing, missing, 192)
-        self.assertTrue(reply.startswith("compare failed: FileNotFoundError"))
-
-    def test_ch_sp_compare_refuses_without_a_resolution(self):
-        missing = os.path.join(self.tmp.name, "none.csv")
-        self.assertTrue(self.tools().ch_sp_compare(missing, missing, missing).startswith(
-            "compare refused: give resolution"))
-
-    def test_ch_sp_compare_refuses_while_a_play_runs(self):
-        self.game.play = {"last_row": None, "press_count": 0, "stop": None, "message": ""}
-        missing = os.path.join(self.tmp.name, "none.csv")
-        self.assertEqual(self.tools().ch_sp_compare(missing, missing, missing, 192),
-                         "compare refused: the play session is still running; "
-                         "call ch_play_stop first")
-
-    def test_ch_sp_compare_passes_the_last_plays_stop(self):
-        watch_csv, score_json = self._mouths_files()
-        self.game.play = {"last_row": None, "press_count": 3, "stop": play_chart.STOP_DONE,
-                          "message": ""}
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
-        self.assertIn("PASS run end: the run reached the song's end", reply)
-        self.game.play = None
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
-        self.assertIn("FAIL run end: the run's stop reason was not given", reply)
-
-    def test_ch_sp_compare_prints_the_last_plays_stop_message(self):
-        watch_csv, score_json = self._mouths_files()
-        self.game.play = {"last_row": None, "press_count": 0,
-                          "stop": play_chart.STOP_NO_ENGINE,
-                          "message": "no song started within 120 s"}
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
-        self.assertIn(f"FAIL run end: the run stopped before the song's end "
-                      f"({play_chart.STOP_NO_ENGINE}): no song started within 120 s",
-                      reply.splitlines())
+        self.assertEqual(reply, f"compare failed: {type(opened.exception).__name__}: "
+                                f"{opened.exception}")
 
     def test_ready_when_comes_from_the_schedule_and_whether_from_the_games_half(self):
-        self.assertTrue(sp_tools.game_ready(_row(1.0, 7201, sp_half_u64=7200)))
-        self.assertFalse(sp_tools.game_ready(_row(1.0, 7200, sp_half_u64=7201)))
-        schedule = play_chart.Schedule(
-            chords=[play_chart.Chord(index=5, tick=0, ms=3000.0, lanes=[], dynamics=[])],
-            activations=[play_chart.Activation(index=0, chord=5, read_end_after=None,
-                                               sp_ready_ms=1500.0)],
-            song_length_ms=60000.0)
-        ready = sp_tools.ready_lines([_row(1.0, 7200, sp_half_u64=7201),
-                                      _row(2.0, 7201, sp_half_u64=7200)], schedule)
-        self.assertEqual(ready, [
-            "ready for activation 0: Hydra ready at 1500.0 ms (the schedule's sp_ready_ms); "
-            "the game first ready at 2000.0 ms (sp_amount_u64 7201, sp_half_u64 7200)"])
-        not_ready = sp_tools.ready_lines([_row(2.0, 7200, sp_half_u64=7201)], schedule)
-        self.assertEqual(not_ready, [
-            "ready for activation 0: Hydra ready at 1500.0 ms (the schedule's sp_ready_ms); "
-            "the game was not ready before its chord"])
-        # No Python half: sp_tools computes no share of the maximum as a level.
-        with open(sp_tools.__file__, encoding="utf-8") as f:
-            source = f.read()
-        for copy in ("READY_FRACTION", "at_ready_level", "ready_between",
-                     "* sp_max", "sp_max /", "/ 2", "* 0.5"):
-            self.assertNotIn(copy, source)
-
-    def test_run_cap_line_says_default_when_no_song_length(self):
-        folder = os.path.join(self.tmp.name, "no-length")
-        os.makedirs(folder)
-        script = Script([snap_at(1.0)])
-        tools = self.tools(script)
-        reply = self.started(tools, folder)
-        self.assertTrue(script.done.wait(WAIT_S))
-        tools.ch_sp_watch_stop()
-        self.assertIn(f"run cap: 240 s (default; no song length for {folder})", reply)
-
-    def _compare_files(self, score, rows):
-        """A watcher CSV of `rows` and a copy of the score file `score`."""
-        score_path = os.path.join(self.tmp.name, "score.json")
-        with open(score_path, "w", encoding="utf-8") as f:
-            json.dump(score, f)
-        csv_path = os.path.join(self.tmp.name, "watch.csv")
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(WATCH_COLUMNS)
-            for r in rows:
-                w.writerow([r[c] for c in WATCH_COLUMNS])
-        return csv_path, score_path
-
-    def _mouths_files(self):
-        with open(os.path.join(_PROBE_TESTS, "mouths_refine_score.json"), encoding="utf-8") as f:
-            score = json.load(f)
-        # test_sp_compare's rows for chord 740: its kick is pressed after the
-        # squeeze-out's end, and the rise lands after that press.
-        rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
-        return self._compare_files(score, rows)
-
-    def test_ch_sp_compare_on_mouths_reports_as_compare_does(self):
-        watch_csv, score_json = self._mouths_files()
-        want = sp_compare.compare(sp_compare.load_watch_rows(watch_csv),
-                                  sp_compare.load_score(score_json), resolution=192,
-                                  reach=sp_compare.press_reach(_MOUTHS_SCHEDULE)).text()
-        self.assertIn("Star Power comparison: 3 watcher rows", want)
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
-        self.assertTrue(reply.startswith(want + "\nready for activation "), reply)
-
-    def test_ch_sp_compare_reads_the_mouths_schedule(self):
-        watch_csv, score_json = self._mouths_files()
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
-        self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
-                      "+1536 (0 -> 1536) at 118441.0 ms, full", reply)
+        # pitch-dark-ratios-run1's real watch piece and Hydra's schedule of
+        # the same chart's path.
+        rows, _score, _score_json, schedule_json = self.rise_files()
+        schedule = play_chart.load_schedule(schedule_json)
+        lines = sp_tools.ready_lines(rows, schedule)
+        self.assertEqual(len(lines), len(schedule.activations))
+        ms_of = {chord.index: chord.ms for chord in schedule.chords}
+        col, half = sp_tools.AMOUNT_COL, sp_tools.HALF_COL
+        since_ms, found = 0.0, []
+        for act, line in zip(schedule.activations, lines):
+            # When: the schedule's own ready point.
+            self.assertTrue(line.startswith(
+                f"ready for activation {act.index}: Hydra ready at "
+                f"{sp_compare.format_ms(act.sp_ready_ms)} (the schedule's sp_ready_ms); "), line)
+            # Whether: the first row since the activation before, up to this
+            # one's chord, whose flag is clear and whose amount has reached
+            # the game's own half.
+            until_ms = ms_of[act.chord]
+            first = next((r for r in rows
+                          if since_ms <= C.s_to_ms(r["clock_s"]) <= until_ms
+                          and not sp_compare.is_active(r) and r[col] >= r[half]), None)
+            if first is None:
+                self.assertTrue(line.endswith("the game was not ready before its chord"), line)
+            else:
+                found.append(first)
+                self.assertTrue(line.endswith(
+                    f"the game first ready at {sp_compare.format_ms(C.s_to_ms(first['clock_s']))} "
+                    f"({col} {first[col]}, {half} {first[half]})"), line)
+            since_ms = until_ms
+        self.assertTrue(found, "the piece should hold a ready row before a scheduled chord")
+        # The game's half decides, not a share of the maximum: one above the
+        # amount and the same row is not ready, at the amount it is.
+        row = found[0]
+        self.assertTrue(sp_tools.game_ready({**row, half: row[col]}))
+        self.assertFalse(sp_tools.game_ready({**row, half: row[col] + 1}))
 
     def test_ch_sp_compare_refuses_a_schedule_that_refuses_its_path_naming_it(self):
-        watch_csv, score_json = self._mouths_files()
-        with open(_MOUTHS_SCHEDULE, encoding="utf-8") as f:
+        _rows, score, score_json, schedule_path = self.rise_files()
+        with open(schedule_path, encoding="utf-8") as f:
             doc = json.load(f)
-        doc["refusals"] = ["chord 740 is a squeeze the schedule could not split, "
-                           "so it is not pressed"]
-        schedule_json = os.path.join(self.tmp.name, "schedule.json")
+        # Hydra's schedule of the path with one line in its refusals list, in
+        # the form tools/replay_schedule.cpp writes for a chord it cannot time.
+        # The file is input that the real reader reads.
+        chord = next(c for c in score["chords"] if c["is_sp_phrase_end"])["index"]
+        doc["refusals"] = [f"chord {chord} is two squeezes; no rule times both"]
+        schedule_json = os.path.join(self.tmp.name, "refusing-schedule.json")
         with open(schedule_json, "w", encoding="utf-8") as f:
             json.dump(doc, f)
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, schedule_json, 192)
-        self.assertEqual(reply, f"could not read {schedule_json}: ValueError: {schedule_json} "
-                                f"refuses to play this path: chord 740 is a squeeze the "
-                                f"schedule could not split, so it is not pressed")
+        with self.assertRaises(ValueError) as refused:
+            play_chart.load_schedule(schedule_json)
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json,
+                                           _midi_resolution(_PITCH_DARK_CHART))
+        # One line naming the file and the reader's refusal, and no report.
+        self.assertEqual(reply, f"could not read {schedule_json}: ValueError: "
+                                f"{refused.exception}")
+        self.assertIn(doc["refusals"][0], reply)
+
+
+# -- the gap line on a recorded run ------------------------------------------------------
+
+# LS-O2's whole Star Power watch, its wall and clock columns, from
+# hydra-data\ch-mcp-runs\2026-11-07\ls-o2-run1\sp_watch-1.csv.
+_LS_O2_WATCH = os.path.join(_REPO_ROOT, "testdata", "ch_watch", "ls-o2-run1-sp_watch-1.csv")
+# The song length ch_start printed for that run. Copied from line 9 of
+# hydra-data\ch-mcp-runs\2026-11-07\ls-o2-run1\replies.txt.
+_LS_O2_REPLIES = os.path.join(_CH_RUNS, "ls-o2-run1", "replies.txt")
+
+
+def ls_o2_rows():
+    with open(_LS_O2_WATCH, newline="", encoding="utf-8") as f:
+        return [{c: float(r[c]) for c in ("wall_s", "clock_s")} for r in csv.DictReader(f)]
+
+
+def ls_o2_song_end_ms() -> int:
+    with open(_LS_O2_REPLIES, encoding="utf-8") as f:
+        line = f.readline()
+    return int(line.split("song length: ", 1)[1].split(" ms", 1)[0])
+
+
+def wall_gap_ms(rows, i) -> float:
+    return C.s_to_ms(rows[i]["wall_s"] - rows[i - 1]["wall_s"])
+
+
+class GapLineOnARecordedRunTest(unittest.TestCase):
+    """sp_tools._gap_line, the status's gap line, over LS-O2's real watch and
+    the song length its run printed."""
+
+    def setUp(self):
+        self.rows = ls_o2_rows()
+        self.end_ms = ls_o2_song_end_ms()
+
+    def test_the_gap_line_leaves_out_a_gap_past_the_song_end(self):
+        rows, end = self.rows, self.end_ms
+        inside = [row for row in rows if C.s_to_ms(row["clock_s"]) <= end]
+        # The rows past the song end, before the final one, hold gaps: with
+        # every row counted, they change the line.
+        self.assertNotEqual(sp_tools._gap_line(rows[:-1], None),
+                            sp_tools._gap_line(inside, None))
+        # With the song end, they change nothing: the line is the one of the
+        # rows up to the end.
+        self.assertEqual(sp_tools._gap_line(rows, end), sp_tools._gap_line(inside, end))
+
+    def test_the_gap_line_leaves_out_a_final_frozen_clock_row(self):
+        rows, end = self.rows, self.end_ms
+        # The watch's final row repeats the stopped clock after a long wait.
+        self.assertEqual(rows[-1]["clock_s"], rows[-2]["clock_s"])
+        self.assertGreater(wall_gap_ms(rows, len(rows) - 1), sp_tools.GAP_MS)
+        self.assertEqual(sp_tools._gap_line(rows, end), sp_tools._gap_line(rows[:-1], end))
+        # With every row counted, that final wait is the longest gap.
+        self.assertEqual(sp_compare.gap_summary(rows, sp_tools.GAP_MS, None).longest_ms,
+                         wall_gap_ms(rows, len(rows) - 1))
+
+    def test_an_unknown_song_length_is_said_on_the_gap_line(self):
+        rows = self.rows
+        unknown = sp_tools._gap_line(rows, None)
+        known = sp_tools._gap_line(rows, self.end_ms)
+        self.assertIn("song length not known", unknown)
+        self.assertNotIn("song length not known", known)
+        count = sp_compare.gap_summary(rows, sp_tools.GAP_MS, None).count
+        self.assertGreater(count, 0)
+        self.assertTrue(unknown.startswith(
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: {count}, "), unknown)
+
+    def test_an_unknown_song_length_is_said_when_no_gap_is_over(self):
+        # The recording's first two reads, 4.5 ms apart on its wall clock.
+        unknown = sp_tools._gap_line(self.rows[:2], None)
+        self.assertTrue(unknown.startswith(
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0 "), unknown)
+        self.assertIn("song length not known", unknown)
+
+    def inside_gaps(self):
+        """sp_compare.gap_summary, the owner of the gap count, over the
+        recording up to its song end."""
+        return sp_compare.gap_summary(self.rows, sp_tools.GAP_MS, self.end_ms)
+
+    def test_the_gap_line_counts_the_gaps_and_names_the_clocks_around_them(self):
+        gaps = self.inside_gaps()
+        self.assertGreater(gaps.count, 1, "the recording should hold gaps inside the song")
+        self.assertEqual(
+            sp_tools._gap_line(self.rows, self.end_ms),
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: {gaps.count}, "
+            f"longest {round(gaps.longest_ms, 1):g} ms, between "
+            f"{sp_compare.format_ms(gaps.from_ms)} and {sp_compare.format_ms(gaps.to_ms)}")
+
+    def test_the_longest_gap_keeps_its_tenth_of_a_ms(self):
+        longest = self.inside_gaps().longest_ms
+        # The recording's longest gap inside the song is not a whole ms at a
+        # tenth's rounding, so a line rounded to the ms would differ.
+        self.assertNotEqual(round(longest, 1), round(longest))
+        line = sp_tools._gap_line(self.rows, self.end_ms)
+        self.assertIn(f", longest {round(longest, 1):g} ms, ", line)
+        self.assertNotIn(f", longest {round(longest):g} ms, ", line)
+
+    def test_the_gap_line_says_0_when_no_gap_is_over(self):
+        # The recording's first two reads, inside the song and closer together
+        # on its wall clock than GAP_MS.
+        rows = self.rows[:2]
+        self.assertLessEqual(wall_gap_ms(rows, 1), sp_tools.GAP_MS)
+        self.assertLessEqual(C.s_to_ms(rows[1]["clock_s"]), self.end_ms)
+        self.assertEqual(sp_tools._gap_line(rows, self.end_ms),
+                         f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0")
+
+    def test_the_real_ls_o2_gap_line(self):
+        rows, end = self.rows, self.end_ms
+
+        def ms(i):
+            return C.s_to_ms(rows[i]["clock_s"])
+
+        line = sp_tools._gap_line(rows, end)
+        prefix = f"gaps over {sp_tools.GAP_MS:g} ms between samples: "
+        self.assertTrue(line.startswith(prefix), line)
+        count = int(line[len(prefix):].split(",", 1)[0])
+        self.assertGreater(count, 1, "the recording should hold gaps inside the song")
+        # Each pair of rows next to each other inside the song (both clocks at
+        # or before its end), the widest wall gap first.
+        widest = sorted((i for i in range(1, len(rows)) if max(ms(i - 1), ms(i)) <= end),
+                        key=lambda i: wall_gap_ms(rows, i), reverse=True)
+        # The pairs counted are the widest ones: each is over GAP_MS, and the
+        # next widest is not.
+        self.assertGreater(wall_gap_ms(rows, widest[count - 1]), sp_tools.GAP_MS)
+        self.assertLessEqual(wall_gap_ms(rows, widest[count]), sp_tools.GAP_MS)
+        counted = sorted(widest[:count])
+        self.assertEqual(
+            line,
+            f"{prefix}{count}, longest {round(wall_gap_ms(rows, widest[0]), 1):g} ms, between "
+            f"{sp_compare.format_ms(ms(counted[0] - 1))} and {sp_compare.format_ms(ms(counted[-1]))}")
+
+    def test_a_gap_of_exactly_gap_ms_is_not_printed(self):
+        # The recording's first two reads, inside the song, with their wall
+        # times set GAP_MS apart, then just over it.
+        first, second = self.rows[:2]
+
+        def line(gap_ms):
+            rows = [{**first, "wall_s": 0.0}, {**second, "wall_s": C.ms_to_s(gap_ms)}]
+            return sp_tools._gap_line(rows, self.end_ms)
+
+        self.assertEqual(line(sp_tools.GAP_MS),
+                         f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0")
+        self.assertTrue(line(sp_tools.GAP_MS + 1).startswith(
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: 1, "), line(sp_tools.GAP_MS + 1))
 
 
 if __name__ == "__main__":

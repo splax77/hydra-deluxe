@@ -1,7 +1,8 @@
 // Shared fixtures for the AppState tests, test_app_click.cpp and the files
 // split from it: a seeded library with no chart files, real corpus charts to
 // click, the frame loop that waits for a click, a latch that holds a click's
-// job, and a Redo batch run with a test analyzer. They were one file's
+// job, a Redo batch run with a test analyzer, and the wait for a path
+// report's job. They were one file's
 // helpers; they live here once so the split files share them instead of
 // copying them.
 #ifndef HYDRA_TESTS_APP_STATE_FIXTURES_H
@@ -237,6 +238,15 @@ inline void run_redo_batch_over(hydra::ui::AppState& app, const std::string& sea
         return hydra::app::AnalysisResult{empty_analysis, hydra::Song(192)};
     });
     wait_batch_finished(app);
+}
+
+// Waits for the path report's job, then collects it as the app's frame does.
+inline void finish_path_report(hydra::ui::AppState& app) {
+    REQUIRE(app.report_job != nullptr);
+    testwait::wait_until([&] { return app.report_job->finished(); },
+                         "the path report's job to finish");
+    app.update_background_jobs();
+    REQUIRE(app.report_job == nullptr);
 }
 
 // Presses the batch's Stop and waits for the batch to end.

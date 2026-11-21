@@ -65,7 +65,7 @@
           "why": "MeasureCount::measures_at, the owner: the part measure"
         }
       ],
-      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure, measures_at_tick_f and sp_end_ms read them. Dividing a measure length by a tempo is a duration, another question."
+      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure and measures_at_tick_f read them. Dividing a measure length by a tempo is a duration, another question."
     },
     {
       "question": "Which tempo is in force at a tick?",

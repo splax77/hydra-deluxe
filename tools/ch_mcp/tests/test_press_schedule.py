@@ -5,22 +5,29 @@ plan is docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git 
 No game and no Frida. Plain Node runs press_schedule.ts (Node erases its type
 annotations), as test_launch_core.py runs launch_core.ts: each case is a
 list of steps, retimes and stops sent to a small driver on stdin, and the
-driver prints what the scheduler returned for each. The fake score is
+driver prints what the scheduler returned for each. The score it reads is
 whatever the case's latest step says. The tests skip, naming the reason, when
 `node` is not on PATH.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from tools.ch_probe.constants import s_to_ms  # noqa: E402
+
 SCHEDULER = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "press_schedule.ts")
 NODE = shutil.which("node")
 # One driver run is a fresh Node start; this is its stop.
@@ -103,6 +110,23 @@ def run(play_msg, ops):
     return out
 
 
+# Seven readings of the Star Power watch, copied unchanged from lines
+# 19125-19131 of hydra-data/ch-mcp-runs/2026-11-13/pitch-dark-ratios-run1/
+# sp_watch-1.csv. They span press 144 of that run's press-1.csv, where the
+# score went 45965, 46485, 46885.
+SCORE_WINDOW_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "pitch-dark-ratios-run1",
+                                "sp_watch-1-chord144.csv")
+
+
+def score_window():
+    """The window's wall times and song clocks in ms, and its scores."""
+    with open(SCORE_WINDOW_CSV, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    return ([s_to_ms(float(r["wall_s"])) for r in rows],
+            [s_to_ms(float(r["clock_s"])) for r in rows],
+            [int(r["score"]) for r in rows])
+
+
 def written(result):
     return [w["seq"] for w in result["write"]]
 
@@ -173,23 +197,33 @@ class PressScheduleTest(unittest.TestCase):
         self.assertNotIn("dropped", [k for r in out for k in kinds(r)])
 
     def test_a_press_is_released_exactly_hold_frames_frames_after_its_down(self):
-        out = run(play([entry(1, 1000.0)], hold_frames=3), [
-            step(10, 800.0, 5000.0, score=7),
-            step(11, 1000.0, 5003.0),
-            step(12, 1003.0, 5006.0),
-            step(13, 1006.0, 5009.0),
-            step(14, 1009.0, 5012.0, score=57),
-            step(15, 1012.0, 5016.0, score=58),
-            step(16, 1015.0, 5017.0, score=59),
+        # Each step is one real reading of the game's wall time, song clock and
+        # score, in order, from the Star Power watch of a real run (see
+        # SCORE_WINDOW_CSV). The game scored chord 144 there, so the score
+        # moves twice inside these seven readings.
+        walls, clocks, scores = score_window()
+        # The entry is due on the second reading's clock. The start lead is
+        # shorter than the gap from the first reading, so the entry is not
+        # skipped at load.
+        out = run(play([entry(1, clocks[1])], hold_frames=3, start_lead_ms=1.0), [
+            step(10 + k, clocks[k], walls[k], score=scores[k]) for k in range(len(walls))
         ])
+        self.assertEqual(written(out[1]), [1])
         self.assertEqual([released(r) for r in out], [[], [], [], [], [1], [], []])
-        # The score after is read on the first frame at least the score delay
-        # (5 ms) after the release at wall 5012: wall 5017, not 5016.
+        # The score after is read on the first reading at least the score delay
+        # after the release: the sixth reading is too soon, the seventh is not.
+        delay = play([])["score_delay_ms"]
+        self.assertLess(walls[5], walls[4] + delay)
+        self.assertGreaterEqual(walls[6], walls[4] + delay)
+        # The real score differs on the down, the sixth and the seventh
+        # readings, so a read on the wrong one shows.
+        self.assertEqual(len({scores[1], scores[5], scores[6]}), 3)
         self.assertEqual(out[5]["events"], [])
         self.assertEqual(out[6]["events"][0], {
-            "kind": "sent", "seq": 1, "index": 1, "clock_ms_at_press": 1000.0,
-            "down_frame": 11, "up_frame": 14, "down_ms": 5003.0, "up_ms": 5012.0,
-            "score_before": 7, "score_after": 59, "frame_gap_ms": 3.0, "agent_note": ""})
+            "kind": "sent", "seq": 1, "index": 1, "clock_ms_at_press": clocks[1],
+            "down_frame": 11, "up_frame": 14, "down_ms": walls[1], "up_ms": walls[4],
+            "score_before": scores[1], "score_after": scores[6],
+            "frame_gap_ms": walls[1] - walls[0], "agent_note": ""})
 
     def test_a_held_pad_delays_its_next_press_to_the_frame_after_the_release(self):
         out = run(play([entry(1, 1000.0, SNARE), entry(2, 1003.0, SNARE)]), [

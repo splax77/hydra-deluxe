@@ -72,27 +72,23 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // EngineOptions' default (score depth 0: the top score and its ties).
 EngineOptions allzero_options();
 
-// The engine's own pricing of one specific path: activate at exactly
-// `act_ticks` (node ticks of the activation fills, ascending) and at no other
-// fill. Every squeeze variant of that path comes back, best score first, with
-// deact_tick / sp_meter / skips / sqinouts stamped by the engine exactly as a
-// normal search would stamp them. Every returned path, tied variants
-// included, has exactly the named activations; the rest are dropped
-// (keep_target_paths, decision D45 and its addendum). Empty when no path
-// realizes the set (an activation under kSpActivationBars, a fill it cannot
-// spawn in time, a tick that is not a fill node). The graph is built at
-// graph_build_cap, as the main search builds it. settings.depth_* and
-// ms_filter are ignored: the search keeps everything and applies no timing
-// filter, because the caller asked for this path, not the best one.
-// `promoted`, when given, is filled as keep_target_paths fills it.
-std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks,
-                                std::vector<bool>* promoted = nullptr);
+// Whether the record's best path is already the chart's best all-0 path: it
+// passes the test search_allzero's paths pass (Path::is_allzero, inside the
+// limit allzero_options sets). analyze_chart then skips the all-0 pass and
+// leaves allzero_paths empty. False for a record with no paths.
+bool best_path_is_allzero(const HydraRecord& record);
 
-// One activation a target names. With only `act_tick` it is the activation
-// pin above: every squeeze variant of the window comes back. With
+// The chart's best all-0 path first, then the rest the all-0 pass kept, in
+// HydraRecord::all_allzero_paths order. When best_path_is_allzero, the best
+// path alone: its own variants belong to the main search and are listed in
+// all_paths(). Empty when the chart has no all-0 path. The one reader of
+// that answer; the Paths tab asks it.
+std::vector<const Path*> best_allzero_paths(const HydraRecord& record);
+
+// One activation a target names. With only `act_tick` it pins the
+// activation alone: every squeeze variant of the window comes back. With
 // `deact_tick` too it pins the whole window: the engine keeps only the path
-// whose Star Power ends on that node (Activation::deact_tick,
+// whose deactivation node is that node (Activation::deact_tick,
 // EngineOptions::target_deact_ticks), so every squeeze choice is answered
 // and the search walks the graph once.
 struct PinnedWindow {
@@ -120,7 +116,7 @@ std::vector<PinnedWindow> pinned_windows(const Song& song,
 std::vector<PinnedWindow> pinned_windows(const Path& path);
 
 // An activation tick list as activation-only pins: sorted, each tick once.
-// search_target over ticks and hydra_replay target --ticks both read it.
+// hydra_replay target --ticks reads it.
 std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks);
 
 // What a target search found. When `paths` is empty, `realized_prefix`
@@ -132,7 +128,7 @@ std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks);
 // paths come back, `realized_prefix` is the window count.
 struct TargetResult {
     std::vector<Path> paths;
-    // One entry per path, as search_target's `promoted` above.
+    // One entry per path, as keep_target_paths fills its `promoted`.
     std::vector<bool> promoted;
     size_t realized_prefix = 0;
     std::optional<int64_t> failed_tick;
@@ -153,6 +149,20 @@ void sort_and_check_windows(std::vector<PinnedWindow>& windows);
 // path realizes the windows, the failing one is found by a binary search over
 // the prefix length on that graph (realizing k + 1 windows realizes the first
 // k), then named by at most two more runs.
+//
+// It is the engine's own pricing of one specific path: activate at exactly
+// the windows' act ticks (node ticks of the activation fills) and at no
+// other fill. Every squeeze variant of that path comes back, best score
+// first, with deact_tick / sp_meter / skips / sqinouts stamped by the engine
+// exactly as a normal search would stamp them. Every returned path, tied
+// variants included, has exactly the named activations; the rest are
+// dropped (keep_target_paths, decision D45 and its addendum). `paths` is
+// empty when no path realizes the set (an activation under
+// kSpActivationBars, a fill it cannot spawn in time, a tick that is not a
+// fill node). The graph is built at graph_build_cap, as the main search
+// builds it. settings.depth_* and ms_filter are ignored: the search keeps
+// everything and applies no timing filter, because the caller asked for
+// this path, not the best one.
 TargetResult search_target(const Song& song, const SearchSettings& settings,
                            std::vector<PinnedWindow> windows);
 

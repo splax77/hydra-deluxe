@@ -383,21 +383,6 @@
           "file": "tools/ch_probe/probe_songs.py",
           "line_text": "NAME_PREFIX = \"Hydra Probe - \"",
           "why": "NAME_PREFIX, the owner"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_songs.py",
-          "line_text": "self.assertEqual(P.WINDOW_MAP, \"Window Map\")",
-          "why": "the test pin of today's text, pinned once (test_song_names_are_spelled_once)"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_songs.py",
-          "line_text": "self.assertEqual(P.EDGE_WALK, \"Edge Walk\")",
-          "why": "the test pin of today's text, pinned once (test_song_names_are_spelled_once)"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_songs.py",
-          "line_text": "self.assertEqual(P.NAME_PREFIX, \"Hydra Probe - \")",
-          "why": "the test pin of today's text, pinned once (test_song_names_are_spelled_once)"
         }
       ],
       "scope": [
@@ -426,21 +411,6 @@
           "file": "tools/ch_probe/probe_songs.py",
           "line_text": "SONG_OGG = \"song.ogg\"",
           "why": "SONG_OGG, the owner"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_songs.py",
-          "line_text": "self.assertIn('  MusicStream = \"song.ogg\"\\n', text)",
-          "why": "a test that checks the written song.ini names the file"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_chart.py",
-          "line_text": "music_stream=\"song.ogg\")",
-          "why": "a test that passes the name in, to check the chart writes it"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_probe_chart.py",
-          "line_text": "self.assertIn('  MusicStream = \"song.ogg\"\\n', with_stream)",
-          "why": "a test that checks the chart writes the name it was given"
         }
       ],
       "scope": [
@@ -526,11 +496,6 @@
           "file": "tools/ch_probe/input_driver.py",
           "line_text": "KEY_HOLD_S = 0.003",
           "why": "KEY_HOLD_S, the owner"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_input_driver.py",
-          "line_text": "self.assertEqual(input_driver.KEY_HOLD_S, 0.003)",
-          "why": "the test pin of D54's recorded value"
         }
       ],
       "scope": [

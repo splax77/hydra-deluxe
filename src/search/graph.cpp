@@ -70,24 +70,33 @@ double activation_fill_deadline_ms(const SongTiming& timing,
         return timing.timecode(tick_E).ms();
     }
 
-    // Clone Hero 1.0.
-    // The lead time is the fill's own length plus a sixteenth-of-a-beat pad,
-    // measured in real time back from the fill's end, then clamped.
-    //
-    // This uses ms_at_tick_f, which core/timing.h marks as outside the
-    // bit-for-bit scoring surface; the legacy mode is deliberately off that
-    // surface. A 1.0 result is stored under its own key, beside the 1.1
-    // results (store::Lens::legacy_fills, docs/adr/0010).
-    // The res/16 pad matches Python Hydra 1.2 (docs/clone-hero/04-fills.md); kept fixed.
-    const double res = static_cast<double>(timing.tick_resolution());
-    const double fend = timing.ms_index().at(fill_end_tick);
-    const double fst = timing.ms_index().at(fill_start_tick(fill_end_tick, fill_length_ticks));
-    const double pad = timing.ms_index().ms_at_tick_f(
-        static_cast<double>(fill_end_tick) -
-        (static_cast<double>(fill_length_ticks) + res / 16.0));
-    const double fill_len_ms = fend - fst;
-    const double preroll = std::max(250.0, std::min(fend - pad, 10000.0));
-    return fend - fill_len_ms - preroll;
+    // Clone Hero 1.0, copied from the game's code (docs/clone-hero/04-fills.md
+    // FL-42): the lead is the fill's length in real time, from its start to a
+    // 64th note past its activation chord, held by the clamp and taken off
+    // the fill's start. The game's generator works the length out
+    // (code/4045/fill_generator.cs lines 41 and 69) and its deadline check
+    // applies it (code/4045/fill_deadline.cs lines 21 to 29). A 1.0 result is
+    // stored under its own key, beside the 1.1 results
+    // (store::Lens::legacy_fills, docs/adr/0010).
+    const int64_t start_tick = fill_start_tick(fill_end_tick, fill_length_ticks);
+    const double start_ms = timing.ms_index().at(start_tick);
+    const double end_ms =
+        timing.ms_index().at(fill_end_tick + ch10_sixty_fourth_ticks(timing.tick_resolution()));
+    const double lead_ms =
+        std::max(kCh10FillLeadFloorMs, std::min(end_ms - start_ms, kCh10FillLeadCeilingMs));
+    return start_ms - lead_ms;
+}
+
+int64_t ch10_sixty_fourth_ticks(int64_t resolution) {
+    // The game's Mathf.RoundToInt(12f * resolution / 192f) (fill_generator.cs
+    // line 41), which rounds a half to even (fill_generator.md, F13). 12 / 192
+    // is 1 / 16, so the value before rounding is a whole number of 16ths of a
+    // tick: exact in a float, and the rounding is done here on integers.
+    const int64_t whole = resolution / 16;
+    const int64_t sixteenths = resolution % 16;
+    if (sixteenths > 8) return whole + 1;
+    if (sixteenths == 8) return whole + (whole % 2);
+    return whole;
 }
 
 ScoreGraph::ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,

@@ -773,8 +773,7 @@ public:
     // The check and the download; at most one of each, collected by tick().
     std::unique_ptr<UpdateCheckJob> update_check_job;
     std::unique_ptr<UpdateDownloadJob> update_download_job;
-    // The key a download is checked against: the shipped one, which a test
-    // replaces with the test key.
+    // The key a download is checked against: the shipped one.
     std::array<uint8_t, 64> update_public_key;
     // The start-up check: starts one when this is the installed exe
     // (app::installed_by_setup), whatever the bar shows. A failure shows in

@@ -179,8 +179,9 @@ def run_agent(agent_path: str, cap_s: float,
             # End the run here, before the detach below: Frida answers that
             # detach through `detached`, which must not replace the cap end.
             finish(END_CAP)
+            seen = len(result.payloads)
             out(f"cap of {cap_s:g} s reached before the agent finished; "
-                f"{len(result.payloads)} messages seen")
+                f"{seen} message{'' if seen == 1 else 's'} seen")
     finally:
         # A session the game already dropped may refuse a second detach. Say
         # so and still close the log; an error already in flight stays the

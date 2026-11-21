@@ -113,23 +113,21 @@ struct PreviewActivation {
     // Empty without a stored end, or when the end is not after the start (a
     // window of no length is no window). The drain box, the score box and
     // the highway's tinted floor and lit railings (through the track state's
-    // sp_active intervals) all read it; the drain and score boxes ask
-    // sp_running_at.
+    // sp_active intervals) all read it. Whether SP runs at a moment of it is
+    // sp_running_in's answer, for the boxes and the highway alike.
     std::optional<std::pair<double, double>> sp_window() const {
         if (!has_sp_end || !(sp_end_ms > ms)) return std::nullopt;
         return std::make_pair(ms, sp_end_ms);
     }
     // Is this activation's Star Power running with the playhead at `now`
-    // (ms)? The one home of that rule (M48), defined after struck_at below.
-    // The drain and score boxes ask it through running_activation; the
-    // highway's sp_active sweep answers it separately, and test_track_state
-    // pins the two together.
+    // (ms)? Defined after struck_at below, through sp_running_in, the rule's
+    // one home. The drain and score boxes ask it through running_activation.
     bool sp_running_at(double now) const;
-    // Where this window's SP end changed, read off the record: each stored
-    // step's tick (SpEndStep::tick) and the end after it, the last end being
-    // Activation::window_end_tick. The first entry is the activation itself.
-    // The gauge draws the window from these alone; a squeezed-out phrase has
-    // no entry.
+    // Where this window's SP end changed, copied off the record as stored:
+    // each step's tick (SpEndStep::tick) and the end after it. The first
+    // entry is the activation itself; a squeezed-out phrase has no entry. The
+    // window's end is sp_end_tick, not the last entry's end, and the gauge
+    // reads its level from the record (Activation::meter_bars_at).
     struct SpEndChange {
         int64_t at_tick = 0;
         int64_t end_tick = 0;
@@ -256,18 +254,17 @@ struct PreviewScore {
 
 // One solo section's notes, as the solo box counts them. Path-free: a Hydra
 // path hits every note, so the notes hit at a moment are those of the chords
-// struck by then (struck_at).
+// struck by then (struck_at). Every figure is the engine's SoloFigures
+// (core/scoring.h, solo_figures); this adds only each chord's onset.
 struct PreviewSoloNotes {
-    // One of the solo's chords: its onset, and the solo's notes hit once it
-    // is struck, this chord's included. A chord's notes are
-    // solo_note_count's (core/scoring.h).
+    // One of the solo's chords: its onset, and SoloFigures::AtChord::notes_hit.
     struct Step {
         double ms = 0.0;
         int notes_hit = 0;
     };
     std::vector<Step> steps;  // in time order, never empty
-    int notes = 0;            // the solo's note total: the last step's notes_hit
-    int64_t bonus = 0;        // solo_bonus summed over the solo's chords
+    int notes = 0;            // SoloFigures::notes
+    int64_t bonus = 0;        // SoloFigures::bonus
 };
 
 // The whole chart as the Preview draws it. Notes are in tick order. Spans are
@@ -304,7 +301,8 @@ struct PreviewScene {
     std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
     // Banked SP over time, for the meter gauge. With a path every value is
     // the record's: the bank steps at each stored bar arrival, and each
-    // window drains from the stored SP end changes to the window's end. Without
+    // window reads its level from the record (Activation::meter_bars_at) up
+    // to the window's end, where what is left is dropped. Without
     // a path there is no record, so it fills one bar per phrase and pins at
     // the cap: that chart-only view has nothing to spend the bank. Empty when
     // the chart has no SP phrase and the path stamps no bar.
@@ -401,12 +399,21 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double
 // this.
 inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
 
+// Is Star Power running at `now` in the window `w`, {start, end}? The one
+// home of that rule (M48): SP is entered when the window's chord is struck
+// (struck_at) and left at the window's end. `now` and `w` share one unit.
+// PreviewActivation::sp_running_at asks it in ms on its sp_window; the
+// highway's sp_active field (render::SpRunSweep) asks it in seconds on the
+// same windows.
+inline bool sp_running_in(const std::pair<double, double>& w, double now) {
+    return struck_at(now, w.first) && now < w.second;
+}
+
 // PreviewActivation::sp_running_at, declared in the struct above: the
-// activation's sp_window, entered when its chord is struck (struck_at) and
-// left at the window's end.
+// activation's sp_window, asked through sp_running_in.
 inline bool PreviewActivation::sp_running_at(double now) const {
     const std::optional<std::pair<double, double>> w = sp_window();
-    return w && struck_at(now, w->first) && now < w->second;
+    return w && sp_running_in(*w, now);
 }
 
 // The Star Power drain box the Preview draws beside the SP gauge, at the
@@ -527,7 +534,8 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
 std::string sp_meter_readout(const SpMeterCurve& curve, double now_ms);
 
 // One entry of the Preview's "Showing" list: the path's notation, with
-// "  (optimal)" on an Optimal path and "  (best all-0)" on the all-0 path.
+// "  (optimal)" on an Optimal path, and on the all-0 path two spaces and then
+// the all-0 name (kBestAllZeroLabel) in brackets.
 std::string preview_path_label(const PathButtonView& button);
 
 // Bars banked at `ms`: 0 before the curve begins, its final value after the

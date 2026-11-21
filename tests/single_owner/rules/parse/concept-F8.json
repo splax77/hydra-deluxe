@@ -28,8 +28,8 @@
     },
     {
       "question": "Which bit does the game give each drum pad, and in what order?",
-      "owner": "lane_bit in src/parse/note_shuffle.cpp",
-      "owner_file": "src/parse/note_shuffle.cpp",
+      "owner": "lane_bit in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
       "owner_symbol": "lane_bit",
       "date": "2026-10-11",
       "decision": "D114 (concept audit finding M57)",
@@ -37,6 +37,7 @@
       "pattern": "NoteColor::\\w+.*\\b0x(20|40|80)u?\\b|\\b0x(20|40|80)u?\\b.*NoteColor::",
       "anchor": "NoteColor::",
       "owner_files": [
+        "src/core/model.cpp",
         "src/parse/note_shuffle.cpp"
       ],
       "must_match": [
@@ -51,7 +52,7 @@
       "scope": [
         "src"
       ],
-      "note": "Weak by design: it catches a third table of the cymbal lane bits written beside a colour, not a second rank formula, which has no stable spelling. The shuffle's own two tables (lane_bit and moved_to) live in the owner file."
+      "note": "Weak by design: it catches a third table of the cymbal lane bits written beside a colour, not a second rank formula, which has no stable spelling. lane_bit lives in the owner file; the shuffle's inverse table (moved_to) stays in note_shuffle.cpp, the second owner file."
     }
   ]
 }

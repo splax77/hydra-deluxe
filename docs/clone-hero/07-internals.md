@@ -528,11 +528,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); the test method, 2026
 
 Rule: Keys sent with SendInput reach Clone Hero for all eight drum keys, and a pad flash lasts about one video frame at 60 fps.
 Label: Unknown
-Evidence: one part is proven in a live run. In `overlay-spike/run1_cal0_play_chart.txt` lines 83 to 87, a key-press run on a chart of 857 notes reads "Notes: 857, Hits: 857, Misses: 0" and a best streak of 857 (old output: play_chart's summary no longer prints those counts), so the injected keys reached the game for every note of that chart. That file does not say the keys were sent with SendInput, and it does not show which of the eight keys the chart used. The rest stays unchecked: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. The eight keys themselves are `DEFAULT_BINDINGS` at tools/ch_probe/input_driver.py line 69, whose comment says they were read off the game's Controller Remap screen on 2026-09-25; no kept file shows that screen, so the key map is Unknown too.
+Evidence: one part is proven in a live run. In `overlay-spike/run1_cal0_play_chart.txt` lines 83 to 87, a key-press run on a chart of 857 notes reads "Notes: 857, Hits: 857, Misses: 0" and a best streak of 857 (old output: play_chart's summary no longer prints those counts), so the injected keys reached the game for every note of that chart. That file does not say the keys were sent with SendInput, and it does not show which of the eight keys the chart used. The rest stays unchecked: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. The eight keys themselves are `DEFAULT_BINDINGS` at tools/ch_probe/input_driver.py line 69, whose comment says they were read off the game's Controller Remap screen on 2026-09-25. The game's own saved map now backs that comment: `testdata/ch_runs/ls-g1-run1/rewired-key/player1-drums-keyboard-map.reg` is Player 1's drums keyboard map from Rewired's registry key, kept from run ls-g1-run1, and `tools/ch_probe/tests/test_input_driver.py` checks that it gives each of the eight lanes the key `DEFAULT_BINDINGS` gives it.
 Game code (6142): none (input arrives through the game's Rewired input system).
 Hydra: no owner. The tool's key map is `DEFAULT_BINDINGS` (tools/ch_probe/input_driver.py line 69, used by tools/ch_probe/experiments/key_delivery_test.py and the ch_mcp tests).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc; the 857-of-857 run file and the key map's source, 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-09-25, session 8157f2dc; the 857-of-857 run file and the key map's source, 2026-11-08, session 77057df2 (docs-gaps search); the saved key map, 2026-11-20, session 79ad8d0f (test fix chunk C199).
 
 ### IN-42 Whether the kick key scores a 2x kick gem
 
@@ -650,7 +650,7 @@ Found: 2026-10-28, feasibility study line 162; plan question 6.
 
 Rule: The 1.1 fill generator `0x20D2B30` and the 1.1 Star Power gain method `0x20F4FA0` carry the same scrambled method names as the 1.0 fill generator and the 1.0 meter methods. A shared name is evidence of the same function, not proof of the same body.
 Label: Proven in the game's code
-Evidence: 6142 `script.json` (the generator's name at `0x20D2B30`) and `dump.cs` line 530117 (the gain method's name); the same names are in `code/4045/fill_generator.cs` line 30 and `code/4045/fill_deadline.cs` lines 7 and 34. Names only.
+Evidence: 6142 `script.json` (the generator's name at `0x20D2B30`) and `dump.cs` line 530117 (the gain method's name); the same names are in `code/4045/fill_generator.cs` line 32 and `code/4045/fill_deadline.cs` lines 7 and 34. Names only.
 Game code (6142): generator RVA `0x20D2B30`; gain method RVA `0x20F4FA0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.

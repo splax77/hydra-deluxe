@@ -418,7 +418,7 @@ std::string join(const std::vector<std::string>& parts, size_t limit) {
 
 void run_check_3(Context& ctx) {
     if (ctx.range.whole_tree) {
-        ctx.out << "check 3 skipped: -WholeTree has no \"new\" numbers\n";
+        ctx.out << "check 3 skipped: --whole-tree has no \"new\" numbers\n";
         return;
     }
     const std::vector<DecisionPara> paras = decision_paras(ctx.repo, {ctx.range.tip, ctx.range.left});

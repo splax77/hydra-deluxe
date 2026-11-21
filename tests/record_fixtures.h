@@ -375,8 +375,9 @@ inline LonePricing lone_pricing(const Song& song, const SearchSettings& settings
                                 const Path& variant) {
     const std::vector<int64_t> ticks = act_ticks(variant);
     const std::string mine = windows_text(variant);
-    std::vector<bool> promoted;
-    const std::vector<Path> lone = search_target(song, settings, ticks, &promoted);
+    const TargetResult found = search_target(song, settings, activation_pins(ticks));
+    const std::vector<Path>& lone = found.paths;
+    const std::vector<bool>& promoted = found.promoted;
     LonePricing out;
     std::string seen;
     for (size_t i = 0; i < lone.size(); ++i) {

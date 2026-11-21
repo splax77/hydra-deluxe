@@ -1,0 +1,189 @@
+files read: 430 | no test: 71 | skipped: 175
+file kind: tests .cpp | files: 143 | no test: 0 | tests: 2171 | hits: 337
+file kind: tests .h | files: 56 | no test: 2 | tests: 155 | hits: 4
+skipped: tests .txt | files: 1
+file kind: tests/fuzz .cpp | files: 6 | no test: 6 | tests: 0 | hits: 0
+skipped: tests/fuzz .dict | files: 1
+file kind: tests/fuzz .h | files: 1 | no test: 0 | tests: 1 | hits: 0
+skipped: tests/layering .json | files: 2
+file kind: tests/pb_ui .cpp | files: 6 | no test: 0 | tests: 35 | hits: 0
+file kind: tests/pb_ui .h | files: 1 | no test: 0 | tests: 1 | hits: 0
+file kind: tests/single_owner .cpp | files: 4 | no test: 0 | tests: 27 | hits: 0
+file kind: tests/single_owner .h | files: 4 | no test: 2 | tests: 5 | hits: 0
+skipped: tests/single_owner .json | files: 1
+skipped: tests/single_owner/rules .json | files: 15
+skipped: tests/single_owner/rules/app .json | files: 18
+skipped: tests/single_owner/rules/core .json | files: 10
+skipped: tests/single_owner/rules/parse .json | files: 3
+skipped: tests/single_owner/rules/pathbuilder .json | files: 5
+skipped: tests/single_owner/rules/search .json | files: 3
+skipped: tests/single_owner/rules/store .json | files: 5
+skipped: tests/single_owner/rules/tests .json | files: 1
+skipped: tests/single_owner/rules/ui .json | files: 15
+file kind: tests/ui .cpp | files: 13 | no test: 0 | tests: 180 | hits: 373
+file kind: tests/ui .h | files: 4 | no test: 1 | tests: 9 | hits: 8
+skipped: tests/ui/scripts .txt | files: 1
+file kind: tools .cpp | files: 4 | no test: 0 | tests: 10 | hits: 0
+file kind: tools .h | files: 2 | no test: 2 | tests: 0 | hits: 0
+skipped: tools .ps1 | files: 20
+file kind: tools .py | files: 19 | no test: 5 | tests: 44 | hits: 0
+skipped: tools .xml | files: 1
+skipped: tools/capture .ps1 | files: 3
+skipped: tools/ch_mcp .json | files: 5
+skipped: tools/ch_mcp .ps1 | files: 1
+file kind: tools/ch_mcp .py | files: 28 | no test: 7 | tests: 104 | hits: 0
+skipped: tools/ch_mcp/agent .json | files: 3
+skipped: tools/ch_mcp/agent .ts | files: 11
+skipped: tools/ch_mcp/tests .bin | files: 1
+file kind: tools/ch_mcp/tests .py | files: 29 | no test: 7 | tests: 62 | hits: 0
+file kind: tools/ch_probe .py | files: 13 | no test: 9 | tests: 5 | hits: 0
+skipped: tools/ch_probe/experiments .mjs | files: 1
+file kind: tools/ch_probe/experiments .py | files: 18 | no test: 9 | tests: 17 | hits: 0
+skipped: tools/ch_probe/experiments/results .csv | files: 2
+skipped: tools/ch_probe/experiments/results/overlay-spike .csv | files: 8
+skipped: tools/ch_probe/experiments/results/overlay-spike .json | files: 1
+skipped: tools/ch_probe/experiments/results/overlay-spike .txt | files: 16
+skipped: tools/ch_probe/tests .json | files: 19
+file kind: tools/ch_probe/tests .py | files: 28 | no test: 10 | tests: 31 | hits: 0
+file kind: tools/doc_shots .py | files: 1 | no test: 0 | tests: 1 | hits: 0
+skipped: tools/doc_shots .txt | files: 1
+file kind: tools/mutate .cpp | files: 1 | no test: 1 | tests: 0 | hits: 0
+file kind: tools/mutate .h | files: 1 | no test: 0 | tests: 8 | hits: 0
+file kind: tools/mutate .py | files: 14 | no test: 1 | tests: 29 | hits: 0
+skipped: tools/mutate .txt | files: 1
+file kind: tools/precheck .cpp | files: 19 | no test: 0 | tests: 43 | hits: 0
+file kind: tools/precheck .h | files: 15 | no test: 9 | tests: 7 | hits: 0
+no tests: tests/fuzz .cpp | files: 6
+no hits: tests/fuzz .h | files: 1 | tests: 1
+no hits: tests/pb_ui .cpp | files: 6 | tests: 35
+no hits: tests/pb_ui .h | files: 1 | tests: 1
+no hits: tests/single_owner .cpp | files: 4 | tests: 27
+no hits: tests/single_owner .h | files: 4 | tests: 5
+no hits: tools .cpp | files: 4 | tests: 10
+no tests: tools .h | files: 2
+no hits: tools .py | files: 19 | tests: 44
+no hits: tools/ch_mcp .py | files: 28 | tests: 104
+no hits: tools/ch_mcp/tests .py | files: 29 | tests: 62
+no hits: tools/ch_probe .py | files: 13 | tests: 5
+no hits: tools/ch_probe/experiments .py | files: 18 | tests: 17
+no hits: tools/ch_probe/tests .py | files: 28 | tests: 31
+no hits: tools/doc_shots .py | files: 1 | tests: 1
+no tests: tools/mutate .cpp | files: 1
+no hits: tools/mutate .h | files: 1 | tests: 8
+no hits: tools/mutate .py | files: 14 | tests: 29
+no hits: tools/precheck .cpp | files: 19 | tests: 43
+no hits: tools/precheck .h | files: 15 | tests: 7
+tests: 2945
+hits: 722
+no test hits: 1
+kinds: 81
+kind: BatchGate (tests/ui/uitest_batch_reports.cpp) | hits: 4
+kind: BatchGate (tests/ui/uitest_details.cpp) | hits: 1
+kind: BatchGate (tests/ui/uitest_library.cpp) | hits: 1
+kind: FailingAnalyzer (tests/ui/uitest_details.cpp) | hits: 1
+kind: OpenGate (tests/ui/uitest_library.cpp) | hits: 2
+kind: OpenGate (tests/ui/uitest_live.cpp) | hits: 3
+kind: ReportHold (tests/ui/uitest_report_windows.cpp) | hits: 2
+kind: SaveGate (tests/test_app_click.cpp) | hits: 10
+kind: ScopedHook (tests/app_state_fixtures.h) | hits: 3
+kind: ScopedHook (tests/test_app_click.cpp) | hits: 14
+kind: ScopedHook (tests/test_app_library.cpp) | hits: 3
+kind: ScopedHook (tests/test_http_download.cpp) | hits: 1
+kind: ScopedHook (tests/test_library_jobs.cpp) | hits: 2
+kind: ScopedHook (tests/test_song_panel_state.cpp) | hits: 1
+kind: ScopedHook (tests/test_update_state.cpp) | hits: 52
+kind: ScopedHook (tests/ui/uitest_details.cpp) | hits: 1
+kind: ScopedHook (tests/ui/uitest_harness.h) | hits: 37
+kind: ScopedHook (tests/ui/uitest_library.cpp) | hits: 6
+kind: ScopedHook (tests/ui/uitest_report_windows.cpp) | hits: 2
+kind: UpdateSeams (tests/ui/uitest_library.cpp) | hits: 1
+kind: UpdateWorld (tests/test_update_state.cpp) | hits: 13
+kind: ViewGate (tests/ui/uitest_details.cpp) | hits: 10
+kind: ViewGate (tests/ui/uitest_preview.cpp) | hits: 3
+kind: fail_chart_list_reader_open_for_test (tests/test_store_library.cpp) | hits: 1
+kind: fail_next_group_commit_for_test (tests/test_analysis.cpp) | hits: 1
+kind: fail_next_reader_open_for_test (tests/test_app_library.cpp) | hits: 2
+kind: fail_next_reader_open_for_test (tests/test_app_reports.cpp) | hits: 3
+kind: fail_next_reader_open_for_test (tests/test_store_records.cpp) | hits: 2
+kind: journal_size_limit_for_test (tests/test_store_open.cpp) | hits: 1
+kind: save_under_build_for_test (tests/display_fixtures.h) | hits: 36
+kind: save_under_build_for_test (tests/test_store_records.cpp) | hits: 8
+kind: selected-> assignment (tests/test_app_click.cpp) | hits: 1
+kind: selected-> assignment (tests/ui/uitest_details.cpp) | hits: 4
+kind: selected-> assignment (tests/ui/uitest_preview.cpp) | hits: 2
+kind: set_analyzer_for_test (tests/test_library_jobs.cpp) | hits: 19
+kind: set_app_batch_analyzer_for_test (tests/app_state_fixtures.h) | hits: 18
+kind: set_app_batch_analyzer_for_test (tests/test_app_library.cpp) | hits: 1
+kind: set_app_batch_analyzer_for_test (tests/test_app_reports.cpp) | hits: 4
+kind: set_app_batch_analyzer_for_test (tests/test_song_panel_state.cpp) | hits: 1
+kind: set_app_batch_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 8
+kind: set_audio_device_factory (tests/test_preview_controller.cpp) | hits: 12
+kind: set_between_lookup_reads_for_test (tests/test_app_reports.cpp) | hits: 4
+kind: set_between_lookup_reads_for_test (tests/test_store_records.cpp) | hits: 2
+kind: set_downloader (tests/test_dm_report.cpp) | hits: 1
+kind: set_downloader (tests/test_http_download.cpp) | hits: 1
+kind: set_downloader (tests/test_update_state.cpp) | hits: 13
+kind: set_downloader (tests/ui/uitest_harness.cpp) | hits: 125
+kind: set_downloader (tests/ui/uitest_library.cpp) | hits: 1
+kind: set_fetcher (tests/test_app_reports.cpp) | hits: 2
+kind: set_fetcher (tests/test_dm_report.cpp) | hits: 3
+kind: set_fetcher (tests/test_library_jobs.cpp) | hits: 3
+kind: set_fetcher (tests/test_update_state.cpp) | hits: 13
+kind: set_fetcher (tests/ui/uitest_harness.cpp) | hits: 125
+kind: set_fetcher (tests/ui/uitest_library.cpp) | hits: 1
+kind: set_installed_for_test (tests/test_update_release.cpp) | hits: 1
+kind: set_installed_for_test (tests/test_update_state.cpp) | hits: 16
+kind: set_installed_for_test (tests/ui/uitest_library.cpp) | hits: 3
+kind: set_launcher_for_test (tests/test_update_state.cpp) | hits: 13
+kind: set_launcher_for_test (tests/ui/uitest_library.cpp) | hits: 1
+kind: set_lookup_hold_for_test (tests/test_app_library.cpp) | hits: 1
+kind: set_lookup_hold_for_test (tests/test_library_jobs.cpp) | hits: 4
+kind: set_report_hold_for_test (tests/test_app_reports.cpp) | hits: 7
+kind: set_report_hold_for_test (tests/ui/uitest_report_windows.cpp) | hits: 2
+kind: set_scan_hold_for_test (tests/test_library_jobs.cpp) | hits: 1
+kind: set_scan_hold_for_test (tests/ui/uitest_library.cpp) | hits: 1
+kind: set_seam (tests/test_app_click.cpp) | hits: 10
+kind: set_sibling_dir_for_test (tests/test_launch.cpp) | hits: 1
+kind: set_sibling_dir_for_test (tests/ui/uitest_details.cpp) | hits: 2
+kind: set_store_open_gate_for_test (tests/test_app_library.cpp) | hits: 3
+kind: set_store_open_gate_for_test (tests/test_library_jobs.cpp) | hits: 3
+kind: set_store_open_gate_for_test (tests/ui/uitest_harness.cpp) | hits: 16
+kind: set_update_folder_for_test (tests/test_update_state.cpp) | hits: 13
+kind: set_update_folder_for_test (tests/ui/uitest_library.cpp) | hits: 1
+kind: set_view_after_save_check_for_test (tests/test_app_click.cpp) | hits: 5
+kind: set_view_analyzer_for_test (tests/app_state_fixtures.h) | hits: 3
+kind: set_view_analyzer_for_test (tests/test_app_click.cpp) | hits: 2
+kind: set_view_analyzer_for_test (tests/ui/uitest_details.cpp) | hits: 1
+kind: set_view_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 14
+kind: set_view_before_save_check_for_test (tests/test_app_click.cpp) | hits: 3
+kind: set_wal_autocheckpoint_for_test (tests/test_store_records.cpp) | hits: 1
+kind: wal_autocheckpoint_for_test (tests/test_store_open.cpp) | hits: 3
+seam names declared and named: 51
+uncovered names: 27
+uncovered: set_all | declared: src/app/path_view.h:298 | named: tests/test_path_list.cpp:477, tests/test_path_list.cpp:481, tests/test_path_list.cpp:505
+uncovered: set_aside_old_library | declared: src/store/upgrade_files.h:45 | named: tests/test_upgrade_files.cpp:56, tests/test_upgrade_files.cpp:97, tests/test_upgrade_files.cpp:172, tests/test_upgrade_files.cpp:186, tests/test_upgrade_files.cpp:199
+uncovered: set_aside_path | declared: src/store/record_store.h:679 | named: tests/test_app_library.cpp:1255, tests/test_app_library.cpp:1300, tests/test_app_library.cpp:1343, tests/test_cli.cpp:402, tests/test_store_open.cpp:87, tests/test_store_open.cpp:98, tests/test_store_open.cpp:115, tests/test_store_open.cpp:124, tests/test_store_open.cpp:526, tests/test_store_open.cpp:560, tests/test_store_open.cpp:665, tests/test_store_open.cpp:681, tests/test_store_open.cpp:701, tests/test_store_open.cpp:748, tests/test_store_open.cpp:871, tests/test_upgrade_files.cpp:67, tests/test_upgrade_files.cpp:91, tests/test_upgrade_files.cpp:114, tests/test_upgrade_files.cpp:121, tests/test_upgrade_files.cpp:138, tests/test_upgrade_files.cpp:151, tests/test_upgrade_files.cpp:166, tests/test_upgrade_files.cpp:182, tests/test_upgrade_files.cpp:195, tests/ui/uitest_library.cpp:1600, tests/ui/uitest_library.cpp:1673, tests/ui/uitest_library.cpp:1703
+uncovered: set_charts | declared: src/ui/library_model.h:152 | named: tests/test_library_jobs.cpp:1496, tests/test_library_jobs.cpp:1577, tests/test_library_jobs.cpp:1652, tests/test_library_jobs.cpp:1666, tests/test_library_jobs.cpp:1691, tests/test_library_jobs.cpp:1707, tests/test_library_jobs.cpp:1718, tests/test_library_model.cpp:89, tests/test_library_model.cpp:194, tests/test_library_model.cpp:280, tests/test_library_model.cpp:462, tests/test_library_model.cpp:494, tests/test_library_model.cpp:674, tests/test_library_model.cpp:759, tests/test_library_model.cpp:811, tests/test_library_model.cpp:857, tests/test_library_model.cpp:1068, tests/test_library_model.cpp:1087, tests/test_library_model.cpp:1171, tests/test_library_model.cpp:1238, tests/test_library_model.cpp:1427, tests/test_library_model.cpp:1529, tests/test_library_model.cpp:1553, tests/test_library_model.cpp:1559, tests/test_library_model.cpp:1565, tests/test_library_model.cpp:1584, tests/test_library_model.cpp:1595, tests/test_library_model.cpp:1645, tests/test_library_read_order.cpp:61, tests/test_library_read_order.cpp:62, tests/test_library_read_order.cpp:63
+uncovered: set_chip | declared: src/ui/library_model.h:182 | named: tests/test_app_library.cpp:1118, tests/test_library_model.cpp:772, tests/test_library_model.cpp:906, tests/test_library_model.cpp:909, tests/test_library_model.cpp:927, tests/test_library_model.cpp:932, tests/test_library_model.cpp:1025, tests/test_library_model.cpp:1040, tests/test_library_model.cpp:1060, tests/test_library_model.cpp:1581, tests/test_library_model.cpp:1593
+uncovered: set_gain | declared: src/audio/player.h:57 | named: tests/test_audio_player.cpp:147, tests/test_audio_player.cpp:155, tests/test_preview_transport.cpp:257, tests/test_preview_transport.cpp:271, tests/test_stream_mix.cpp:457
+uncovered: set_ghost_path | declared: src/ui/preview_controller.h:116 | named: tests/test_preview_controller.cpp:778, tests/test_preview_controller.cpp:792, tests/test_preview_controller.cpp:796, tests/test_preview_controller.cpp:806, tests/test_preview_controller.cpp:809, tests/test_preview_controller.cpp:817, tests/test_preview_controller.cpp:848
+uncovered: set_hardest | declared: src/store/record_store.h:809 | named: tests/test_library_jobs.cpp:1350, tests/test_store_open.cpp:1461
+uncovered: set_headless | declared: src/audio/device.h:26 | named: tests/test_audio_device.cpp:24, tests/test_audio_device.cpp:25, tests/pb_ui/pbtest_harness.cpp:100, tests/ui/uitest_harness.cpp:198
+uncovered: set_keep | declared: src/app/report_view.h:203 | named: tests/test_report_view.cpp:410, tests/test_report_view.cpp:417, tests/test_report_view.cpp:785, tests/test_report_view.cpp:788
+uncovered: set_lane_flag | declared: src/core/model.h:67 | named: tests/test_chord_code.cpp:34, tests/test_model.cpp:2025, tests/test_model.cpp:2029, tests/test_note_shuffle.cpp:48, tests/test_note_shuffle.cpp:221, tests/test_stars.cpp:117
+uncovered: set_path_overrides | declared: src/app/config.h:111 | named: tests/scratch_paths.h:24, tests/scratch_paths.h:26, tests/pb_ui/pbtest_harness.cpp:57, tests/ui/uitest_harness.cpp:59
+uncovered: set_problem | declared: src/ui/app_state.h:744 | named: tests/ui/uitest_batch_reports.cpp:509
+uncovered: set_program | declared: src/app/user_messages.h:29 | named: tests/program_scope.h:14, tests/program_scope.h:16, tests/pb_ui/pbtest_main.cpp:34
+uncovered: set_query | declared: src/ui/library_model.h:181 | named: tests/test_library_model.cpp:540, tests/test_library_model.cpp:562, tests/test_library_model.cpp:564, tests/test_library_model.cpp:587, tests/test_library_model.cpp:589, tests/test_library_model.cpp:870, tests/test_library_model.cpp:877, tests/test_library_model.cpp:879, tests/test_library_model.cpp:881, tests/test_library_model.cpp:883, tests/test_library_model.cpp:886, tests/test_library_model.cpp:889, tests/test_library_model.cpp:895, tests/test_library_model.cpp:897, tests/test_library_model.cpp:899, tests/test_library_model.cpp:925, tests/test_library_model.cpp:929, tests/test_library_model.cpp:933, tests/test_library_model.cpp:1036, tests/test_library_model.cpp:1059, tests/test_library_model.cpp:1120, tests/test_library_model.cpp:1122, tests/test_library_model.cpp:1124, tests/test_library_model.cpp:1176, tests/test_library_model.cpp:1179, tests/test_library_model.cpp:1181, tests/test_library_model.cpp:1183, tests/test_library_model.cpp:1580, tests/test_library_model.cpp:1597, tests/test_library_model.cpp:1600, tests/test_library_model.cpp:1602, tests/test_library_model.cpp:1730
+uncovered: set_render_device | declared: src/ui/app_state.h:504 | named: tests/ui/uitest_harness.cpp:269, tests/ui/uitest_library.cpp:1983
+uncovered: set_scene | declared: src/render/preview_renderer.h:60 | named: tests/test_preview_golden.cpp:112, tests/test_preview_renderer.cpp:101, tests/test_preview_renderer.cpp:137, tests/test_preview_renderer.cpp:147, tests/test_preview_renderer.cpp:180, tests/test_preview_renderer.cpp:195, tests/test_preview_renderer.cpp:246, tests/test_preview_renderer.cpp:253, tests/test_preview_renderer.cpp:276, tests/test_preview_renderer.cpp:300
+uncovered: set_search | declared: src/app/report_view.h:194 | named: tests/app_state_fixtures.h:228, tests/test_app_library.cpp:145, tests/test_app_library.cpp:152, tests/test_app_library.cpp:165, tests/test_app_library.cpp:648, tests/test_app_library.cpp:652, tests/test_app_library.cpp:729, tests/test_app_library.cpp:737, tests/test_app_library.cpp:1114, tests/test_app_library.cpp:1123, tests/test_app_library.cpp:1644, tests/test_app_reports.cpp:420, tests/test_report_view.cpp:398, tests/test_report_view.cpp:444, tests/test_report_view.cpp:463, tests/ui/uitest_details.cpp:358, tests/ui/uitest_details.cpp:375
+uncovered: set_song_length_ms | declared: src/ui/preview_transport.h:70 | named: tests/test_preview_transport.cpp:64, tests/test_preview_transport.cpp:66, tests/test_preview_transport.cpp:69, tests/test_preview_transport.cpp:85, tests/test_preview_transport.cpp:91, tests/test_preview_transport.cpp:97, tests/test_preview_transport.cpp:105, tests/test_preview_transport.cpp:116, tests/test_preview_transport.cpp:174, tests/test_preview_transport.cpp:201, tests/test_preview_transport.cpp:220, tests/test_preview_transport.cpp:296, tests/test_preview_transport.cpp:308
+uncovered: set_sort | declared: src/app/report_view.h:211 | named: tests/test_app_library.cpp:321, tests/test_app_library.cpp:449, tests/test_app_library.cpp:824, tests/test_app_reports.cpp:390, tests/test_library_model.cpp:557, tests/test_library_model.cpp:559, tests/test_library_model.cpp:618, tests/test_library_model.cpp:622, tests/test_library_model.cpp:656, tests/test_library_model.cpp:943, tests/test_library_model.cpp:946, tests/test_library_model.cpp:949, tests/test_library_model.cpp:951, tests/test_library_model.cpp:967, tests/test_library_model.cpp:995, tests/test_library_model.cpp:1005, tests/test_library_model.cpp:1024, tests/test_library_model.cpp:1044, tests/test_library_model.cpp:1049, tests/test_library_model.cpp:1061, tests/test_library_model.cpp:1093, tests/test_library_model.cpp:1096, tests/test_library_model.cpp:1286, tests/test_library_model.cpp:1322, tests/test_library_model.cpp:1582, tests/test_library_model.cpp:1594, tests/test_library_model.cpp:1738, tests/test_library_read_order.cpp:69, tests/test_library_read_order.cpp:70, tests/test_library_read_order.cpp:71, tests/test_report_view.cpp:314, tests/test_report_view.cpp:443, tests/test_report_view.cpp:503, tests/test_report_view.cpp:504, tests/test_report_view.cpp:527, tests/test_report_view.cpp:529, tests/ui/uitest_library.cpp:128, tests/ui/uitest_library.cpp:157
+uncovered: set_sqout | declared: src/core/model.h:784 | named: tests/test_model.cpp:1814, tests/test_model.cpp:1825, tests/test_model.cpp:2000
+uncovered: set_status | declared: src/ui/app_state.h:743 | named: tests/ui/uitest_batch_reports.cpp:498
+uncovered: set_summaries | declared: src/ui/library_model.h:159 | named: tests/test_library_jobs.cpp:1578, tests/test_library_jobs.cpp:1668, tests/test_library_jobs.cpp:1696, tests/test_library_jobs.cpp:1709, tests/test_library_jobs.cpp:1720, tests/test_library_model.cpp:90, tests/test_library_model.cpp:296, tests/test_library_model.cpp:463, tests/test_library_model.cpp:469, tests/test_library_model.cpp:760, tests/test_library_model.cpp:996, tests/test_library_model.cpp:1088, tests/test_library_model.cpp:1646
+uncovered: set_summaries_for | declared: src/ui/library_model.h:170 | named: tests/test_library_model.cpp:1244, tests/test_library_model.cpp:1266, tests/test_library_model.cpp:1289, tests/test_library_model.cpp:1330, tests/test_library_model.cpp:1331
+uncovered: set_summary_for | declared: src/ui/library_model.h:164 | named: tests/test_library_model.cpp:675, tests/test_library_model.cpp:683, tests/test_library_model.cpp:791, tests/test_library_model.cpp:812, tests/test_library_model.cpp:813, tests/test_library_model.cpp:858, tests/test_library_model.cpp:916, tests/test_library_model.cpp:942, tests/test_library_model.cpp:968, tests/test_library_model.cpp:1006, tests/test_library_model.cpp:1016, tests/test_library_model.cpp:1027, tests/test_library_model.cpp:1117, tests/test_library_model.cpp:1118, tests/test_library_model.cpp:1172, tests/test_library_model.cpp:1173, tests/test_library_model.cpp:1191, tests/test_library_model.cpp:1194, tests/test_library_model.cpp:1379, tests/test_library_model.cpp:1579, tests/test_library_model.cpp:1592
+uncovered: set_ui_scale | declared: src/ui/imgui_setup.h:54 | named: tests/test_app_shell.cpp:481, tests/test_app_shell.cpp:482, tests/test_app_shell.cpp:488, tests/test_app_shell.cpp:646, tests/test_app_shell.cpp:652
+uncovered: set_volume | declared: src/ui/preview_controller.h:245 | named: tests/test_preview_controller.cpp:1144, tests/test_preview_controller.cpp:1146, tests/test_preview_controller.cpp:1148

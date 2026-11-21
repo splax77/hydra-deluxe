@@ -4,7 +4,7 @@ This page lists every split between Clone Hero and Hydra that has no ruling yet,
 It describes build 1.1 (v1.1.0.6142) unless a question says otherwise.
 Last write-back: 2026-11-12.
 
-Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here. The docs test checks both directions.
+Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here.
 
 Questions Q-76 to Q-79, and Q-72, are tool findings in `tools/ch_probe/constants.py`, not splits between the game and Hydra: no rule in src/ reads those values. Q-34 and Q-76 are the same finding, raised from page 3 and page 7.
 
@@ -128,30 +128,21 @@ Hydra today: `Song::place_fills_ch11` (src/core/song.cpp lines 202 to 212) takes
 
 ### Q-37 A written fill that lands on no chord still stops generation in the game
 
-The game's rule: the note builder compares the track's written-fill list count with 0 before any fill is landed: `cmp dword ptr [rax+0x18], r13d; je` to the generator, with r13d = 0 (code/6142/note_builder_20D2EA0.asm lines 280 to 299; rows FL-27, FL-28, FL-35; the 1.0 build does the same, code/4045/fill_generator.cs line 20).
+The game's rule: the note builder compares the track's written-fill list count with 0 before any fill is landed: `cmp dword ptr [rax+0x18], r13d; je` to the generator, with r13d = 0 (code/6142/note_builder_20D2EA0.asm lines 280 to 299; rows FL-27, FL-28, FL-35; the 1.0 build does the same, code/4045/fill_generator.cs line 22).
 
 One end: a chart whose written fills all land: neither generates fills, same result.
 Other end: a chart whose only written fills reach no chord: Hydra generates fills across the chart, the game generates none.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp line 381) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 110 and 111) returns only if a chord holds one. A written fill the coda skipped is not this case: it stops generation as in the game (src/core/song.cpp line 109, rows FL-27 and FL-08).
-
-### Q-38 The 1.0 generator against Hydra's 1.0 generator
-
-The game's rule (1.0): candidates are the second measure line, then every fourth line, the next line after a miss (`i = 1; i += 4; i -= 3`); a chord counts within 0.25 s of real time (`num5 > 0.25f`); the fill starts half way in real time between the previous line and the chosen line and ends a 64th note after the activation note (code/4045/fill_generator.cs lines 30 to 77; rows FL-36, FL-42).
-
-One end: a steady-tempo chart with chords on the lines: the two may pick the same chords; the deadlines agree at a steady tempo.
-Other end: a fast tempo where half a beat is longer than 0.25 s, or a chord on the first measure line, or a tempo change inside a fill: the chosen chords, the fill starts and the deadlines can differ.
-
-Hydra today: `Song::place_fills_ch10` (src/core/song.cpp lines 138 to 170): nearest chord per line, half a beat limit, fill half a grid measure long. D115 item 6 and card c0e1259d ("Keep 1.0 exactly as before") were decided before the 1.0 code was read.
+Hydra today: `place_authored_fills` (src/parse/song.cpp line 383) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 138 and 139) returns only if a chord holds one. A written fill the coda skipped is not this case: it stops generation as in the game (src/core/song.cpp line 137, rows FL-27 and FL-08).
 
 ### Q-39 A 1.0 written fill's landing window has no +1
 
-The game's rule (1.0): a written fill lands no later than end + resolution x 6 / 192 ticks, with no +1 (code/4045/fill_generator.cs lines 80 to 113; row FL-38). In 1.1 it is trunc(resolution / 32) + 1 (FL-03).
+The game's rule (1.0): a written fill lands no later than end + resolution x 6 / 192 ticks, with no +1 (code/4045/fill_generator.cs lines 82 to 115; row FL-38). In 1.1 it is trunc(resolution / 32) + 1 (FL-03).
 
 One end: a chord inside res/32: both builds and Hydra land it.
 Other end: a chord exactly res/32 + 1 ticks after the end: 1.1 and Hydra land it, 1.0 drops the fill.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp lines 392 and 393) uses 1.1's +1 under both rules.
+Hydra today: `place_authored_fills` (src/parse/song.cpp lines 390 and 391) uses 1.1's +1 under both rules.
 
 ### Q-51 Hydra pays every accent and ghost; the game pays one only when the hit is marked as performed
 
@@ -278,7 +269,7 @@ The game's rule (page 4, FL-10): when two written fills pick one chord, the game
 One end: two fills that start on the same tick. Both sides agree.
 Other end: at resolution 480, fills from 9600 and from 10080 that both end on a chord at 10560. The game clears the flag at current tick 7680; Hydra prices the deadline at current tick 8160. Two charts in the library have such chords, and keeping only the earlier fill changes neither best score: Pangaea - A Gateway to Nothing stays 722,900 and RAT KING - Open Hands to the Void stays 260,970 (user-answers.md lines 24 and 25).
 
-What Hydra does: `place_authored_fills` in src/parse/song.cpp line 416 keeps the later fill's length through `apply_fill_end` (line 352).
+What Hydra does: `place_authored_fills` in src/parse/song.cpp line 405 keeps the later fill's length through `apply_fill_end` (line 354).
 
 Ruling: the user, 2026-11-08: "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 25). Page row FL-10.
 

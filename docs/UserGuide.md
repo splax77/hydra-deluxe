@@ -154,7 +154,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 `SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison always reads the 4-bar results, whatever this setting says.
 
-`1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero, and check it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
+`1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. On a chart with no fills of its own, 1.0 also places the fills by its own rule, so they can sit on other measure lines than under 1.1. Leave it off for current Clone Hero, and check it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
 `Early fill window` sets how far from a fill's deadline your Star Power may come ready and still count as an early fill (the `E` in a path). Ready up to this many ms after the deadline, you can still summon the fill by hitting early; later than that, the fill never spawns, so no path activates there. Ready less than this many ms before the deadline, the activation is marked `E`. One number sets both sides. It starts at 60 ms and goes from 0 to 85 ms, the hit window. At 0 no activation is an early fill. Results are kept per window, so a 60 ms result and an 85 ms result for the same song sit side by side.
 
@@ -301,9 +301,9 @@ Sometimes a phrase collected during Star Power would push the meter past the SP 
 
 ### Below the activations
 
-Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start open. If you close one, it stays closed for every path and song you open after that, until you open it again or close Hydra Deluxe.
+Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Click a fold's arrow or name to open or close it. Both start open. If you close one, it stays closed for every path and song you open after that, until you open it again or close Hydra Deluxe.
 
-`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on.
+`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on. Beside the name are the points the squeezes add, like `+15`, with the count first when there are several, like `3 · +45`. A song with none shows `Multiplier squeeze · none` in gray, with no arrow, because there's nothing to open.
 
 `Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. `Notes`, `Accent Notes` and `Ghost Notes` together make the `Base score` on the Stars tab. The accent and ghost lines hold only the extra 50<!-- default: kNoteBasePoints --> points each of those notes adds, and a cymbal's extra points stay in `Notes`. A backend note that lands after the SP end still counts under Star Power only when it lands less than a small leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
 
@@ -325,7 +325,7 @@ Where the chart marks a drum roll or trill, the highway lights a lane under it, 
 
 ### Choosing what to watch
 
-`Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
+`Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (Best all-0 path)`.
 
 `< Act` and `Act >` jump to the previous and next activation. `Show in Preview >` on the Paths tab lands here too. A jump lands on the activation chord with it already hit: the gem shows struck, and the score box counts it.
 
@@ -703,7 +703,6 @@ The file is optional. A missing file, or a missing line, means the default below
 backend_leeway_ms = 3.0
 sqout_rule = first_note
 max_tied_paths = 4
-fill_cooldown_measures = 4
 fill_max_distance_beats = 0.5
 fill_land_slop_beats = 0.03125
 ```
@@ -715,11 +714,10 @@ What each line does:
 | `backend_leeway_ms` | 3.0 ms<!-- default: Rules::backend_leeway_ms --> | 0 or more | A backend note that lands less than this far past the Star Power end still counts in the score. Exactly this far past it does not. |
 | `sqout_rule` | `first_note` | `first_note` or `whole_chord` | What a squeeze-out costs. `first_note` removes the Star Power doubling from one note of the chord (the lowest-value one). `whole_chord` removes it from every note in the chord. |
 | `max_tied_paths` | `4` | A whole number, 1 or more | How many paths Hydra Deluxe keeps at one score. It's one count per score, whichever side of the Path limit each path falls on, and paths inside the limit come first. More paths means longer lists and slower analysis. |
-| `fill_cooldown_measures` | `4` | A whole number, 1 or more | For charts with no authored fills: how many measures must pass after an activation point before Hydra Deluxe places the next one. |
-| `fill_max_distance_beats` | `0.5` | 0 or more | For charts with no authored fills: how far from a measure line a note can sit and still get a fill. Under Clone Hero 1.1's rule, Hydra Deluxe adds one tick to this, as Clone Hero does. |
+| `fill_max_distance_beats` | `0.5` | 0 or more | For charts with no authored fills, under Clone Hero 1.1's rule: how far from a measure line a note can sit and still get a fill. Hydra Deluxe adds one tick to this, as Clone Hero does. Under Clone Hero 1.0's rule the distance is a fixed 0.25 seconds, and this line has no effect. |
 | `fill_land_slop_beats` | `0.03125` (a 32nd of a beat) | 0 or more | How close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart. |
 
-Older files may still have `auto_cap_ladder`, `auto_budget_s` or `fill_length_measures` lines. Hydra Deluxe reads and ignores them, so those files keep working.
+Older files may still have `auto_cap_ladder`, `auto_budget_s`, `fill_length_measures` or `fill_cooldown_measures` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 
 A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error. The error names the key, or quotes the line. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
 

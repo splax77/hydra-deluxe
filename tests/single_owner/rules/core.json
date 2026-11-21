@@ -1017,9 +1017,9 @@
           "why": "the ms-to-tick map's declaration"
         },
         {
-          "file": "src/core/timing.cpp",
-          "line_text": "double t = ms_.tick_at_ms(act_hit_ms);",
-          "why": "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"
+          "file": "src/core/song.cpp",
+          "line_text": "const double tick = ms.tick_at_ms(static_cast<double>(second) * 1000.0);",
+          "why": "ch10_tick_at_second, Clone Hero 1.0's own seconds-to-tick (fill_generator.cs F9) for its generator, rounded as the game rounds; no screen shows it"
         }
       ],
       "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\"."
@@ -1199,13 +1199,16 @@
       "date": "2026-10-04",
       "decision": "container ranged-reads derive-once review of 860cbd8, finding 2 (2026-10-04)",
       "added_by": "container ranged reads",
-      "pattern": "std::min\\(\\s*\\w+\\s*-\\s*\\w+\\s*,\\s*k\\w+\\)|\\w+\\s*>=\\s*\\w+\\)\\s*return\\s*\\{\\s*nullptr\\s*,\\s*0\\s*\\}",
+      "pattern": "std::min\\(\\s*\\w+\\s*-\\s*\\w+\\s*,\\s*k(?!\\w*Ms\\b)\\w+\\)|\\w+\\s*>=\\s*\\w+\\)\\s*return\\s*\\{\\s*nullptr\\s*,\\s*0\\s*\\}",
+      "note": "A cap named in milliseconds is a time, never a byte count, so the pattern skips it.",
       "must_match": [
         "if (pos >= size) return {nullptr, 0};",
-        "const size_t n = std::min(size - pos, kMaxPiece);"
+        "const size_t n = std::min(size - pos, kMaxPiece);",
+        "const size_t n = std::min(len - off, kChunkBytes);"
       ],
       "must_not_match": [
-        "return static_cast<size_t>(std::min<uint64_t>(length, available));"
+        "return static_cast<size_t>(std::min<uint64_t>(length, available));",
+        "std::max(kCh10FillLeadFloorMs, std::min(fend - pad, kCh10FillLeadCeilingMs));"
       ],
       "scope": [
         "src"
@@ -1413,7 +1416,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it (test_docs_match_code.cpp) answer other questions."
+      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it answer other questions."
     },
     {
       "question": "Which meter section is a tick measured in?",
@@ -2333,7 +2336,24 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it."
+      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it.",
+      "owner_lines": [
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "const int multiplier = to_multiplier(combo + 1);",
+          "why": "the unit test of category_scores itself: its expected multiplier comes from to_multiplier at the combo the note lands on, so it does not read the stamp it checks"
+        },
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "CHECK(total.multiplier == to_multiplier(start + 1));",
+          "why": "the unit test of category_scores itself: the chord's first note lands at start + 1, and to_multiplier, not the stamp under test, gives its multiplier"
+        },
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "CHECK(per_note[static_cast<size_t>(i)].multiplier == to_multiplier(start + 1 + i));",
+          "why": "the unit test of category_scores itself: note i lands at start + 1 + i, and to_multiplier, not the stamp under test, gives its multiplier"
+        }
+      ]
     },
     {
       "question": "What running total does the score box show during a solo? (tests)",
@@ -2358,9 +2378,9 @@
     },
     {
       "question": "Which Path field holds which ReplayScore category?",
-      "owner": "score_of and assign_score in src/core/replay.cpp",
-      "owner_file": "src/core/replay.cpp",
-      "owner_symbol": "score_of",
+      "owner": "score_of in src/core/replay.cpp (Path to ReplayScore) and set_path_score in tests/preview_song_fixtures.h (the reverse, which only test fixtures need)",
+      "owner_file": "tests/preview_song_fixtures.h",
+      "owner_symbol": "set_path_score",
       "date": "2026-10-05",
       "decision": "audit finding 282; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
@@ -2374,9 +2394,9 @@
       ],
       "owner_lines": [
         {
-          "file": "src/core/replay.cpp",
+          "file": "tests/preview_song_fixtures.h",
           "line_text": "path.score_ghosts = s.ghost;",
-          "why": "assign_score, the owner"
+          "why": "set_path_score, the owner"
         }
       ],
       "scope": [
@@ -2384,7 +2404,7 @@
         "tools",
         "tests"
       ],
-      "note": "Copying a ReplayScore into a Path field by field anywhere but assign_score."
+      "note": "Copying a ReplayScore into a Path field by field anywhere but set_path_score."
     },
     {
       "question": "Which SP cap does the leaderboard comparison need? (tests)",
@@ -2652,6 +2672,64 @@
         "return same_folder(here, wide_to_utf8(registered));"
       ],
       "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope."
+    },
+    {
+      "question": "Which code reads the deact node D?",
+      "owner": "Activation::deact_tick in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "deact_tick",
+      "date": "2026-11-19",
+      "decision": "SPE-P plan (docs/superpowers/plans/2026-11-19-one-sp-end-owner.md (removed; git show 790f1c6d:docs/superpowers/plans/2026-11-19-one-sp-end-owner.md)), task T5 criterion 5",
+      "added_by": "SPE-T5",
+      "pattern": "\\bdeact_tick\\(\\)",
+      "anchor": "deact_tick()",
+      "owner_files": [
+        "src/core/model.h",
+        "src/core/model.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "src/core/replay.cpp",
+          "why": "Owner map rows T5-1, T5-2 and T5-3: the replay window copies D as the node each chord's offset is measured from, the squeeze-out warning asks which chords could be squeezed out at this D, and a typed SqOut offset is an offset from D"
+        },
+        {
+          "file": "src/search/engine.cpp",
+          "why": "Owner map row T5-5: the record check compares the finished window's D with the node the search's graph offered"
+        },
+        {
+          "file": "src/search/pather.cpp",
+          "why": "Owner map row T5-6: a pin names a window by its D and its squeezed chord"
+        },
+        {
+          "file": "src/pathbuilder/pb_coach.cpp",
+          "why": "Owner map row T5-6: end_key tells two ends of one window apart by D and the squeezed chord"
+        },
+        {
+          "file": "src/core/squeeze_rating.cpp",
+          "why": "Owner map row T5-7: every offset the squeeze rating judges is measured from D"
+        },
+        {
+          "file": "tools/replay_schedule.cpp",
+          "why": "Owner map row T5-8: the press timing covers the gap from the squeezed chord to D; the ends_sp label reads Activation::window_end_tick instead"
+        },
+        {
+          "file": "tools/replay_json.cpp",
+          "why": "Owner map row T5-9: the dump prints D under the name deact_tick"
+        },
+        {
+          "file": "tools/replay.cpp",
+          "why": "Owner map row T5-9: the failure line prints D under the name deact"
+        }
+      ],
+      "must_match": [
+        "const std::optional<int64_t> end = pa.act->deact_tick();",
+        "if (act.deact_tick() == tick) draw_end_marker(tick);"
+      ],
+      "must_not_match": [
+        "const bool past_deact = core::after_sp_end(row.tick, w.deact_tick);",
+        "if (const std::optional<int64_t> e = act.window_end_tick()) sp_ends.insert(*e);"
+      ],
+      "note": "D is the deactivation node: the last stored SP-end step, where Star Power would end with nothing squeezed out. Where Star Power ends as played is Activation::window_end_tick, so a screen, or any file not listed here, that calls deact_tick() is asking the wrong question or is a new reader of D that needs its own Owner map row. model.cpp is the owner's file and also holds path_identity (Owner map row T5-4), which keys a path on D. Tests are out of scope: they read D to check these readers."
     }
   ]
 }

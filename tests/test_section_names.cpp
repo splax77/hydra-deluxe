@@ -26,8 +26,9 @@ TEST_CASE("section names: the generated table agrees with the TSV row for row") 
         INFO(line);
         CHECK(rows.emplace(line.substr(0, tab), line.substr(tab + 1)).second);
     }
-    // The count read from the source file.
-    CHECK(rows.size() == 2718);
+    // The TSV's own rows are the expected side: every one must be in the
+    // table, in the same order, and the table must hold no others.
+    REQUIRE(!rows.empty());
 
     const SectionNameTable table = section_name_table();
     REQUIRE(table.count == rows.size());

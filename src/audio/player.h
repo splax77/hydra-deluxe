@@ -29,8 +29,6 @@ namespace hydra::audio {
 
 class Playhead {
 public:
-    // Plays an already-decoded buffer (through a BufferSource).
-    explicit Playhead(DecodedAudio mixed);
     // Plays any source; a null source plays as empty audio.
     explicit Playhead(std::unique_ptr<MixSource> source);
 

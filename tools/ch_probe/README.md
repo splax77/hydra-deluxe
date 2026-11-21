@@ -65,8 +65,7 @@ to 6 were shelved.
   memory, and refuses to run if the constants don't match the build.
 - `engine_finder.py`: finds the live engine object without a debugger.
 - `engine.py`: the meaning layer. Named reads: window, clock, score, flags,
-  constants. It takes an engine pointer from `engine_finder` (`use_object`)
-  or catches the constructor with the debugger (`capture_object`).
+  constants. It takes an engine pointer from `engine_finder` (`use_object`).
 - `input_driver.py`: the key table (`Lane`, `DEFAULT_BINDINGS`) and SendInput.
   "Lane" always means an input lane: 0 is green, 4 is the kick. A .chart
   numbers notes differently (note 0 is the kick), so chart code says "note".

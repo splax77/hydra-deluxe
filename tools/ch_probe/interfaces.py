@@ -134,19 +134,16 @@ class Debugger(Protocol):
 
 # --- engine.py : the meaning layer ------------------------------------------
 #
-# Knows the RVAs and offsets. Captures the live object pointer at the ctor
-# breakpoint. Exposes clean reads so nothing above it speaks in raw addresses.
+# Knows the RVAs and offsets. Takes the live object pointer engine_finder's
+# memory scan found. Exposes clean reads so nothing above it speaks in raw
+# addresses.
 
 @runtime_checkable
 class EngineModel(Protocol):
     """Concrete class expected: `EngineModel` in engine.py. Built from a
-    ProcessHandle and a Debugger."""
+    ProcessHandle."""
 
-    object_ptr: Optional[int]  # captured at the constructor breakpoint
-
-    def capture_object(self) -> int:
-        """Breakpoint the constructor, grab rcx, remember it. Returns the ptr."""
-        ...
+    object_ptr: Optional[int]  # set by use_object
 
     def use_object(self, object_ptr: int) -> int:
         """Adopt a pointer found by engine_finder's memory scan."""
@@ -156,24 +153,10 @@ class EngineModel(Protocol):
         """self+0x94, rises only on a hit."""
         ...
 
-    def total_window(self) -> float:
-        """self+0x20, the field the passive probe watches (seconds)."""
-        ...
-
     def back_window(self) -> float:
         ...
 
     def front_window(self) -> float:
-        ...
-
-    def round_start(self) -> float:
-        ...
-
-    def note_count(self) -> int:
-        ...
-
-    def precision_mode(self) -> bool:
-        """True if the PrecisionMode flag bit is set."""
         ...
 
     def song_clock(self) -> float:

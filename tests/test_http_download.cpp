@@ -15,6 +15,7 @@
 #include "net/http.h"
 #include "scoped_hook.h"
 #include "temp_util.h"
+#include "testdata_dirs.h"
 
 using hydra::ErrorKind;
 using hydra::KindedError;
@@ -55,18 +56,29 @@ struct DownloadDir {
 }  // namespace
 
 TEST_CASE("download_to_file writes a body that fits its cap and counts every byte") {
+    // The body is a real GitHub reply: testdata/update/latest.json, saved from
+    // api.github.com's releases/latest for this repo. It is handed out in
+    // 30-byte reads, so the writer sees many chunks, and its own size is the
+    // cap, the edge the next test steps past.
+    const std::vector<uint8_t> reply =
+        hydra::read_file_bytes(corpus::testdata_root() + "/update/latest.json");
+    REQUIRE(reply.size() > 30);
+    size_t sent = 0;
+    const hydra::net::BodyReader body = [&](char* buffer, size_t capacity) {
+        const size_t n = (std::min)({size_t{30}, capacity, reply.size() - sent});
+        for (size_t i = 0; i < n; ++i) buffer[i] = static_cast<char>(reply[sent + i]);
+        sent += n;
+        return n;
+    };
     DownloadDir d;
     std::atomic<uint64_t> received{0};
-    FakeBody body{100, 30};
-    hydra::net::download_to_file(std::ref(body), d.path, 100, &received, nullptr);
+    hydra::net::download_to_file(body, d.path, reply.size(), &received, nullptr);
 
-    CHECK(received.load() == 100);
+    CHECK(received.load() == reply.size());
     CHECK_FALSE(d.part_exists());
     REQUIRE(d.final_exists());
-    const std::vector<uint8_t> bytes = hydra::read_file_bytes(d.path);
-    REQUIRE(bytes.size() == 100);
-    CHECK(bytes[0] == 0);
-    CHECK(bytes[99] == 99);
+    // Every byte, in order: a lost, repeated or swapped chunk fails here.
+    CHECK(hydra::read_file_bytes(d.path) == reply);
 }
 
 TEST_CASE("download_to_file refuses a body past its cap and leaves no file") {

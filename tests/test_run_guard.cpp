@@ -12,22 +12,35 @@ using run_guard::refuse_arguments;
 using run_guard::refuse_zero_match;
 using Args = std::vector<std::string>;
 
+namespace {
+
+// Whether a refusal was given and its text holds `part`. The wording itself
+// is run_guard.h's; a check names only what the refusal must point at.
+bool refusal_names(const std::optional<std::string>& refusal, const std::string& part) {
+    return refusal.has_value() && refusal->find(part) != std::string::npos;
+}
+
+// An argument as a refusal quotes it.
+std::string quoted(const std::string& arg) { return "\"" + arg + "\""; }
+
+}  // namespace
+
 TEST_CASE("run guard: an unquoted filter split at its dot is refused") {
     // What PowerShell passes for an unquoted -sf=*test_track_state.cpp.
-    CHECK(refuse_arguments(Args{"-sf=*test_track_state", ".cpp"}) ==
-          std::optional<std::string>(
-              "hydra_tests: the argument \".cpp\" does not start with a dash, so it is not an option. "
-              "PowerShell splits an unquoted filter at its first dot, so put quotes around the whole "
-              "filter, for example \"-sf=*test_x.cpp\"."));
-    CHECK(refuse_arguments(Args{"-tc=fuzz", ".seeds*"}).has_value());
+    const std::optional<std::string> refusal = refuse_arguments(Args{"-sf=*test_track_state", ".cpp"});
+    REQUIRE(refusal.has_value());
+    // It names the stray piece and tells the user to quote the filter.
+    CHECK(refusal_names(refusal, quoted(".cpp")));
+    CHECK(refusal_names(refusal, "quote"));
+    CHECK(refusal_names(refuse_arguments(Args{"-tc=fuzz", ".seeds*"}), quoted(".seeds*")));
 }
 
 TEST_CASE("run guard: a filter given twice is refused, however many dashes or dt- prefix it has") {
-    CHECK(refuse_arguments(Args{"-sf=*single_owner*", "-sf=*test_precheck*"}) ==
-          std::optional<std::string>(
-              "hydra_tests: \"-sf=*single_owner*\" and \"-sf=*test_precheck*\" give the same filter twice. "
-              "doctest keeps only one of them and drops the other without a word. Join the patterns with "
-              "commas in one filter, or run each as its own command."));
+    const std::optional<std::string> refusal = refuse_arguments(Args{"-sf=*single_owner*", "-sf=*test_precheck*"});
+    REQUIRE(refusal.has_value());
+    // It names both arguments, so the user sees which two collide.
+    CHECK(refusal_names(refusal, quoted("-sf=*single_owner*")));
+    CHECK(refusal_names(refusal, quoted("-sf=*test_precheck*")));
     CHECK(refuse_arguments(Args{"-sf=*a.cpp", "--dt-sf=*b.cpp"}).has_value());
     CHECK(refuse_arguments(Args{"--tc=x*", "-s", "-dt-tc=y*"}).has_value());
     CHECK(refuse_arguments(Args{"--source-file=*a.cpp", "-source-file=*b.cpp"}).has_value());
@@ -43,7 +56,7 @@ TEST_CASE("run guard: two spellings of one filter are both kept by doctest, so t
 TEST_CASE("run guard: well-formed command lines pass the argument check") {
     CHECK(refuse_arguments(Args{}) == std::nullopt);
     CHECK(refuse_arguments(Args{"-sf=*test_a.cpp,*test_b.cpp"}) == std::nullopt);
-    CHECK(refuse_arguments(Args{"-tc=docs match code*"}) == std::nullopt);
+    CHECK(refuse_arguments(Args{"-tc=code lexer*"}) == std::nullopt);
     // An include and an exclude of the same thing are two kinds.
     CHECK(refuse_arguments(Args{"-sf=*a*", "-sfe=*b*", "-tc=x*", "-tce=y*"}) == std::nullopt);
     // tools/check_shards.ps1's listing form.
@@ -53,13 +66,15 @@ TEST_CASE("run guard: well-formed command lines pass the argument check") {
 }
 
 TEST_CASE("run guard: a real run whose include filter matched nothing is refused") {
-    CHECK(refuse_zero_match(Args{"-sf=*no_such_file_xyz*"}, 0) ==
-          std::optional<std::string>("hydra_tests: no test case matched the filters \"-sf=*no_such_file_xyz*\", "
-                                     "so this run tested nothing. Check the patterns."));
-    CHECK(refuse_zero_match(Args{"-tc=nothing*", "-sfe=*b*", "-s"}, 0) ==
-          std::optional<std::string>("hydra_tests: no test case matched the filters \"-tc=nothing*\" "
-                                     "\"-sfe=*b*\", so this run tested nothing. Check the patterns."));
-    CHECK(refuse_zero_match(Args{"--dt-test-suite=none"}, 0).has_value());
+    CHECK(refusal_names(refuse_zero_match(Args{"-sf=*no_such_file_xyz*"}, 0), quoted("-sf=*no_such_file_xyz*")));
+    // It names every filter given, include and exclude, and not a flag that
+    // filters nothing.
+    const std::optional<std::string> refusal = refuse_zero_match(Args{"-tc=nothing*", "-sfe=*b*", "-s"}, 0);
+    REQUIRE(refusal.has_value());
+    CHECK(refusal_names(refusal, quoted("-tc=nothing*")));
+    CHECK(refusal_names(refusal, quoted("-sfe=*b*")));
+    CHECK_FALSE(refusal_names(refusal, quoted("-s")));
+    CHECK(refusal_names(refuse_zero_match(Args{"--dt-test-suite=none"}, 0), quoted("--dt-test-suite=none")));
 }
 
 TEST_CASE("run guard: exclude-only runs and matched runs pass the zero check") {

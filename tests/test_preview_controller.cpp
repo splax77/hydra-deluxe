@@ -9,22 +9,30 @@
 #endif
 #include <windows.h>
 
+#include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
-#include "analyzed_chart.h"  // analyzed_by_ten_scores, the ghost list's pinned chart
+#include "analyzed_chart.h"  // analyzed_by_ten_scores: the changed-chart test's ghost path
 #include "app/analysis.h"
 #include "app/config.h"  // Settings: the Preview volume's owner
 #include "chart_text.h"
 #include "app/preview_view.h"
+#include "app/song_length.h"  // kSongEndPadMs
+#include "app/user_messages.h"  // plain_error: the asset failure's sentence
 #include "audio/device.h"
 #include "audio_chart_fixtures.h"
 #include "audio_util.h"  // fixture_path
+#include "core/error_kind.h"  // KindedError, ErrorKind::PreviewAssets
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -42,7 +50,6 @@
 
 using hydra::Difficulty;
 using hydra::fill_rule_for;
-using hydra::FillDeadlineRule;
 using hydra::kTestFillRule;
 using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;
@@ -107,13 +114,73 @@ ChartLibraryEntry entry_for(const std::string& notespath) {
     return e;
 }
 
+// A copy of every file in the folder holding `notespath`, in the scratch
+// folder `tag`, so a test may edit the copy. Returns the copy's chart file. A
+// folder chart needs a song.ini to be scanned, so one is written when the
+// folder has none.
+std::string copy_chart_folder(const std::string& notespath, const std::string& tag) {
+    const std::string dir = testtemp::temp_dir(tag);
+    std::filesystem::copy(hydra::os_path(hydra::parent_folder(notespath)), hydra::os_path(dir),
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::overwrite_existing);
+    const std::string ini = dir + "\\song.ini";
+    if (!std::filesystem::exists(hydra::os_path(ini)))
+        audiochart::write_text_file(ini, "[song]\nname = Preview changed-chart test\n");
+    return hydra::join_folder(dir, notespath.substr(notespath.rfind('\\') + 1));
+}
+
+// The library row the store lists for the one chart in `notespath`'s folder,
+// once the scan (discover_charts) found it and the library was written. Its
+// md5 and fingerprint are the scan's own.
+ChartLibraryEntry listed_entry(const std::string& notespath) {
+    auto [items, errors] = hydra::app::discover_charts({hydra::parent_folder(notespath)});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    const ChartLibraryEntry& scanned = items[0];
+    hydra::store::RecordStore db(":memory:");
+    db.rebuild_chart_library({scanned});
+    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(0, -1);
+    REQUIRE(listed.size() == 1);
+    return listed[0];
+}
+
+// Edits the chart file at `notespath` after its scan, so its md5, its size
+// and so its fingerprint change while its notes stay the same. A .chart's
+// song is renamed in its [Song] section, as a chart editor's save would. A
+// newline at a .chart's end would not do: that is a line outside every
+// section, which the .chart reader refuses (ChartParser::load_sections). A
+// .mid gets one byte more at its end, where its chunk walk ends at a chunk
+// header cut short (parse/midi.cpp).
+void edit_chart_file(const std::string& notespath) {
+    std::vector<uint8_t> bytes = hydra::read_file_bytes(notespath);
+    if (hydra::chart_format_of(notespath) == hydra::ChartFormat::Chart) {
+        const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        const size_t song = text.find("[Song]");
+        REQUIRE(song != std::string_view::npos);
+        const std::string_view name = "Name = \"";
+        const size_t at = text.find(name, song);
+        REQUIRE(at != std::string_view::npos);
+        const std::string_view added = "Edited ";
+        const uint8_t* first = reinterpret_cast<const uint8_t*>(added.data());
+        bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(at + name.size()), first,
+                     first + added.size());
+    } else {
+        bytes.push_back('\n');
+    }
+    std::FILE* f = hydra::fopen_utf8(notespath, L"wb");
+    REQUIRE(f != nullptr);
+    REQUIRE(std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size());
+    std::fclose(f);
+}
+
 // The chart folders with audio (chart_with_audio, short_chart_with_long_audio)
 // and their helpers live in audio_chart_fixtures.h.
 using audiochart::chart_with_audio;
 using audiochart::copy_file_utf8;
 using audiochart::short_chart_with_long_audio;
 
-// Every field of two timelines, instant by instant.
+// Every field of two timelines, instant by instant: each field TrackInstant
+// and TrackGem declare (render/track_state.h), in their declared order.
 void check_same_track(const hydra::render::TrackState& got,
                       const hydra::render::TrackState& want) {
     const auto& g = got.instants();
@@ -131,12 +198,77 @@ void check_same_track(const hydra::render::TrackState& got,
         }
         CHECK(g[i].overdrive == w[i].overdrive);
         CHECK(g[i].solo == w[i].solo);
+        CHECK(g[i].drum_lane_red == w[i].drum_lane_red);
+        CHECK(g[i].drum_lane_yellow == w[i].drum_lane_yellow);
+        CHECK(g[i].drum_lane_blue == w[i].drum_lane_blue);
+        CHECK(g[i].drum_lane_green == w[i].drum_lane_green);
         CHECK(g[i].fill == w[i].fill);
         CHECK(g[i].fill_taken == w[i].fill_taken);
+        CHECK(g[i].fill_ghost == w[i].fill_ghost);
         CHECK(g[i].sp_active == w[i].sp_active);
         CHECK(g[i].fill_lane == w[i].fill_lane);
         CHECK(g[i].fill_lane_pad == w[i].fill_lane_pad);
         CHECK(g[i].beat == w[i].beat);
+    }
+}
+
+// Every field of two scenes' notes, note by note: each field PreviewNote
+// declares (app/preview_view.h), in its declared order.
+void check_same_notes(const std::vector<hydra::app::PreviewNote>& got,
+                      const std::vector<hydra::app::PreviewNote>& want) {
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < got.size(); ++i) {
+        CAPTURE(i);
+        CHECK(got[i].tick == want[i].tick);
+        CHECK(got[i].ms == want[i].ms);
+        CHECK(got[i].measure == want[i].measure);
+        CHECK(got[i].lane == want[i].lane);
+        CHECK(got[i].cymbal == want[i].cymbal);
+        CHECK(got[i].ghost == want[i].ghost);
+        CHECK(got[i].accent == want[i].accent);
+        CHECK(got[i].double_kick == want[i].double_kick);
+    }
+}
+
+// Every field of two scenes' fills, fill by fill: each field PreviewFill and
+// its PreviewSpan declare (app/preview_view.h), in their declared order.
+void check_same_fills(const std::vector<hydra::app::PreviewFill>& got,
+                      const std::vector<hydra::app::PreviewFill>& want) {
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < got.size(); ++i) {
+        CAPTURE(i);
+        CHECK(got[i].span.start_tick == want[i].span.start_tick);
+        CHECK(got[i].span.end_tick == want[i].span.end_tick);
+        CHECK(got[i].span.start_ms == want[i].span.start_ms);
+        CHECK(got[i].span.end_ms == want[i].span.end_ms);
+        CHECK(got[i].chord_tick == want[i].chord_tick);
+        CHECK(got[i].state == want[i].state);
+    }
+}
+
+// Every field of two scenes' activations, one by one: each field
+// PreviewActivation declares (app/preview_view.h), in its declared order.
+void check_same_activations(const std::vector<hydra::app::PreviewActivation>& got,
+                            const std::vector<hydra::app::PreviewActivation>& want) {
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < got.size(); ++i) {
+        CAPTURE(i);
+        const hydra::app::PreviewActivation& g = got[i];
+        const hydra::app::PreviewActivation& w = want[i];
+        CHECK(g.tick == w.tick);
+        CHECK(g.ms == w.ms);
+        CHECK(g.skipped_fill_ticks == w.skipped_fill_ticks);
+        CHECK(g.taken_fill == w.taken_fill);
+        CHECK(g.has_sp_end == w.has_sp_end);
+        CHECK(g.sp_end_tick == w.sp_end_tick);
+        CHECK(g.sp_end_ms == w.sp_end_ms);
+        CHECK(g.sp_end_changes == w.sp_end_changes);
+        CHECK(g.bank_rise_ticks == w.bank_rise_ticks);
+        CHECK(g.lane == w.lane);
+        CHECK(g.has_lane == w.has_lane);
+        CHECK(g.measure == w.measure);
+        CHECK(g.chord == w.chord);
+        CHECK(g.notation == w.notation);
     }
 }
 
@@ -191,67 +323,79 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
 }
 
 // The beat lines stop where playback stops, at the song's length, even when
-// the music plays on (D266). The chart's audio is the 5 s sine; a beat is 192
-// ticks (100 ms) and a measure 768 ticks (400 ms).
+// the music plays on (D266). The song's length is the stated song_length plus
+// app::kSongEndPadMs (D255). The chart's audio is the 5 s sine. The chart is
+// 600 BPM, so a beat line falls every 100 ms, and each stated length below
+// puts the song's end on one.
+namespace {
+
+// Writes a song.ini stating a `stated_ms` length beside `notes`.
+void state_song_length(const std::string& notes, int stated_ms) {
+    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
+                                "[song]\nsong_length = " + std::to_string(stated_ms) + "\n");
+}
+
+// The song's length for a song.ini stating `stated_ms`: the stated length
+// plus the pad the game adds (app::kSongEndPadMs, D255).
+double song_end_for_stated(int stated_ms) {
+    return static_cast<double>(stated_ms) + hydra::app::kSongEndPadMs;
+}
+
+// Loads `notes` with a song.ini stating `stated_ms`, and checks the beat-line
+// rule on the scene the job hands back. The end is the stated length plus the
+// pad, the same end the analysis saves. No line runs past it. The last line
+// is exactly on it, since the end falls on a beat. The renderer's timeline is
+// built from that same scene.
+void check_beats_end_at_song_length(const std::string& notes, int stated_ms) {
+    state_song_length(notes, stated_ms);
+    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
+                       std::nullopt, 4);
+    job.start();
+    wait_finished(job);
+    REQUIRE(job.ok());
+    PreviewLoadJob::Result r = job.take_result();
+    const double song_end_ms = song_end_for_stated(stated_ms);
+    CHECK(r.scene.song_length_ms == song_end_ms);
+    REQUIRE(r.song_length_ms.has_value());
+    CHECK(*r.song_length_ms == song_end_ms);
+    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == song_end_ms);
+    REQUIRE_FALSE(r.scene.beats.empty());
+    for (const hydra::app::PreviewBeat& b : r.scene.beats) CHECK(b.ms <= r.scene.song_length_ms);
+    CHECK(r.scene.beats.back().ms == doctest::Approx(song_end_ms));
+    check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+}
+
+}  // namespace
+
 TEST_CASE("the Preview load stops the beat lines at the song's length, not the audio's end") {
     SUBCASE("the audio outlasts the song") {
-        const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
-        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                    "[song]\nsong_length = 3000\n");
-        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
-                           std::nullopt, 4);
-        job.start();
-        wait_finished(job);
-        REQUIRE(job.ok());
-        PreviewLoadJob::Result r = job.take_result();
-        // The song's length is the one analysis saves for this chart (D255:
-        // the stated 3 s plus app::kSongEndPadMs), a second before the audio
-        // stops.
-        CHECK(r.scene.song_length_ms == 4000.0);
-        REQUIRE(r.song_length_ms.has_value());
-        CHECK(*r.song_length_ms == 4000.0);
-        CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
-        // The last line is the barline at tick 7680, exactly on the length;
-        // none runs into the last second of music.
-        REQUIRE_FALSE(r.scene.beats.empty());
-        CHECK(r.scene.beats.back().tick == 7680);
-        CHECK(r.scene.beats.back().ms == doctest::Approx(4000.0));
-        for (const hydra::app::PreviewBeat& b : r.scene.beats)
-            CHECK(b.ms <= r.scene.song_length_ms);
-        // The timeline the renderer draws is built from that same scene.
-        check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+        // A stated 3 s ends the song a second before the 5 s sine stops.
+        check_beats_end_at_song_length(short_chart_with_long_audio("prevctl_grid_len"), 3000);
     }
 
     SUBCASE("the song's length and the audio's end agree") {
-        // A stated 4 s plus the pad is 5000 ms, where the sine stops: the grid
-        // ends on tick 9600.
-        const std::string notes = short_chart_with_long_audio("prevctl_grid_agree");
-        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                    "[song]\nsong_length = 4000\n");
-        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
-                           std::nullopt, 4);
-        job.start();
-        wait_finished(job);
-        REQUIRE(job.ok());
-        PreviewLoadJob::Result r = job.take_result();
-        CHECK(r.scene.song_length_ms == 5000.0);
-        REQUIRE_FALSE(r.scene.beats.empty());
-        CHECK(r.scene.beats.back().tick == 9600);
-        CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
+        // A stated 4 s ends the song where the 5 s sine stops.
+        check_beats_end_at_song_length(short_chart_with_long_audio("prevctl_grid_agree"), 4000);
     }
 }
 
 // The same for a path change: the overlay job hands back the timeline built
 // from its own scene with the options it was given. The first job builds the
 // path-free base itself; a second one given that base only lays the overlay
-// over it, and gets the same scene and timeline.
+// over it, and gets the same scene and timeline. The overlay is the one
+// app::build_preview_scene lays for the path: one activation for each of the
+// path's own.
 TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
     const AnalyzedChart a = first_chart_with_a_path();
+    // An overlay with no activation in it could not show the path was laid.
+    REQUIRE_FALSE(a.best.walk_activations().empty());
     PreviewLoadJob load(entry_for(a.chart), {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
     auto song = std::make_shared<const hydra::Song>(load.take_result().song);
+    const hydra::app::PreviewScene want =
+        hydra::app::build_preview_scene(*song, &a.best, 4, hydra::core::default_rules());
     std::shared_ptr<const hydra::ui::PreviewSceneBase> pro_base;
     for (bool pro : {true, false}) {
         CAPTURE(pro);
@@ -265,7 +409,8 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
         REQUIRE(job.ok());
         hydra::ui::PreviewSceneJob::Output out = job.take_output();
         CHECK(out.track_opts == opts);
-        CHECK_FALSE(out.scene.activations.empty());  // the path's overlay is in
+        CHECK(out.scene.activations.size() == a.best.walk_activations().size());
+        check_same_activations(out.scene.activations, want.activations);
         check_same_track(out.track_state, hydra::render::build_track_state(out.scene, opts));
         REQUIRE(out.base != nullptr);
         CHECK(out.base != pro_base);
@@ -281,7 +426,7 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
         REQUIRE(again.ok());
         hydra::ui::PreviewSceneJob::Output out2 = again.take_output();
         CHECK(out2.base == out.base);
-        CHECK(out2.scene.activations.size() == out.scene.activations.size());
+        check_same_activations(out2.scene.activations, out.scene.activations);
         check_same_track(out2.track_state, out.track_state);
     }
 }
@@ -290,18 +435,19 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 // scene and the timeline built from it, for the options and the song length
 // it was given. A scene job that has no base yet builds one the same way, so
 // the beat lines still stop at the song's length after a path change. With
-// no song.ini the length is the last note's end (100 ms) plus
-// app::kSongEndPadMs, 1100 ms: the beat at tick 2112, though the sine plays
-// to 5 s.
+// no song.ini the length is the one app::analysis_song_length works out from
+// the notes, though the sine plays on to 5 s; the last beat line is the one
+// app::build_preview_base draws for that length.
 TEST_CASE("the Preview base job builds the path-free scene and timeline") {
-    PreviewLoadJob load(entry_for(short_chart_with_long_audio()),
-                        {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
+    const std::string notes = short_chart_with_long_audio();
+    PreviewLoadJob load(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
+                        std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
     PreviewLoadJob::Result r = load.take_result();
     REQUIRE(r.song_length_ms.has_value());
-    CHECK(*r.song_length_ms == doctest::Approx(1100.0));
+    CHECK(*r.song_length_ms == hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms);
     auto song = std::make_shared<const hydra::Song>(std::move(r.song));
     for (bool pro : {true, false}) {
         CAPTURE(pro);
@@ -315,12 +461,15 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
         CHECK(base->track_opts == opts);
         const hydra::app::PreviewScene want =
             hydra::app::build_preview_base(*song, r.song_length_ms);
-        CHECK(base->scene.notes.size() == want.notes.size());
-        CHECK(base->scene.fills.size() == want.fills.size());
+        check_same_notes(base->scene.notes, want.notes);
+        check_same_fills(base->scene.fills, want.fills);
         CHECK(base->scene.activations.empty());
         CHECK(base->scene.sp_meter.segments.empty());
+        REQUIRE_FALSE(want.beats.empty());
+        const int64_t last_beat_tick = want.beats.back().tick;
+        CHECK(want.beats.back().ms <= *r.song_length_ms);  // no line past the song's end
         REQUIRE_FALSE(base->scene.beats.empty());
-        CHECK(base->scene.beats.back().tick == 2112);
+        CHECK(base->scene.beats.back().tick == last_beat_tick);
         check_same_track(base->track_state, hydra::render::build_track_state(want, opts));
 
         hydra::ui::PreviewSceneJob scene_job(song, nullptr, std::nullopt, 4,
@@ -332,20 +481,49 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
         const hydra::ui::PreviewSceneJob::Output out = scene_job.take_output();
         REQUIRE(out.base != nullptr);
         REQUIRE_FALSE(out.base->scene.beats.empty());
-        CHECK(out.base->scene.beats.back().tick == 2112);
+        CHECK(out.base->scene.beats.back().tick == last_beat_tick);
         REQUIRE_FALSE(out.scene.beats.empty());
-        CHECK(out.scene.beats.back().tick == 2112);
+        CHECK(out.scene.beats.back().tick == last_beat_tick);
     }
 }
 
 // The Preview's view settings become highway options in one place
-// (finding R7.16), and the jobs compare the options whole.
-TEST_CASE("track_options: one builder, compared whole") {
+// (finding R7.16). What the Pro Drums option does to the highway: with it on
+// the scene's cymbals draw as cymbals, and with it off every pad draws as a
+// tom, so the timeline holds no cymbal and loses no gem. The corpus's Deftones
+// chart marks cymbals on its Expert drums (N 66 to 68 in its notes.chart).
+TEST_CASE("track_options: Pro Drums off draws every pad as a tom") {
     using hydra::ui::track_options;
-    CHECK(track_options(true) == track_options(true));
-    CHECK(track_options(true) != track_options(false));
-    CHECK(track_options(true).pro);
-    CHECK_FALSE(track_options(false).pro);
+    const std::string chart = corpus::chart_named("Deftones - My Own Summer");
+    REQUIRE_FALSE(chart.empty());
+    PreviewLoadJob job(entry_for(chart), {Difficulty::Expert, true, true}, kTestFillRule,
+                       std::nullopt, 4);
+    job.start();
+    wait_finished(job);
+    REQUIRE(job.ok());
+    PreviewLoadJob::Result r = job.take_result();
+    bool scene_has_cymbal = false;
+    for (const hydra::app::PreviewNote& n : r.scene.notes)
+        if (n.cymbal) scene_has_cymbal = true;
+    REQUIRE(scene_has_cymbal);
+
+    // {gems, cymbal gems} on the timeline built with Pro Drums `pro`.
+    const auto gems_and_cymbals = [&r](bool pro) {
+        const hydra::render::TrackState track =
+            hydra::render::build_track_state(r.scene, track_options(pro));
+        std::pair<size_t, size_t> counts{0, 0};
+        for (const hydra::render::TrackInstant& inst : track.instants())
+            for (const hydra::render::TrackGem& g : inst.notes) {
+                ++counts.first;
+                if (g.cymbal) ++counts.second;
+            }
+        return counts;
+    };
+    const std::pair<size_t, size_t> pro = gems_and_cymbals(true);
+    const std::pair<size_t, size_t> toms = gems_and_cymbals(false);
+    CHECK(pro.second > 0);
+    CHECK(toms.second == 0);
+    CHECK(toms.first == pro.first);
 }
 
 // Closing the details window joins the load's thread on the UI thread. A
@@ -356,13 +534,15 @@ TEST_CASE("a cancelled Preview load stops before decoding") {
     job.cancel();  // the window closed before the worker got going
     job.start();
     wait_finished(job);
-    CHECK_FALSE(job.ok());
-    CHECK(job.error() == "cancelled");
+    CHECK(job.outcome() == hydra::ui::JobOutcome::Cancelled);
+    CHECK(job.message().empty());  // a cancel is the user's own click: no message
     CHECK(job.progress().step == PreviewLoadJob::Step::Reading);
 }
 
-// The click's job counts the Dynamics too (D87 item 1); a cancel before it
-// got going stops it before any parse.
+// The click's job analyzes the chart, counts its Dynamics and saves the
+// record (ViewJob::run); a cancel before it got going stops it before any of
+// the three: no analysis, no count, no search progress and nothing in the
+// store.
 TEST_CASE("a cancelled click job stops before counting") {
     const hydra::store::ChartLibraryEntry entry =
         entry_for(corpus::first_chart_with_suffix(".chart"));
@@ -370,67 +550,20 @@ TEST_CASE("a cancelled click job stops before counting") {
     // Before the job, which writes to it on its thread and must not outlive it.
     const hydra::test::StoreFile file("preview_cancelled_click_job");
     hydra::store::RecordStore store(file.path);
+    REQUIRE(store.record_count() == 0);
     ViewJob job(entry, settings.profile(), settings.to_analysis_settings(),
                 /*analysis_off=*/false, /*generation=*/0, store);
     job.cancel();
     job.start();
     wait_finished(job);
     CHECK_FALSE(job.ok());
-    CHECK(job.is_cancelled());
-}
-
-// No output device is a warning, not a failure: the chart loads, the clock
-// plays, and only the sound is missing.
-TEST_CASE("with no audio device the Preview still loads, muted, with a warning") {
-    PreviewController pc(nullptr, nullptr);
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("PreviewAudioDevice: ma_device_init failed");
-        });
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
-    wait_loaded(pc);
-
-    CHECK(pc.has_audio());        // the stem decoded; only the device failed
-    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
-    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_init failed");
-    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
-    pc.play();
-    CHECK(pc.playing());          // the clock runs without a device
-
-    pc.close();
-    CHECK(pc.audio_warning().empty());
-}
-
-// A device that opens but won't start takes the same path as one that won't
-// open (D109): the chart loads, the clock plays, the device is let go and
-// the warning names the step that failed.
-TEST_CASE("with an audio device that won't start the Preview still loads, muted, with a warning") {
-    // A headless device (nothing real opens) whose start() is forced to
-    // fail; the guard puts both switches back when the case ends.
-    struct SwitchRestore {
-        bool headless;
-        bool start_fails;
-        ~SwitchRestore() {
-            hydra::audio::set_start_fails(start_fails);
-            hydra::audio::set_headless(headless);
-        }
-    } restore{hydra::audio::set_headless(true), hydra::audio::set_start_fails(true)};
-
-    PreviewController pc(nullptr, nullptr);
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
-    wait_loaded(pc);
-
-    CHECK(pc.has_audio());        // the stem decoded; only the device failed
-    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
-    CHECK_FALSE(pc.has_audio_device());
-    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_start failed");
-    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
-    pc.play();
-    CHECK(pc.playing());          // the clock runs without a device
-
-    pc.close();
-    CHECK(pc.audio_warning().empty());
+    CHECK(job.progress() < 0.0f);  // the search never reported a tick
+    hydra::ui::ViewOutcome out = job.take_outcome();
+    CHECK_FALSE(out.analysis.has_value());
+    CHECK_FALSE(out.dynamics.has_value());
+    CHECK_FALSE(out.wrote_hash);
+    CHECK_FALSE(out.wrote_save);
+    CHECK(store.record_count() == 0);
 }
 
 // The Preview's look is the renderer's 3d-config.json and nothing else
@@ -442,26 +575,28 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
 }
 
 // Finding 193: a missing Preview file reads its kind's sentence, the one D51
-// call 25 chose, and the raw text stays for the details line.
-TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
-    const ScopedPathOverrides no_assets([](hydra::app::PathOverrides& o) {
-        o.asset_dir = testtemp::temp_path("no_preview_assets", "");
-    });
+// call 25 chose, and the raw text stays for the details line. The sentence is
+// the one app::plain_error gives every PreviewAssets error; the detail names
+// the asset folder the renderer looked in, here one that does not exist.
+TEST_CASE("a Preview asset failure reads its kind's sentence, with the raw text as its detail") {
+    const std::string missing_dir = testtemp::temp_path("no_preview_assets", "");
+    const ScopedPathOverrides no_assets(
+        [&missing_dir](hydra::app::PathOverrides& o) { o.asset_dir = missing_dir; });
     PreviewController pc(nullptr, nullptr);
     CHECK(pc.render(64, 64) == nullptr);
     CHECK(pc.error() ==
-          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
-    CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
+          hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::PreviewAssets, "")));
+    CHECK(pc.error_detail().find(missing_dir) != std::string::npos);
+    CHECK(pc.error_detail() != pc.error());
 }
 
 namespace {
 
-// short_chart_with_long_audio's chart (last note at 100 ms, the sine runs
-// 5 s) with a song.ini stating a 3 s length.
-std::string long_audio_chart_stating_3s(const std::string& tag) {
+// short_chart_with_long_audio's chart (the sine runs 5 s) with a song.ini
+// stating a `stated_ms` length.
+std::string long_audio_chart_stating(const std::string& tag, int stated_ms) {
     const std::string notes = short_chart_with_long_audio(tag);
-    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                "[song]\nsong_length = 3000\n");
+    state_song_length(notes, stated_ms);
     return notes;
 }
 
@@ -500,52 +635,63 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
     CHECK(pc.render(64, 64) != nullptr);
 }
 
-// The scrubber ends at the song's length (D255), here the 3 s song.ini
-// states plus app::kSongEndPadMs, not the audio's 5 s end. The slider's range
-// is playback_end_ms(), so a drag to its right end seeks there, and the thumb
-// follows the playhead.
+// The scrubber ends at the song's length (D255): the length the song.ini
+// states plus app::kSongEndPadMs, here short of the audio's 5 s end. The
+// slider's range is playback_end_ms(), so a drag to its right end seeks
+// there, and the thumb follows the playhead.
 TEST_CASE("scrub marks: the Preview's scrubber ends at the song's length") {
+    const int stated_ms = 3000;  // ends the song before the 5 s sine stops
+    const double song_end_ms = song_end_for_stated(stated_ms);
     PreviewController pc(nullptr, nullptr);
-    open_and_load(pc, long_audio_chart_stating_3s("prevctl_scrub_len"));
+    open_and_load(pc, long_audio_chart_stating("prevctl_scrub_len", stated_ms));
 
-    CHECK(pc.playback_end_ms() == doctest::Approx(4000.0));  // the slider's right end
-    pc.seek_ms(pc.playback_end_ms());                         // a drag to that end
-    CHECK(pc.position_ms() == doctest::Approx(4000.0));
+    CHECK(pc.playback_end_ms() == doctest::Approx(song_end_ms));  // the slider's right end
+    pc.seek_ms(pc.playback_end_ms());                              // a drag to that end
+    CHECK(pc.position_ms() == doctest::Approx(song_end_ms));
 
-    pc.seek_ms(2100.0);  // in the tail after the last note
+    // Halfway between the last note and the end: in the tail, where the
+    // thumb still follows the playhead.
+    const double in_tail = (hydra::app::last_note_ms(pc.scene()) + song_end_ms) / 2.0;
+    REQUIRE(in_tail > hydra::app::last_note_ms(pc.scene()));
+    pc.seek_ms(in_tail);
     CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.playback_end_ms()) ==
-          doctest::Approx(2100.0));
+          doctest::Approx(in_tail));
 }
 
-// A song.ini stating 9 s over 5 s of audio and a last note at 100 ms: the
-// song's length (10 s with app::kSongEndPadMs) runs past the audio, and
-// playback and the scrubber both end there (D255, the user's answer 5).
+// A song.ini stating a length past the 5 s of audio: the song's length (the
+// stated length plus app::kSongEndPadMs) runs past the audio, and playback
+// and the scrubber both end there (D255, the user's answer 5).
 TEST_CASE("scrub marks: a stated length past the audio ends playback and the scrubber there") {
+    const int stated_ms = 9000;  // past the 5 s sine's end
     PreviewController pc(nullptr, nullptr);
-    const std::string notes = short_chart_with_long_audio("prevctl_scrub_past");
-    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                "[song]\nsong_length = 9000\n");
-    open_and_load(pc, notes);
+    open_and_load(pc, long_audio_chart_stating("prevctl_scrub_past", stated_ms));
 
-    CHECK(pc.playback_end_ms() == doctest::Approx(10000.0));
+    CHECK(pc.playback_end_ms() == doctest::Approx(song_end_for_stated(stated_ms)));
     pc.seek_ms(pc.playback_end_ms());
     CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.playback_end_ms()) ==
           doctest::Approx(pc.playback_end_ms()));
 }
 
 // One end for the whole Preview (D255, the user's answer 5): the song's
-// length, 4 s (3 s stated plus app::kSongEndPadMs), though the sine runs 5 s.
-// Playback, a jump past the end, the time box's total and the scrubber's edge
-// all stop there.
+// length (the stated length plus app::kSongEndPadMs), though the sine runs
+// on. Playback, a jump past the end, the time box's total and the scrubber's
+// edge all stop there. The time box's total is the one app::build_time_box
+// writes for that length.
 TEST_CASE("the Preview's playback, time box and scrubber all end at the song's length") {
+    const int stated_ms = 3000;  // ends the song before the 5 s sine stops
+    const double song_end_ms = song_end_for_stated(stated_ms);
     PreviewController pc(nullptr, nullptr);
-    open_and_load(pc, long_audio_chart_stating_3s("prevctl_jump_len"));
+    open_and_load(pc, long_audio_chart_stating("prevctl_jump_len", stated_ms));
 
-    CHECK(pc.playback_end_ms() == doctest::Approx(4000.0));
-    const std::string stamp = pc.time_box().timestamp;
-    CHECK(stamp.substr(stamp.find(" / ")) == " / 0:04.000");
-    pc.jump_ms(60000.0);
-    CHECK(pc.position_ms() == doctest::Approx(4000.0));
+    CHECK(pc.playback_end_ms() == doctest::Approx(song_end_ms));
+    // The part after the playhead's clock: where playback ends.
+    const auto total = [](const std::string& stamp) { return stamp.substr(stamp.rfind(" / ")); };
+    const std::string want =
+        hydra::app::build_time_box(hydra::app::PreviewScene{}, 0.0, song_end_ms).timestamp;
+    CHECK(total(pc.time_box().timestamp) == total(want));
+    // A jump far past any end the song could have.
+    pc.jump_ms(song_end_ms + 60000.0);
+    CHECK(pc.position_ms() == doctest::Approx(song_end_ms));
 }
 
 // Picking another path with the Preview open stays off the UI thread: the new
@@ -614,15 +760,15 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
 
 // A ghost path set on an open chart lands on a later poll as the scene's
 // ghost_fills, beside the drawn path, which stays drawn; clearing it brings
-// back the overlay built with no ghost. The chart and its best path are the
-// ones test_preview_scene.cpp pinned the ghost list on.
+// back the overlay built with no ghost. The ghost here is the drawn path
+// itself, so its fills are the ones the drawn path's activations stand on
+// (PreviewActivation::taken_fill): apply_preview_overlay names both by one
+// rule.
 TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it empties them") {
     using namespace hydra;
     using namespace hydra::app;
-    const Path& ghost = corpus::analyzed_by_ten_scores().record.best_path();
     const AnalyzedChart found = first_chart_with_a_path();
-    // The same best path, so this is the pinned chart.
-    REQUIRE(path_identity(found.best) == path_identity(ghost));
+    const Path& ghost = found.best;
     const std::string best_key = path_overlay_key(&found.best);
 
     PreviewController pc(nullptr, nullptr);
@@ -635,6 +781,12 @@ TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it 
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.scene().ghost_fills.empty());
     const std::string no_ghost = pc.overlay_path_key();
+    // The fills the path's activations stand on, in activation order.
+    std::vector<size_t> taken;
+    for (const PreviewActivation& a : pc.scene().activations)
+        if (a.taken_fill) taken.push_back(*a.taken_fill);
+    // A ghost that stands on no fill would leave ghost_fills empty either way.
+    REQUIRE_FALSE(taken.empty());
 
     // No ghost to clear: nothing builds.
     pc.set_ghost_path(nullptr);
@@ -645,7 +797,7 @@ TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it 
     CHECK(pc.overlay_path_key() == no_ghost);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
-    CHECK(pc.scene().ghost_fills == std::vector<size_t>{2, 7});
+    CHECK(pc.scene().ghost_fills == taken);
     CHECK(pc.overlay_path_key() != no_ghost);
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.scene().activations.empty());
@@ -683,8 +835,10 @@ TEST_CASE("set_ghost_path: a changed chart draws no ghost, as it draws no path")
 
     for (const bool changed : {true, false}) {
         CAPTURE(changed);
-        ChartLibraryEntry entry = entry_for(found.chart);
-        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        const std::string chart = copy_chart_folder(
+            found.chart, changed ? "prevctl_ghost_edited" : "prevctl_ghost_same");
+        const ChartLibraryEntry entry = listed_entry(chart);
+        if (changed) edit_chart_file(chart);
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &found.best, best_key, 4);
@@ -823,11 +977,38 @@ TEST_CASE("a mode with no notes pauses the Preview in place; switching back clea
     CHECK(device_calls == 1);
 }
 
-// Two mode changes in a row: the second one's notes are the ones drawn, and
-// the first one's never land. Each mode marks a different number of Star
-// Power phrases (Expert none, Hard one, Medium two), so the SP gauge's
-// readout at the song's end says whose notes are drawn. The song's length is
-// the same in every mode (app::song_length_ms reads every section).
+namespace {
+
+// What the Preview draws for one mode of a chart: its notes, and the SP
+// gauge's readout with the playhead at the song's end.
+struct ModeDrawn {
+    std::vector<hydra::app::PreviewNote> notes;
+    std::string readout;
+};
+
+// What `pc` draws now, once every thread is done, with the playhead moved to
+// the song's end.
+ModeDrawn drawn_at_end(PreviewController& pc) {
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    pc.seek_ms(pc.playback_end_ms());
+    return {pc.scene().notes, pc.sp_meter_readout()};
+}
+
+// What a fresh Preview draws for `entry` opened in `difficulty` alone.
+ModeDrawn drawn_alone(const ChartLibraryEntry& entry, Difficulty difficulty) {
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry, {difficulty, true, false}, kTestFillRule, nullptr, "", 4);
+    return drawn_at_end(pc);
+}
+
+}  // namespace
+
+// Two mode changes in a row: the second one's notes are the ones drawn, not
+// the first one's. Hard and Medium mark a different number of Star Power
+// phrases, so their notes and the SP gauge's readout at the song's end tell
+// them apart. What each draws is what a Preview opened in that mode alone
+// draws.
 TEST_CASE("a second mode change during a notes reload wins") {
     const std::string dir = testtemp::temp_dir("prevctl_twomodes");
     using namespace testchart;
@@ -840,37 +1021,29 @@ TEST_CASE("a second mode change during a notes reload wins") {
                                                   line(2880, "N 1 0") + line(2880, "S 2 1")),
                    192, "", line(0, "TS 4") + line(0, "B 600000")));
     const ChartLibraryEntry entry = entry_for(dir + "\\notes.chart");
+    const ModeDrawn hard = drawn_alone(entry, Difficulty::Hard);
+    const ModeDrawn medium = drawn_alone(entry, Difficulty::Medium);
+    // The readout tells the two modes apart.
+    REQUIRE(hard.readout != medium.readout);
 
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "", 4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
-    pc.seek_ms(pc.playback_end_ms());
-    const std::string expert = pc.sp_meter_readout();
 
-    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "",4);
-    pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "",4);
-    std::vector<std::string> seen;
-    wait_until(
-        [&] {
-            if (!pc.busy()) return true;
-            pc.poll();
-            seen.push_back(pc.sp_meter_readout());
-            return false;
-        },
-        "every Preview thread to finish");
-    CHECK_FALSE(pc.has_error());
-    const std::string medium = pc.sp_meter_readout();
-    INFO("Expert " << expert << ", Medium " << medium);
-    CHECK(expert == "0.0/4");
-    CHECK(medium == "2.0/4");
-    for (const std::string& s : seen) CHECK((s == expert || s == medium));  // Hard's never lands
+    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "", 4);
+    const ModeDrawn last = drawn_at_end(pc);
+    check_same_notes(last.notes, medium.notes);
+    CHECK(last.readout == medium.readout);
+    CHECK(last.readout != hard.readout);
 }
 
 // An edited chart that was not rescanned must not draw its record's path on
-// the new notes (finding 126). The load hashes the file the way the scan
-// does; a hash that is not the record's hides the path, and the panel says
-// so (D51 call 18).
+// the new notes (finding 126). The row is the scan's, and the file is edited
+// after it: the fingerprint no longer matches, so the load hashes the file
+// the way the scan does. A hash that is not the record's hides the path, and
+// the panel says so (D51 call 18).
 TEST_CASE("the Preview hides the path when the chart file changed since its record") {
     using namespace hydra;
     using namespace hydra::app;
@@ -881,8 +1054,10 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 
     for (const bool changed : {true, false}) {
         CAPTURE(changed);
-        ChartLibraryEntry entry = entry_for(chart);
-        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        const std::string copy =
+            copy_chart_folder(chart, changed ? "prevctl_hide_edited" : "prevctl_hide_same");
+        const ChartLibraryEntry entry = listed_entry(copy);
+        if (changed) edit_chart_file(copy);
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,4);
@@ -956,39 +1131,83 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
 }
 
 // The Preview's volume is the setting's: its default and its range
-// come from app::Settings, the owner (finding 72).
+// come from app::Settings, the owner (finding 72). The range's ends are read
+// the way the panel's slider reads them: the owner's clamp of the lowest and
+// highest int.
 TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
+    using hydra::app::Settings;
+    const int lowest = Settings::clamp(&Settings::preview_volume, INT_MIN);
+    const int highest = Settings::clamp(&Settings::preview_volume, INT_MAX);
+    REQUIRE(lowest < highest);
     PreviewController pc(nullptr, nullptr);
-    CHECK(pc.volume_percent() == hydra::app::Settings{}.preview_volume);
-    pc.set_volume(150);
-    CHECK(pc.volume_percent() == 100);
-    pc.set_volume(-5);
-    CHECK(pc.volume_percent() == 0);
+    CHECK(pc.volume_percent() == Settings{}.preview_volume);
+    pc.set_volume(highest + 1);
+    CHECK(pc.volume_percent() == highest);
+    pc.set_volume(lowest - 1);
+    CHECK(pc.volume_percent() == lowest);
+    pc.set_volume(highest);
+    CHECK(pc.volume_percent() == highest);
 }
 
-TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
-    using hydra::ui::PreviewSongKey;
-    const PreviewSongKey key{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
-                             kTestFillRule};
-    const PreviewSongKey same{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
-                              kTestFillRule};
-    CHECK(key == same);
-    CHECK_FALSE(key != same);
+// What the Preview calls the same song (PreviewSongKey) is seen in what
+// open() does: the same song again is a no-op, another reading or fill rule
+// of the same chart reloads its notes, and another chart is a fresh load.
+// Each part of the key is changed alone.
+TEST_CASE("the Preview's song key: every part changed alone makes a different song") {
+    using hydra::ChartReading;
+    using hydra::FillDeadlineRule;
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(no_device_factory());
+    const ChartLibraryEntry entry = entry_for(expert_and_hard_chart_with_audio("prevctl_key"));
+    const ChartReading reading{Difficulty::Expert, true, false, false};
+    pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
 
-    PreviewSongKey hard = key;
-    hard.reading.difficulty = Difficulty::Hard;
-    CHECK(key != hard);
-    CHECK_FALSE(key == hard);
+    // The same song: nothing reloads.
+    pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+    CHECK_FALSE(pc.busy());
 
-    PreviewSongKey plain = key;
-    plain.reading.prodrums = false;
-    CHECK(key != plain);
-    CHECK_FALSE(key == plain);
+    struct Part {
+        std::string what;
+        ChartReading reading;
+        FillDeadlineRule fills;
+    };
+    ChartReading hard = reading;
+    hard.difficulty = Difficulty::Hard;
+    ChartReading plain = reading;
+    plain.prodrums = !reading.prodrums;
+    ChartReading bass = reading;
+    bass.bass2x = !reading.bass2x;
+    ChartReading shuffled = reading;
+    shuffled.noteshuffle = !reading.noteshuffle;
+    const FillDeadlineRule other_fills = fill_rule_for(true);
+    REQUIRE(other_fills != kTestFillRule);
+    const Part parts[] = {
+        {"difficulty", hard, kTestFillRule},   {"Pro Drums", plain, kTestFillRule},
+        {"2x Bass", bass, kTestFillRule},      {"Note Shuffle", shuffled, kTestFillRule},
+        {"fill rule", reading, other_fills},
+    };
+    for (const Part& p : parts) {
+        CAPTURE(p.what);
+        pc.open(entry, p.reading, p.fills, nullptr, "", 4);
+        CHECK_FALSE(pc.loading());  // the same chart: only its notes reload
+        CHECK(pc.busy());
+        settle(pc);
+        REQUIRE_FALSE(pc.has_error());
+        // Back to the first song for the next part.
+        pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+        settle(pc);
+        REQUIRE_FALSE(pc.has_error());
+    }
 
-    PreviewSongKey bass = key;
-    bass.reading.bass2x = true;
-    CHECK(key != bass);
-    CHECK_FALSE(key == bass);
+    // Another chart, so another md5: a fresh load from the start.
+    const ChartLibraryEntry other = entry_for(short_chart_with_long_audio("prevctl_key_other"));
+    REQUIRE(other.md5 != entry.md5);
+    pc.open(other, reading, kTestFillRule, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle(pc);
+    CHECK_FALSE(pc.has_error());
 }
 
 // The Preview tab builds its key's fill rule from the "1.0 fills" setting
@@ -1003,5 +1222,5 @@ TEST_CASE("the Preview's song key: the 1.0 fills setting makes a different song"
     const PreviewSongKey on{"prevctl", s.reading(), fill_rule_for(s.legacy_fills)};
     CHECK(off.reading == on.reading);
     CHECK(off != on);
-    CHECK(on.fills == FillDeadlineRule::Ch10);
+    CHECK(off.fills != on.fills);  // the keys differ in their fill rule alone
 }

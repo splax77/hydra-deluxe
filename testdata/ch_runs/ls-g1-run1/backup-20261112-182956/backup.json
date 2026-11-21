@@ -1,0 +1,43 @@
+{
+ "files": [
+  {
+   "name": "settings.ini",
+   "source": "C:\\Users\\Patrick\\Documents\\Clone Hero\\settings.ini",
+   "existed": true
+  },
+  {
+   "name": "scorestats.json",
+   "source": "C:\\Users\\Patrick\\Documents\\Clone Hero\\scorestats.json",
+   "existed": true
+  },
+  {
+   "name": "profiles.ini",
+   "source": "C:\\Users\\Patrick\\Documents\\Clone Hero\\profiles.ini",
+   "existed": false
+  },
+  {
+   "name": "profiles.bin",
+   "source": "C:\\Users\\Patrick\\Documents\\Clone Hero\\profiles.bin",
+   "existed": false
+  },
+  {
+   "name": "scoredata.bin",
+   "source": "C:\\Users\\Patrick\\AppData\\LocalLow\\srylain Inc_\\Clone Hero\\scoredata.bin",
+   "existed": true
+  },
+  {
+   "name": "scoresext.bin",
+   "source": "C:\\Users\\Patrick\\AppData\\LocalLow\\srylain Inc_\\Clone Hero\\scoresext.bin",
+   "existed": true
+  },
+  {
+   "name": "user.bin",
+   "source": "C:\\Users\\Patrick\\AppData\\LocalLow\\srylain Inc_\\Clone Hero\\user.bin",
+   "existed": true
+  },
+  {
+   "name": "rewired.reg",
+   "key": "HKCU\\Software\\srylain Inc.\\Clone Hero"
+  }
+ ]
+}

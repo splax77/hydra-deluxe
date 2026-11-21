@@ -18,7 +18,7 @@ Only what outsiders read, and plans, get a review from a fresh agent, and each d
 
 Text goes to GitHub only through `C:\Users\Patrick\.claude\gates\publish.ps1`. It takes the kind of post (`pr`, `release`, `release-edit`, `issue`, `issue-comment` or `pr-comment`) and a body file, checks the text the way the gate does, and runs `gh` itself only when the check passes. Once the new settings are live, they refuse the posting `gh` commands typed by hand.
 
-A document is reviewed as a committed file on a branch, the same way code is. That covers public pages, release notes, plans and Artifact pages alike. Commit the document on its own branch, then dispatch a reviewer as "For the orchestrator" in `docs/agents/derive-once-review.md` says, with this page added and the document's sources listed. The brief names the branch tip and the range, and no key for the document. The reviewer ends with the same one `SIGN-OFF:` line. When it stops, the hook fingerprints the document at the new tip, so nobody computes or types a key for it. A text that was never committed in a reviewed range has no record and is refused. A body file for a GitHub post that was edited after the review is refused too, because a post passes only as the exact text signed off; commit the edit and review it. How it all works is in `C:\Users\Patrick\.claude\gates\README.md`; that page and the gates code win over the older design notes in `docs/superpowers/plans/2026-10-08-doc-review-gate.md` (removed; `git show ec91f8d1:docs/superpowers/plans/2026-10-08-doc-review-gate.md`). Only the user can skip a review, by typing `waive doc-review <key>` in chat.
+A document is reviewed as a committed file on a branch, the same way code is. That covers public pages, release notes, plans and Artifact pages alike. Commit the document on its own branch, then dispatch a reviewer as "For the orchestrator" in `docs/agents/derive-once-review.md` says, with this page added and the document's sources listed. The brief names the branch tip and the range on its `Review range:` line and the worktree on its `Review repo:` line, and no key for the document. The reviewer ends with the same `STAMP:` line as a code review, naming the commit it signs. When it stops, the hook fingerprints the document at that commit, so nobody computes or types a key for it. A text that was never committed in a reviewed range has no record and is refused. A body file for a GitHub post that was edited after the review is refused too, because a post passes only as the exact text signed off; commit the edit and review it. How it all works is in `C:\Users\Patrick\.claude\gates\README.md`; that page and the gates code win over the older design notes in `docs/superpowers/plans/2026-10-08-doc-review-gate.md` (removed; `git show ec91f8d1:docs/superpowers/plans/2026-10-08-doc-review-gate.md`). Only the user can skip a review, by typing `waive doc-review <key>` in chat.
 
 ## Why a fresh agent
 
@@ -26,9 +26,9 @@ AI-written documents keep shipping four kinds of failure that a reader cannot se
 
 ## What you get
 
-Every document you review is a committed file on a branch: a public page, a release note, a plan or an Artifact page alike. The agent that dispatched you gives you four things. The **key** is the 40-character hash of the branch's tip, and the **range** is `main...<key>`. The **documents** are every markdown file the range changes, read at the branch's tip in its worktree; list them with `git diff --name-only main...<key>`. The **sources** list what the author worked from, one source per line with a few words on what each supports. Last, the dispatch names the author: an agent id, or the main session.
+Every document you review is a committed file on a branch: a public page, a release note, a plan or an Artifact page alike. The agent that dispatched you gives you four things. The **key** is the 40-character hash of the branch's tip, and the **range** is the one on your brief's `Review range:` line, in the form `<start>...<key>`; it is usually `main...<key>`. The **documents** are every markdown file or HTML page the range changes, read at the branch's tip in the worktree on your brief's `Review repo:` line; list them with `git diff --name-only <start>...<key>`. No hook reads these two lines; they tell you what to review, and your stamp line tells the hook what you signed (see "Output"). The **sources** list what the author worked from, one source per line with a few words on what each supports. Last, the dispatch names the author: an agent id, or the main session.
 
-You never compute or check a key for a document. When you stop, a hook reads each changed document at the branch's new tip and records your verdict against that exact text.
+You never compute or check a key for a document. When you stop, a hook reads each changed document at the commit your stamp line names and records your verdict against that exact text.
 
 Until your review is written down, in a file in your scratchpad, you are read-only; then you fix the text yourself (see "Review, fix, sign off"). Never do the publish step yourself; the author does that with your final text.
 
@@ -88,22 +88,22 @@ A wrong claim counts worse than a gap the document flags honestly [S8]. A senten
 
 ## Review, fix, sign off
 
-The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a document gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the change also holds code, you review the code too, with `docs/agents/derive-once-review.md`. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count.
+The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a document gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the change also holds code, you review the code too, with `docs/agents/derive-once-review.md`. No agent is woken up again after its turn ends, with one exception. If your hand-back has no stamp line, or the hook refuses a stamp line you wrote, the main session sends you one message asking for the line, and you hand back a new report that holds it. That is not a second review: you read, check and fix nothing more. It does not restart your time either: the progress hook counts an agent's 30 minutes from its first call and never restarts the count, and your hand-back passes it even after your time is up.
 
 1. **Review** the document as this page describes, and write your review to a file in your scratchpad.
 2. **If there are no findings,** sign off (see "Output") and report. You are done.
-3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the file in the branch's worktree and commit your fix on the same branch, with the preamble's trailers and your own agent id in `Agent:`. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
-4. **Sign off.** Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the sign-off line (see "Output").
+3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the file in the branch's worktree and commit your fix on the same branch, with the preamble's trailers and your own agent id in `Agent:`. Your stamp line names your last commit there, so a fix committed anywhere else is not part of what you sign. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
+4. **Sign off.** Under each finding in your review, say how you fixed it and in which commit. Then report, ending with your stamp line (see "Output").
 
-**A finding you should not fix yourself.** Some fixes need the user: a new number, a change to what the user sees or what is stored, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user and sign off CLEAN on the rest. The main session passes your Notes to the user. It does not hold the publish for them.
+**A finding you should not fix yourself.** Some fixes need the user: a new number, a change to what the user sees or what is stored, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user and end with your stamp line as usual. The main session passes your Notes to the user. It does not hold the publish for them.
 
 **If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit what you have fixed and sign off as step 4 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the publish does not wait for it (D107 item 5).
 
-Your sign-off is recorded for each document's text at the branch's new tip, and for its repo path. From then on that document passes the gate, and later edits to it pass with no new review. Two exceptions: the marker file `.doc-review-gate`, where every change needs its own review, and text posted to GitHub with `publish.ps1`, which passes only as the exact text you signed off.
+Your sign-off is recorded for each document's text at the commit your stamp line names, and for its repo path. From then on that document passes the gate, and later edits to it pass with no new review. Two exceptions: the marker file `.doc-review-gate`, where every change needs its own review, and text posted to GitHub with `publish.ps1`, which passes only as the exact text you signed off.
 
 ## Output
 
-Your final report is the review. Hand it back once, at step 2 or step 4 of "Review, fix, sign off", with the `SubagentHandback` tool when you have it, or as your last message when you do not. A hook reads it when you stop and records your verdict. Nothing else submits it: there is no helper to run and no separate file to hand in.
+Your final report is the review. Hand it back once, at step 2 or step 4 of "Review, fix, sign off", with the `SubagentHandback` tool when you have it, or as your last message when you do not. The one time you hand back again is when the main session asks you for a missing or refused stamp line (see "Review, fix, sign off"). A hook reads your report when you stop and records what your stamp line names. Nothing else submits it: there is no helper to run and no separate file to hand in.
 
 Open the report with the branch tip you leave behind (the key you were given if you committed nothing, else your last commit), the documents you reviewed, one plain sentence per finding saying how you fixed it, and any questions for the user from your Notes. Then, in plain English, one short paragraph each:
 
@@ -114,12 +114,14 @@ Open the report with the branch tip you leave behind (the key you were given if 
 - **Notes**: things worth fixing that do not block, including any question for the user.
 - **Where I looked**: the files, folders, commits and pages you read, and what you could not check and why.
 
-End the report with one line, on its own:
+End the report with one stamp line for each repo you sign, each whole on its own line:
 
 ```
-SIGN-OFF: CLEAN
+STAMP: <start>...<commit> in <folder>
 ```
 
-Write `SIGN-OFF: BLOCKED` instead only when a finding stays that you could not fix and that must hold the merge or the publish; say why above. Write no hash, key or path with it. The hook reads nothing else in your report. When you also review the range's code, the same one line signs the code and every document, as `docs/agents/derive-once-review.md` says.
+The commit is the full 40-character hash of your last commit in that repo, or of the key you were given when you fixed nothing there. The start is the start on your brief's `Review range:` line, usually `main`, and the folder is the folder on its `Review repo:` line. "Output" in `docs/agents/derive-once-review.md` is the one full account of the line and what the hook does with it. The hook reads nothing else in your report. When you also review the range's code, the same line signs the code and every document, as that page says.
 
-A report with no sign-off line is recorded CLEAN, because a reviewer that finished has signed off what it fixed, and the main session is told the line was missing. Only `SIGN-OFF: BLOCKED` holds the merge or the publish.
+A report with no stamp line records nothing, and the merge or the publish stays refused. The main session is told, and it asks you, the same reviewer, to hand back again with the line. That is not a second review. A stamp line the hook refuses is handled the same way: nothing is recorded for that line, the main session is told which line failed and why, and it asks you for the line again.
+
+Write no stamp line only when you will not sign: a finding stays that you could not fix and that must hold the merge or the publish, or something else stops you. Say why in your report. If the main session then asks you for the line, hand back the same reason again; the main session takes it to the user.

@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -13,8 +15,10 @@
 #include <vector>
 
 #include "core/strutil.h"
+#include "core/winstr.h"
 #include "parse/chart_files.h"
 #include "parse/midi.h"
+#include "parse/section_names.h"
 #include "parse/song.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -22,6 +26,27 @@
 namespace {
 
 using corpus::json;
+
+// mido's name for a message type ("note_on", "set_tempo", ...), the spelling
+// the expected streams below are written in.
+std::string mido_name(hydra::Message::Type type) {
+    using T = hydra::Message::Type;
+    switch (type) {
+        case T::NoteOn: return "note_on";
+        case T::NoteOff: return "note_off";
+        case T::SetTempo: return "set_tempo";
+        case T::TimeSignature: return "time_signature";
+        case T::Text: return "text";
+        case T::Copyright: return "copyright";
+        case T::Lyrics: return "lyrics";
+        case T::Marker: return "marker";
+        case T::CueMarker: return "cue_marker";
+        case T::TrackName: return "track_name";
+        case T::InstrumentName: return "instrument_name";
+        case T::DeviceName: return "device_name";
+    }
+    return "unknown";
+}
 
 // Absolute-tick event view, built as JSON so a unit case can diff a parsed
 // file against a literal expected stream in one CHECK.
@@ -33,7 +58,7 @@ json event_view(const hydra::MidiFile& mid) {
         for (const auto& m : track.messages) {
             using T = hydra::Message::Type;
             tick += m.time;
-            const std::string name = hydra::message_type_name(m.type);
+            const std::string name = mido_name(m.type);
             const int note = m.note, velocity = m.velocity;
             if (m.type == T::NoteOn || m.type == T::NoteOff) {
                 events.push_back({tick, name, note, velocity});
@@ -55,46 +80,66 @@ json event_view(const hydra::MidiFile& mid) {
 // smf() lives in midi_util.h, shared with the other tests that build files.
 using testmidi::smf;
 
+// The detail the full reader refuses `file` with. The case fails when the
+// file is read, or refused as anything but an unreadable chart.
+std::string midi_refusal(const std::vector<uint8_t>& file) {
+    try {
+        const hydra::MidiFile mid(file);
+    } catch (const hydra::MidiError& e) {
+        CHECK(e.kind() == hydra::ErrorKind::ChartUnreadable);
+        return e.what();
+    }
+    FAIL("the file was read, not refused");
+    return {};
+}
+
+// The four-letter chunk tag at byte `at` of a file the test writer made.
+std::string chunk_tag(const std::vector<uint8_t>& file, size_t at) {
+    REQUIRE(file.size() >= at + 4);
+    return std::string(file.begin() + static_cast<std::ptrdiff_t>(at),
+                       file.begin() + static_cast<std::ptrdiff_t>(at + 4));
+}
+
+// The header chunk's tag opens the file.
+constexpr size_t kHeaderTagAt = 0;
+
+// Where the first track chunk's tag sits: past the header chunk's tag and
+// length field (8 bytes) and the length that field holds.
+size_t first_track_tag_at(const std::vector<uint8_t>& file) {
+    REQUIRE(file.size() >= 8);
+    return 8 + ((size_t{file[4]} << 24) | (size_t{file[5]} << 16) | (size_t{file[6]} << 8) |
+                size_t{file[7]});
+}
+
+// The longest length four length bytes hold: four 7-bit groups, far longer
+// than any track in these tests.
+constexpr uint32_t kLongestFourByteLength = (uint32_t{1} << (7 * 4)) - 1;
+
+// A filter that keeps note-ons of 96 and note-offs of 116 only.
+hydra::MidiLeanFilter lean_test_filter() {
+    hydra::MidiLeanFilter f;
+    f.note_on[96] = true;
+    f.note_off[116] = true;
+    return f;
+}
+
 }  // namespace
 
-TEST_CASE("midi: every corpus .mid reads with a sane structure") {
+TEST_CASE("midi: every corpus .mid reads through the lean reader and has a drum track") {
+    // The lean reader is the one the song parser reads with, and drums_track
+    // owns which track holds the drums (this corpus is all drum charts).
     size_t mids = 0;
     for (const std::string& path : corpus::chart_paths()) {
         if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
 
-        hydra::MidiFile mid = hydra::MidiFile::from_file(path);
         ++mids;
-
-        CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
-        CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
-
-        // Delta times never run backwards, and the drum track exists by name
-        // (this corpus is all drum charts).
-        bool has_drums = false;
-        bool deltas_ok = true;
-        for (const auto& t : mid.tracks) {
-            if (t.name == "PART DRUMS") has_drums = true;
-            for (const auto& m : t.messages)
-                if (m.time < 0) deltas_ok = false;
-        }
-        CHECK_MESSAGE(deltas_ok, path << ": negative delta");
-        CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
+        const std::vector<uint8_t> bytes = hydra::read_file_bytes(path);
+        const hydra::MidiFile mid =
+            hydra::MidiFile::lean(bytes.data(), bytes.size(), lean_test_filter());
+        CHECK_MESSAGE(mid.drums_track() != nullptr, path << ": no drum track");
     }
     REQUIRE(mids > 0);
     MESSAGE("midi smoke: " << mids << " files");
-}
-
-// D54: from_file reads through read_file_bytes, so a missing file fails with
-// that owner's own words.
-TEST_CASE("midi: from_file on a missing path fails with the file owner's error") {
-    const std::string missing = corpus::first_chart_with_suffix(".mid") + ".missing";
-    std::string what;
-    try {
-        hydra::MidiFile::from_file(missing);
-    } catch (const std::exception& e) {
-        what = e.what();
-    }
-    CHECK_MESSAGE(what.rfind("cannot open file: ", 0) == 0, what);
 }
 
 TEST_CASE("midi: running status and zero-velocity note_on") {
@@ -275,30 +320,6 @@ TEST_CASE("midi: sysex and skipped metas do not lose time") {
     CHECK(event_view(mid) == expected);
 }
 
-TEST_CASE("midi: track_name is not exposed as text") {
-    // The song parser matches disco and dynamics markers on text metas only
-    // (parse/midi.h); a track_name must carry `name`, not `text`, or every
-    // title would be offered to those checks.
-    std::vector<uint8_t> track = {
-        0x00, 0xFF, 0x03, 0x0A, 'P', 'A', 'R', 'T', ' ', 'D', 'R', 'U', 'M', 'S',
-        0x00, 0x90, 0x60, 0x64,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-    hydra::MidiFile mid(smf(track));
-    REQUIRE(mid.tracks.size() == 1);
-    CHECK(mid.tracks[0].name == "PART DRUMS");
-
-    bool found = false;
-    for (const auto& m : mid.tracks[0].messages) {
-        if (m.type == hydra::Message::Type::TrackName) {
-            found = true;
-            CHECK(m.str_attr == hydra::Message::StrAttr::Name);
-            CHECK(m.str_attr != hydra::Message::StrAttr::Text);
-        }
-    }
-    CHECK(found);
-}
-
 TEST_CASE("midi: each text event is decoded on its own, UTF-8 first, else Windows-1252") {
     using namespace testmidi;
     // A Windows-1252 track name ("Szamár", á = 0xE1), a UTF-8 text event
@@ -315,9 +336,9 @@ TEST_CASE("midi: each text event is decoded on its own, UTF-8 first, else Window
     CHECK(texts == std::vector<std::string>{"Caf\xC3\xA9", "\xE2\x80\x9Chi\xE2\x80\x9D"});
 }
 
-TEST_CASE("midi: each string meta gets its type, mido name and attribute") {
+TEST_CASE("midi: each string meta gets its type, its own name and attribute") {
     // One meta of every string-carrying type, 0x01..0x09. 0x08 (program
-    // name) is unknown to mido, so it is dropped.
+    // name) has no Message::Type, so the reader drops it.
     std::vector<uint8_t> track;
     for (uint8_t t = 0x01; t <= 0x09; ++t) {
         const uint8_t ev[] = {0x00, 0xFF, t, 0x01, 'x'};
@@ -330,61 +351,68 @@ TEST_CASE("midi: each string meta gets its type, mido name and attribute") {
 
     using T = hydra::Message::Type;
     using A = hydra::Message::StrAttr;
-    struct Want { T type; const char* name; A attr; };
+    struct Want { T type; A attr; };
     const Want want[] = {
-        {T::Text, "text", A::Text},
-        {T::Copyright, "copyright", A::Text},
-        {T::TrackName, "track_name", A::Name},
-        {T::InstrumentName, "instrument_name", A::Name},
-        {T::Lyrics, "lyrics", A::Text},
-        {T::Marker, "marker", A::Text},
-        {T::CueMarker, "cue_marker", A::Text},
-        {T::DeviceName, "device_name", A::Name},
+        {T::Text, A::Text},
+        {T::Copyright, A::Text},
+        {T::TrackName, A::Name},
+        {T::InstrumentName, A::Name},
+        {T::Lyrics, A::Text},
+        {T::Marker, A::Text},
+        {T::CueMarker, A::Text},
+        {T::DeviceName, A::Name},
     };
     const auto& msgs = mid.tracks[0].messages;
     REQUIRE(msgs.size() == std::size(want));
     for (size_t i = 0; i < msgs.size(); ++i) {
         CHECK(msgs[i].type == want[i].type);
-        CHECK(std::string(hydra::message_type_name(msgs[i].type)) == want[i].name);
         CHECK(msgs[i].str_attr == want[i].attr);
         CHECK(msgs[i].str == "x");
     }
-    CHECK(std::string(hydra::message_type_name(T::NoteOn)) == "note_on");
-    CHECK(std::string(hydra::message_type_name(T::NoteOff)) == "note_off");
-    CHECK(std::string(hydra::message_type_name(T::SetTempo)) == "set_tempo");
-    CHECK(std::string(hydra::message_type_name(T::TimeSignature)) == "time_signature");
+
 }
 
 TEST_CASE("midi: non-MIDI input is rejected") {
+    // Junk with no header tag is refused as an unreadable chart, and the
+    // detail names the tag it lacks, as the test writer spells it.
     std::vector<uint8_t> junk(40, 'x');
-    CHECK_THROWS_WITH_AS((hydra::MidiFile(junk)), "not a MIDI file: missing MThd header",
-                         hydra::MidiError);
+    const std::string detail = midi_refusal(junk);
+    CHECK_MESSAGE(detail.find(chunk_tag(testmidi::smf_tracks({}), kHeaderTagAt)) !=
+                      std::string::npos,
+                  detail);
 }
 
 TEST_CASE("midi: SMPTE division is rejected") {
     // A negative division byte pair signals SMPTE timing. The file holds a
-    // valid track, so only the SMPTE rule can refuse it.
+    // valid track and reads before the change, so only the SMPTE rule can
+    // refuse it, and its detail is its own, not the missing-header or
+    // missing-track one.
     std::vector<uint8_t> d = testmidi::smf(testmidi::end_of_track());
+    CHECK_NOTHROW((hydra::MidiFile(d)));
     d[12] = 0xE8;  // the header's division bytes: div < 0
     d[13] = 0x00;
-    CHECK_THROWS_WITH_AS((hydra::MidiFile(d)), "SMPTE time division is not supported",
-                         hydra::MidiError);
+    const std::string detail = midi_refusal(d);
+    CHECK(detail != midi_refusal(std::vector<uint8_t>(40, 'x')));
+    CHECK(detail != midi_refusal(testmidi::smf_tracks({})));
 }
 
-TEST_CASE("midi: a five-byte delta accumulates past 32 bits, as mido does") {
+TEST_CASE("midi: a five-byte delta accumulates past 32 bits") {
     std::vector<uint8_t> track = {
-        0x90, 0x80, 0x80, 0x80, 0x00,  // delta 2^32 (malformed: five bytes)
+        0x90, 0x80, 0x80, 0x80, 0x00,  // a five-byte delta (malformed)
         0x90, 0x60, 0x64,              // note_on note 96 vel 100
         0x00, 0xFF, 0x2F, 0x00,        // end of track
     };
+    // A delta carries 7 bits a byte, first byte highest: the first byte's
+    // bits (0x90 & 0x7F) sit above the four 7-bit groups after it.
+    const int64_t delta = int64_t{track[0] & 0x7F} << (7 * 4);
     hydra::MidiFile mid(smf(track));
     json expected = json::array({ json::array({
-        json::array({int64_t{1} << 32, "note_on", 96, 100}),
+        json::array({delta, "note_on", 96, 100}),
     }) });
     CHECK(event_view(mid) == expected);
 }
 
-TEST_CASE("midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does") {
+TEST_CASE("midi: a message length past the reader's cap refuses the file") {
     // A text meta whose length is 2^32. Before the cap, the length wrapped to
     // 0 and the note_on after it was read as a real event.
     std::vector<uint8_t> meta = {
@@ -394,32 +422,25 @@ TEST_CASE("midi: a message longer than mido's 1,000,000-byte cap refuses the fil
     };
     CHECK_THROWS_AS((hydra::MidiFile(smf(meta))), hydra::MidiError);
 
-    // A sysex one byte over the cap: 1,000,001 = 0xBD 0x84 0x41.
-    std::vector<uint8_t> sysex = {
-        0x00, 0xF0, 0xBD, 0x84, 0x41,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-    CHECK_THROWS_AS((hydra::MidiFile(smf(sysex))), hydra::MidiError);
+    // A sysex with the longest length four delta bytes hold refuses the
+    // file, and the refusal names that length.
+    const std::vector<uint8_t> sysex =
+        testmidi::concat({std::vector<uint8_t>{0x00, 0xF0}, testmidi::varlen(kLongestFourByteLength),
+                          testmidi::end_of_track()});
+    const std::string detail = midi_refusal(smf(sysex));
+    CHECK_MESSAGE(detail.find(std::to_string(kLongestFourByteLength)) != std::string::npos, detail);
 
-    // Exactly at the cap (1,000,000 = 0xBD 0x84 0x40) is not refused. The
-    // track is shorter than that, so the payload is clamped as today.
-    std::vector<uint8_t> at_cap = {
-        0x00, 0xFF, 0x01, 0xBD, 0x84, 0x40, 'a', 'b',
-    };
-    CHECK_NOTHROW((hydra::MidiFile(smf(at_cap))));
+    // A text meta whose length runs a little past the end of its track is
+    // not refused: the payload is clamped to the track.
+    const std::vector<uint8_t> past_end =
+        testmidi::concat({std::vector<uint8_t>{0x00, 0xFF, 0x01}, testmidi::varlen(100),
+                          std::vector<uint8_t>{'a', 'b'}});
+    CHECK_NOTHROW((hydra::MidiFile(smf(past_end))));
 }
 
 // ---- MidiFile::lean (speedups task P1) ----
 
 namespace {
-
-// A filter that keeps note-ons of 96 and note-offs of 116 only.
-hydra::MidiLeanFilter lean_test_filter() {
-    hydra::MidiLeanFilter f;
-    f.note_on[96] = true;
-    f.note_off[116] = true;
-    return f;
-}
 
 std::vector<std::string> track_names(const hydra::MidiFile& mid) {
     std::vector<std::string> names;
@@ -503,30 +524,28 @@ TEST_CASE("midi: the lean reader sizes each track's messages once") {
 TEST_CASE("midi: the lean reader refuses a file where the full reader does") {
     using namespace testmidi;
     // An over-cap meta in a track the lean reader keeps nothing from still
-    // refuses the file, with the full reader's words.
-    const std::vector<uint8_t> oversize = {0x00, 0xFF, 0x01, 0xBD, 0x84, 0x41, 'x'};
+    // refuses the file, with the full reader's words, which name the length.
+    const std::vector<uint8_t> oversize =
+        concat({std::vector<uint8_t>{0x00, 0xFF, 0x01}, varlen(kLongestFourByteLength),
+                std::vector<uint8_t>{'x'}});
     const std::vector<uint8_t> file = smf_tracks({
         concat({track_name("tempo"), set_tempo(), end_of_track()}),
         concat({track_name("PART GUITAR"), oversize}),
         concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
     });
-    std::string full, lean;
-    try {
-        hydra::MidiFile m(file);
-    } catch (const hydra::MidiError& e) {
-        full = e.what();
-    }
-    try {
-        hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
-    } catch (const hydra::MidiError& e) {
-        lean = e.what();
-    }
-    CHECK(full == "Message length 1000001 exceeds maximum length 1000000");
-    CHECK(lean == full);
+    const std::string full = midi_refusal(file);
+    CHECK_MESSAGE(full.find(std::to_string(kLongestFourByteLength)) != std::string::npos, full);
+    CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()),
+                         full.c_str(), hydra::MidiError);
 
+    // A file that opens with another chunk tag is refused by the lean reader
+    // in the full reader's words, which name the header tag it lacks.
     const std::vector<uint8_t> not_midi = {'R', 'I', 'F', 'F', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96};
+    const std::string not_midi_full = midi_refusal(not_midi);
+    CHECK_MESSAGE(not_midi_full.find(chunk_tag(smf_tracks({}), kHeaderTagAt)) != std::string::npos,
+                  not_midi_full);
     CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(not_midi.data(), not_midi.size(), lean_test_filter()),
-                         "not a MIDI file: missing MThd header", hydra::MidiError);
+                         not_midi_full.c_str(), hydra::MidiError);
 }
 
 TEST_CASE("midi: is_midi_header reads the first four bytes only") {
@@ -545,16 +564,19 @@ TEST_CASE("midi: a file with no track chunk is refused by both readers") {
     // A bare header, and a header whose length field points past the end of
     // the file (the fuzzer's crash, testdata/fuzz/mid/), so the chunk walk
     // finds no MTrk. The song parser reads the timing track by index, so both
-    // readers must refuse such a file.
+    // readers must refuse such a file, in the same words, which name the
+    // track tag the walk found none of.
     using namespace testmidi;
+    const std::vector<uint8_t> one_track = smf(end_of_track());
+    const std::string track_tag = chunk_tag(one_track, first_track_tag_at(one_track));
     const std::vector<uint8_t> bare = smf_tracks({});
-    std::vector<uint8_t> long_header = smf(end_of_track());
+    std::vector<uint8_t> long_header = one_track;
     long_header[5] = 2;  // header length 0x00020006, as in the crash file
     for (const std::vector<uint8_t>& file : {bare, long_header}) {
-        CHECK_THROWS_WITH_AS(hydra::MidiFile{file}, "not a MIDI file: no MTrk track",
-                             hydra::MidiError);
+        const std::string full = midi_refusal(file);
+        CHECK_MESSAGE(full.find(track_tag) != std::string::npos, full);
         CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()),
-                             "not a MIDI file: no MTrk track", hydra::MidiError);
+                             full.c_str(), hydra::MidiError);
     }
 }
 
@@ -603,14 +625,17 @@ TEST_CASE("midi: with drum tracks on track 0 and track 1, track 1 is read") {
     using namespace testmidi;
     const std::vector<uint8_t> file = smf_tracks({
         concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 11), end_of_track()}),
-        concat({track_name("PART DRUMS"), note_on(96, 22), end_of_track()}),
+        concat({track_name("PART DRUMS"), after(480, note_on(96, 22)), end_of_track()}),
     });
     for (const hydra::MidiFile& read : both_reads(file)) {
         REQUIRE(read.drums_track() == &read.tracks[1]);
         CHECK(drum_velocity(read) == 22);
     }
+    // Track 0's kick is at tick 0 and track 1's at tick 480, so the chord's
+    // tick says which track the song read.
     const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
     REQUIRE(song.sequence.size() == 1);
+    CHECK(song.sequence[0].timecode.ticks() == 480);
 }
 
 TEST_CASE("midi: the events track is named events in any case, and track 0 can be it") {
@@ -661,8 +686,8 @@ TEST_CASE("midi: of two events tracks, only the first one's sections count") {
     CHECK(song.practice_sections[0].name == "First");
 }
 
-// Block CR-24 on docs/clone-hero/01-reading-a-chart.md: the game's .mid reader
-// makes no section from a "[section" text that holds _ENDOFSONG anywhere.
+// Which "[section" texts the .mid reader makes a section from. The rule is
+// is_section_marker's (parse/section_names.h), which the reader calls.
 namespace {
 
 // A .mid whose events track holds "[section Intro]" at tick 0 and `second` at
@@ -679,19 +704,25 @@ std::vector<uint8_t> two_section_mid(const std::string& second) {
 
 }  // namespace
 
-TEST_CASE("midi: [section _ENDOFSONG] is not a section") {
+// The .mid reader drops `second_body` (a "[section" body the section-marker
+// owner refuses for the .mid reader but takes for the .chart reader) and keeps
+// only the Intro before it.
+static void check_mid_drops_section(const std::string& second_body) {
+    REQUIRE(hydra::is_section_marker(second_body, hydra::SectionReader::Chart));
+    REQUIRE_FALSE(hydra::is_section_marker(second_body, hydra::SectionReader::Mid));
     const hydra::Song song =
-        hydra::load_songbytes_mid(two_section_mid("[section _ENDOFSONG]"), hydra::ChartReading{});
+        hydra::load_songbytes_mid(two_section_mid("[" + second_body + "]"), hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 1);
     CHECK(song.practice_sections[0].tick == 0);
-    CHECK(song.practice_sections[0].name == "Intro");
+    CHECK(song.practice_sections[0].name == hydra::section_display_name("section Intro"));
+}
+
+TEST_CASE("midi: [section _ENDOFSONG] is not a section") {
+    check_mid_drops_section("section _ENDOFSONG");
 }
 
 TEST_CASE("midi: a section text holding _ENDOFSONG in its middle is not a section") {
-    const hydra::Song song = hydra::load_songbytes_mid(two_section_mid("[section Outro_ENDOFSONG_x]"),
-                                                       hydra::ChartReading{});
-    REQUIRE(song.practice_sections.size() == 1);
-    CHECK(song.practice_sections[0].name == "Intro");
+    check_mid_drops_section("section Outro_ENDOFSONG_x");
 }
 
 TEST_CASE("midi: [section _endofsong] in lower case stays a section") {
@@ -701,7 +732,8 @@ TEST_CASE("midi: [section _endofsong] in lower case stays a section") {
         hydra::load_songbytes_mid(two_section_mid("[section _endofsong]"), hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[1].tick == 960);
-    CHECK(song.practice_sections[1].name == " endofsong");
+    // The shown name is section_display_name's (CR-28).
+    CHECK(song.practice_sections[1].name == hydra::section_display_name("section _endofsong"));
 }
 
 TEST_CASE("midi: [prc__ENDOFSONG] stays a section") {
@@ -709,7 +741,8 @@ TEST_CASE("midi: [prc__ENDOFSONG] stays a section") {
         hydra::load_songbytes_mid(two_section_mid("[prc__ENDOFSONG]"), hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[1].tick == 960);
-    CHECK(song.practice_sections[1].name == " ENDOFSONG");
+    // The shown name is section_display_name's (CR-28).
+    CHECK(song.practice_sections[1].name == hydra::section_display_name("prc__ENDOFSONG"));
 }
 
 // ---- the end event (Song::end_event_tick) ---------------------------------
@@ -743,23 +776,14 @@ TEST_CASE("midi: the lean read keeps the end event") {
         concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
         concat({track_name("EVENTS"), after(1920, text_event("[end]")), end_of_track()}),
     });
-    for (const hydra::MidiFile& read : both_reads(file)) {
-        REQUIRE(read.events_track() == &read.tracks[2]);
-        // The [end] text and its tick, as pass 3 of the song parser walks them.
-        std::optional<int64_t> end_tick;
-        int64_t elapsed = 0;
-        for (const hydra::Message& msg : read.events_track()->messages) {
-            elapsed += msg.time;
-            if (msg.str_attr == hydra::Message::StrAttr::Text && msg.str == "[end]")
-                end_tick = elapsed;
-        }
-        CHECK(end_tick == std::optional<int64_t>(1920));
-    }
-    // The notes-only reading stores the same tick.
-    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{},
-                                                       hydra::core::default_rules(),
-                                                       hydra::kNotesOnlyFills);
-    CHECK(song.end_event_tick == std::optional<int64_t>(1920));
+    // The song parser reads through the lean reader, so the song's end event
+    // is the lean read's answer, in the full reading and the notes-only one.
+    const hydra::Song full = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    CHECK(full.end_event_tick == std::optional<int64_t>(1920));
+    const hydra::Song notes_only = hydra::load_songbytes_mid(file, hydra::ChartReading{},
+                                                             hydra::core::default_rules(),
+                                                             hydra::kNotesOnlyFills);
+    CHECK(notes_only.end_event_tick == std::optional<int64_t>(1920));
 }
 
 // ---- the last note end (Song::last_note_end_tick) -------------------------
@@ -890,20 +914,39 @@ size_t lanes_at(const std::vector<uint8_t>& mid, hydra::Difficulty difficulty) {
 }  // namespace
 
 TEST_CASE("mid: a lane's velocity picks the lowest difficulty that shows it") {
-    using hydra::Difficulty;
-    // 45 is Hard's band: Hard and Expert show it, Medium and Easy do not.
-    const std::vector<uint8_t> hard = lane_mid(126, 45);
-    CHECK(lanes_at(hard, Difficulty::Expert) == 1);
-    CHECK(lanes_at(hard, Difficulty::Hard) == 1);
-    CHECK(lanes_at(hard, Difficulty::Medium) == 0);
-    CHECK(lanes_at(hard, Difficulty::Easy) == 0);
-    // 96 is outside every band, so Expert only.
-    const std::vector<uint8_t> expert = lane_mid(126, 96);
-    CHECK(lanes_at(expert, Difficulty::Expert) == 1);
-    CHECK(lanes_at(expert, Difficulty::Hard) == 0);
-    // 25 is Easy's band: every difficulty shows it.
-    const std::vector<uint8_t> easy = lane_mid(126, 25);
-    for (Difficulty d : hydra::kAllDifficulties) CHECK(lanes_at(easy, d) == 1);
+    // Every note-on velocity a lane can carry. Each one shows the lane on
+    // one lowest difficulty and every harder one (kAllDifficulties lists the
+    // hardest first), never on a gap between; Expert shows every lane; and
+    // each difficulty is the lowest for some velocity, each below Expert for
+    // one unbroken band of them (Expert takes every velocity outside them).
+    const size_t n = std::size(hydra::kAllDifficulties);
+    std::vector<size_t> lowest_of;  // by velocity - 1: index of the lowest
+    for (int velocity = 1; velocity < hydra::kMidiDataValues; ++velocity) {
+        const std::vector<uint8_t> mid = lane_mid(126, static_cast<uint8_t>(velocity));
+        size_t shown = 0;
+        for (size_t i = 0; i < n; ++i) {
+            const size_t lanes = lanes_at(mid, hydra::kAllDifficulties[i]);
+            CHECK_MESSAGE(lanes <= 1, velocity);
+            // Shown here only if shown at every harder difficulty.
+            if (lanes == 1) {
+                CHECK_MESSAGE(shown == i, velocity);
+                ++shown;
+            }
+        }
+        CHECK_MESSAGE(shown >= 1, velocity);
+        lowest_of.push_back(shown == 0 ? size_t{0} : shown - 1);
+    }
+    for (size_t d = 0; d < n; ++d) {
+        size_t first = lowest_of.size(), last = 0, count = 0;
+        for (size_t v = 0; v < lowest_of.size(); ++v) {
+            if (lowest_of[v] != d) continue;
+            first = (std::min)(first, v);
+            last = v;
+            ++count;
+        }
+        CHECK_MESSAGE(count > 0, "no velocity is lowest on difficulty index " << d);
+        if (count > 0 && d > 0) CHECK_MESSAGE(last - first + 1 == count, "difficulty index " << d);
+    }
 }
 
 TEST_CASE("mid: 126 is a single lane and 127 a double, note-on to note-off") {

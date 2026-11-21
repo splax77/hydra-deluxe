@@ -49,9 +49,11 @@ from __future__ import annotations
 import argparse
 import bisect
 import csv
+import functools
 import json
 import math
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -102,9 +104,30 @@ def press_reach(schedule_path: str) -> dict:
         reach[press.index] = PressReach(min(lo, press.at_ms), max(hi, press.at_ms))
     return reach
 
-# Hydra's Star Power multiplier, copied because this script cannot read C++.
-# The owner is kStarPowerMultiplier in src/core/timing.h.
-SP_MULTIPLIER = 2
+def header_int(path: str, name: str) -> int:
+    """The value a C++ header gives `name` in an `inline constexpr int`
+    line. Raises ValueError when the header holds no such line, so a renamed
+    or moved constant stops the script instead of leaving it a guess."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    found = re.findall(
+        rf"^\s*inline\s+constexpr\s+int\s+{re.escape(name)}\s*=\s*(\d+)\s*;", text, re.M)
+    if len(found) != 1:
+        raise ValueError(f"{path} gives {name} as an inline constexpr int "
+                         f"{len(found)} times, not once")
+    return int(found[0])
+
+
+TIMING_H = os.path.join(_REPO_ROOT, "src", "core", "timing.h")
+
+
+@functools.cache
+def sp_multiplier() -> int:
+    """Hydra's Star Power multiplier, read from its owner,
+    kStarPowerMultiplier in src/core/timing.h. It is read on first use, not
+    at import, so code that imports this module from a copy of tools/ with no
+    src/ beside it (the ch_mcp worker test's copy) still imports."""
+    return header_int(TIMING_H, "kStarPowerMultiplier")
 
 # The game's full meter in units per tick of the chart's resolution: SP-11 in
 # docs/clone-hero/05-star-power.md. D319 item 2 checks sp_max against it, and
@@ -235,10 +258,6 @@ def find_activations(rows: list) -> list:
         else:
             i += 1
     return found
-
-
-# A second name for find_activations; only test_sp_compare.py reads it.
-_find_activations = find_activations
 
 
 class Rise(NamedTuple):
@@ -402,7 +421,7 @@ def _check_activation(report: Report, rows: list, act: _Activation,
                      f"({format_ms(flip_ms)}); its start was not seen")
         return
     base = rows[act.flip_row - 1]["sp_mult_u32"]
-    doubled = next((r for r in window if r["sp_mult_u32"] == base * SP_MULTIPLIER), None)
+    doubled = next((r for r in window if r["sp_mult_u32"] == base * sp_multiplier()), None)
     if doubled is not None:
         report.check(True, f"  activation {n} multiplier doubles: {base} -> "
                      f"{doubled['sp_mult_u32']} at {format_ms(_ms(doubled))}")
@@ -410,7 +429,7 @@ def _check_activation(report: Report, rows: list, act: _Activation,
         seen = sorted({r["sp_mult_u32"] for r in window})
         report.check(False, f"  activation {n} multiplier doubles: {base} before, "
                      f"{seen} within {EVENT_WINDOW_MS:g} ms, expected "
-                     f"{base * SP_MULTIPLIER}")
+                     f"{base * sp_multiplier()}")
 
     ahead = next((r for r in window if is_active(r) and r["sp_end_s"] > r["clock_s"]), None)
     if ahead is not None:
@@ -443,7 +462,7 @@ def _check_activation(report: Report, rows: list, act: _Activation,
     held = last_active["sp_mult_u32"]
     near_end = [r for r in rows[act.drop_row - 1:]
                 if abs(_ms(r) - end_ms) <= EVENT_WINDOW_MS]
-    halved = next((r for r in near_end if r["sp_mult_u32"] * SP_MULTIPLIER == held), None)
+    halved = next((r for r in near_end if r["sp_mult_u32"] * sp_multiplier() == held), None)
     if halved is not None:
         report.check(True, f"  activation {n} multiplier halves at the end: {held} -> "
                      f"{halved['sp_mult_u32']} at {format_ms(_ms(halved))}")
@@ -530,7 +549,7 @@ def _check_activations(report: Report, rows: list, score: dict,
 
 
 def _expected_multipliers(chord: dict) -> set:
-    factor = SP_MULTIPLIER if chord["in_sp"] else 1
+    factor = sp_multiplier() if chord["in_sp"] else 1
     return {chord["multiplier"] * factor, chord["multiplier_after"] * factor}
 
 
@@ -589,7 +608,7 @@ def _check_multipliers(report: Report, rows: list, chords: list,
         fails += 1
         if first_fail is None:
             state = "in Star Power" if chord["in_sp"] else "not in Star Power"
-            want = chord["multiplier"] * (SP_MULTIPLIER if chord["in_sp"] else 1)
+            want = chord["multiplier"] * (sp_multiplier() if chord["in_sp"] else 1)
             first_fail = (f"{_chord_label(chord)}: game {game}, expected {want} "
                           f"(multiplier {chord['multiplier']}, {state})")
     if fails:

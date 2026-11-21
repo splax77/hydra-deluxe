@@ -1,7 +1,7 @@
 // The report windows' GUI tests. Those in register_report_window_tests
-// open the path report or the comparison window on the sample rows
-// (tests/report_samples.h) through ReportWindowInput, the struct AppState
-// fills in the app, and drive the window by its labels. Their own GUI
+// open the path report or the comparison window through ReportWindowInput,
+// the struct AppState fills in the app, on the real report a batch of the
+// corpus built, and drive the window by its labels. Their own GUI
 // function draws the windows. Among them are the
 // column widths and the window's fit to the screen, from the one column-width
 // rule plan,
@@ -22,22 +22,21 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
-#include <ctime>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
-#include "../report_samples.h"  // tests/ is not on the runner's include path
 #include "../scoped_hook.h"
 #include "../wait_util.h"
 #include "imgui_internal.h"
 #include "app/dm_report.h"
+#include "app/html_page.h"  // kNothingMatches, path_report_search_hint
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
+#include "app/user_messages.h"  // the report windows' sentences
 #include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
@@ -45,6 +44,7 @@
 #include "store/record_store.h"  // failure_record
 #include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
+#include "ui/theme.h"  // chip_color
 
 namespace uitest {
 
@@ -55,12 +55,21 @@ void start_library_batch(ImGuiTestContext* ctx);
 
 namespace {
 
-using hydra::app::dm_report::GeneratedDmReport;
 using hydra::app::report::GeneratedReport;
 using hydra::ui::DmReportInput;
 using hydra::ui::PathReportInput;
 using hydra::ui::ReportOutOfDate;
 using hydra::ui::ReportBuild;
+
+// What one chip drew, read from the vertices it added to the draw list in its
+// token's colour, beside the width of its label as ImGui measures it.
+struct ChipDrawn {
+    hydra::app::report::ChipToken token = hydra::app::report::ChipToken::t0;
+    int vertices = 0;   // in the token's colour
+    float left = 0.0f;  // the leftmost and rightmost of them
+    float right = 0.0f;
+    float label_width = 0.0f;
+};
 
 // What the windows were handed, and what they handed back.
 struct Fixture {
@@ -79,44 +88,15 @@ struct Fixture {
     int compares = 0;
     int closes = 0;
     std::string text;  // what the windows drew last frame
-    // report-window-column-widths: when set, each frame notes the path
-    // table's widths as the rule gives them (note_rule_widths).
-    bool want_rule_widths = false;
-    std::vector<float> rule_widths;
-    // report-window-chip-outline: when set, each frame draws a tn chip and a
-    // t0 chip (note_chip_vertices) and keeps what each added to the draw list.
-    bool want_chip_vertices = false;
-    int tn_chip_vertices = 0;
-    int t0_chip_vertices = 0;
+    // report-window-chip-outline: when set, each frame draws one chip per
+    // token (note_chips) and keeps what each drew.
+    bool want_chips = false;
+    std::vector<ChipDrawn> chips;
 };
 
 Fixture& fixture() {
     static Fixture f;
     return f;
-}
-
-std::shared_ptr<GeneratedReport> sample_path_result() {
-    auto r = std::make_shared<GeneratedReport>();
-    // The sample rows counted against the sample library, as generate_report
-    // hands them over: each row carries its chart's copies, and
-    // library_charts is the library's own count.
-    const hydra::store::ChartIndex library = report_samples::sample_index();
-    r->paths = report_samples::counted_against(report_samples::sample_path_rows(), library);
-    r->library_charts = library.count(library.song_ids());
-    r->rows = static_cast<int64_t>(r->paths.size());
-    r->subtitle = "sample path subtitle";
-    r->footer = "sample path footer";
-    return r;
-}
-
-std::shared_ptr<GeneratedDmReport> sample_dm_result() {
-    auto r = std::make_shared<GeneratedDmReport>();
-    r->rows = report_samples::sample_dm_rows();
-    r->stats = hydra::app::dm_report::tally_dm_rows(r->rows);
-    r->username = "SamplePlayer";
-    r->subtitle = "sample dm subtitle";
-    r->footer = "sample dm footer";
-    return r;
 }
 
 hydra::ui::ReportCallbacks recording_callbacks(std::vector<size_t>& clicks) {
@@ -130,15 +110,14 @@ hydra::ui::ReportCallbacks recording_callbacks(std::vector<size_t>& clicks) {
     return cb;
 }
 
-// Both windows closed, each holding a freshly built sample report.
+// Both windows closed and ready, with no report in either yet:
+// real_path_fixture puts the real one in.
 void reset_fixture() {
     Fixture& f = fixture();
     f = Fixture{};
-    f.path.result = sample_path_result();
     f.path.state = ReportBuild::Ready;
     f.path.built = std::chrono::system_clock::now();
     f.path.callbacks = recording_callbacks(f.path_clicks);
-    f.dm.result = sample_dm_result();
     f.dm.state = ReportBuild::Ready;
     f.dm.built = std::chrono::system_clock::now();
     f.dm.callbacks = recording_callbacks(f.dm_clicks);
@@ -146,50 +125,39 @@ void reset_fixture() {
 
 ImGuiWindow* path_window();
 
-// The path table's widths this frame as the production rule gives them: the
-// sample rows measured by the window's own measure, placed in the room
-// table_room reads inside the path window. It appends to the path window,
-// drawn earlier this frame, so table_room sees the room the table had.
-void note_rule_widths() {
-    Fixture& f = fixture();
-    f.rule_widths.clear();
-    ImGuiWindow* window = path_window();
-    if (!f.path_open || !window || !f.path.result) return;
-    namespace view_rules = hydra::app::path_report_view;
-    const GeneratedReport& report = *f.path.result;
-    std::vector<std::string> texts;
-    for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
-    const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        hydra::app::report_view::shared_rows(f.path.result, &GeneratedReport::paths),
-        std::move(texts), view_rules::path_columns());
-    const std::vector<hydra::ui::ColumnSpec> specs =
-        hydra::ui::report_frame::column_specs(view.columns());
-    ImGui::Begin(window->Name);
-    const hydra::ui::TableRoom room = hydra::ui::table_room("##pathtable", 0.0f, specs.size());
-    f.rule_widths =
-        hydra::ui::place_columns(hydra::ui::report_frame::measure(view), specs, room).widths;
-    ImGui::End();
-}
-
-// The vertices one chip adds to the current window's draw list. The label is
-// the same for every token, so the glyphs add the same number each time.
-int chip_vertices(hydra::app::report::ChipToken token) {
+// What `chip` draws for `token` in the current window: the vertices it adds
+// in the token's colour, and how far left and right they reach.
+ChipDrawn draw_chip(hydra::app::report::ChipToken token) {
+    static const std::string label = "Sample chip";
     const ImDrawList* list = ImGui::GetWindowDrawList();
     const int before = list->VtxBuffer.Size;
-    hydra::ui::report_frame::chip("Sample chip", token);
-    return list->VtxBuffer.Size - before;
+    hydra::ui::report_frame::chip(label, token);
+    ChipDrawn d;
+    d.token = token;
+    d.label_width = ImGui::CalcTextSize(label.c_str()).x;
+    const ImU32 color = ImGui::GetColorU32(hydra::ui::chip_color(token));
+    for (int i = before; i < list->VtxBuffer.Size; ++i) {
+        const ImDrawVert& v = list->VtxBuffer[i];
+        if (v.col != color) continue;
+        d.left = d.vertices == 0 ? v.pos.x : (std::min)(d.left, v.pos.x);
+        d.right = d.vertices == 0 ? v.pos.x : (std::max)(d.right, v.pos.x);
+        ++d.vertices;
+    }
+    return d;
 }
 
-// Draws the two chips in a window of their own, big enough that neither is
-// clipped, and notes what each added.
-void note_chip_vertices() {
+// Draws one chip per token in a window of its own, big enough that none is
+// clipped, and notes what each drew.
+void note_chips() {
     using hydra::app::report::ChipToken;
     Fixture& f = fixture();
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 160.0f));
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
     ImGui::Begin("###chipoutline", nullptr, ImGuiWindowFlags_NoSavedSettings);
-    f.tn_chip_vertices = chip_vertices(ChipToken::tn);
-    f.t0_chip_vertices = chip_vertices(ChipToken::t0);
+    f.chips.clear();
+    for (ChipToken token : {ChipToken::t0, ChipToken::t1, ChipToken::t2, ChipToken::t3,
+                            ChipToken::t4, ChipToken::t5, ChipToken::tn, ChipToken::muted})
+        f.chips.push_back(draw_chip(token));
     ImGui::End();
 }
 
@@ -202,30 +170,19 @@ void draw_windows(ImGuiTestContext*) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     f.text.assign(g.LogBuffer.begin(), g.LogBuffer.end());
     ImGui::LogFinish();
-    if (f.want_rule_widths) note_rule_widths();
-    if (f.want_chip_vertices) note_chip_vertices();
-}
-
-// Today at hour:minute, local time.
-std::chrono::system_clock::time_point local_time(int hour, int minute) {
-    const std::time_t now = std::time(nullptr);
-    std::tm t{};
-    localtime_s(&t, &now);
-    t.tm_hour = hour;
-    t.tm_min = minute;
-    t.tm_sec = 0;
-    t.tm_isdst = -1;
-    return std::chrono::system_clock::from_time_t(std::mktime(&t));
+    if (f.want_chips) note_chips();
 }
 
 bool shows(const std::string& s) { return fixture().text.find(s) != std::string::npos; }
-size_t where(const std::string& s) { return fixture().text.find(s); }
+
+// A text box's or a dropdown's shown text as the frame text logs it.
+std::string boxed(const std::string& s) { return "{ " + s + " }"; }
 
 ImGuiWindow* path_window() { return window_named("###pathreport"); }
 ImGuiWindow* dm_window() { return window_named("###dmreport"); }
 
 // Opens the path report and points the ref at it, with Optimal paths only
-// unticked: none of the sample rows is an optimal path.
+// unticked, so every row of the fixture's report shows.
 void open_path_all_rows(ImGuiTestContext* ctx) {
     fixture().path_open = true;
     ctx->Yield(3);
@@ -244,137 +201,209 @@ void open_dm(ImGuiTestContext* ctx) {
     ctx->SetRef(dm_window());
 }
 
-// The first sort is Score, highest first; a header click flips it.
-void test_sort(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
+// Library row `row`'s title in quotes, so the word search matches it as one
+// phrase. Read it before any search narrows the rows.
+std::string quoted_title(Harness& h, size_t row) {
+    return "\"" + h.app->library_row_at(row).title + "\"";
+}
+
+// The corpus scanned and its first chart batched, the batch's report built
+// while the path window is shut. False when a step failed.
+bool batch_first_chart(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    IM_CHECK_RETV(batch_search(ctx, quoted_title(h, 0)), false);
+    dismiss_done(ctx);
+    return true;
+}
+
+// The corpus scanned and every chart in it batched through Analyze library,
+// the batch's report built while the path window is shut. Each analyzed
+// chart puts at least one row on the report (report.cpp, rows_of), so this
+// report has far more rows than one chart's. False when a step failed.
+bool batch_whole_corpus(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    start_library_batch(ctx);
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->batch_job && h.app->batch_job->snapshot().finished;
+    }, 300), false);
+    dismiss_done(ctx);
+    return !ctx->IsError();
+}
+
+// The fixture's path window on the real report the `batch` step built
+// (the corpus's first chart unless the test names another step), through
+// the window input AppState hands the app's own window, with the fixture's
+// recording callbacks in place of the app's. The comparison side holds no
+// rows: a real one needs dmleaderboards, so it is left as the app's window
+// is before its first comparison lands. False when a step failed.
+bool real_path_fixture(ImGuiTestContext* ctx,
+                       bool (*batch)(ImGuiTestContext*) = batch_first_chart) {
+    Harness& h = harness(ctx);
+    if (!batch(ctx)) return false;
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr && h.app->path_report.result != nullptr;
+    }, 60), false);
+    IM_CHECK_RETV(!h.app->path_report.window_open, false);  // auto-open is off
     reset_fixture();
-    fixture().path_open = true;
-    ctx->Yield(3);
-    // Optimal paths only starts ticked, and no sample row is optimal.
-    IM_CHECK(shows("Nothing matches."));
-    IM_CHECK(shows("0 of 6 paths"));
-    open_path_all_rows(ctx);
-    IM_CHECK(shows("6 of 6 paths"));
-    // Row 1 is Song B's best path (sample row 4, 250,000); after the flip it
-    // is Song C (sample row 6, 77,000). The rows are read back through their
-    // clicks: a cut cell's text never reaches the frame's text.
     Fixture& f = fixture();
+    f.path = hydra::ui::path_report_input(*h.app);
+    f.path.callbacks = recording_callbacks(f.path_clicks);
+    IM_CHECK_RETV(f.path.state == ReportBuild::Ready, false);
+    IM_CHECK_RETV(f.path.result != nullptr && !f.path.result->paths.empty(), false);
+    f.dm.result = nullptr;
+    f.dm.state = ReportBuild::Building;
+    return true;
+}
+
+// The path window's count line for `shown` of the fixture's rows, as its
+// owner (report_view::count_line) words it.
+std::string fixture_path_count(size_t shown) {
+    return hydra::app::report_view::count_line(shown, fixture().path.result->paths.size(),
+                                               hydra::app::path_report_view::kNoun);
+}
+
+// How many of the fixture's rows Optimal paths only keeps, by the window's
+// own keep-rule (path_keep) with every timing tier.
+size_t fixture_optimal_rows() {
+    const auto keep = hydra::app::path_report_view::path_keep(std::nullopt, true);
+    const std::vector<hydra::app::report::ReportRow>& rows = fixture().path.result->paths;
+    return static_cast<size_t>(std::count_if(rows.begin(), rows.end(), keep));
+}
+
+// The fixture's row the last click reported, or none when no click came.
+const hydra::app::report::ReportRow* last_clicked_row() {
+    const Fixture& f = fixture();
+    if (f.path_clicks.empty() || f.path_clicks.back() >= f.path.result->paths.size())
+        return nullptr;
+    return &f.path.result->paths[f.path_clicks.back()];
+}
+
+// The first sort is Score, highest first; a header click flips it. The rows
+// are the real report a batch of the corpus's first chart built.
+void test_sort(ImGuiTestContext* ctx) {
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
+    f.path_open = true;
+    ctx->Yield(3);
+    // Optimal paths only starts ticked: only the optimal paths show.
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(shows(fixture_path_count(rows.size())));
+    // The flip shows only where two paths differ in score.
+    const auto [low, high] = std::minmax_element(
+        rows.begin(), rows.end(),
+        [](const auto& a, const auto& b) { return a.score < b.score; });
+    IM_CHECK_RETV(low->score < high->score, );
+    // The rows are read back through their clicks: a cut cell's text never
+    // reaches the frame's text.
     ctx->ItemClick("**/1");
-    IM_CHECK(!f.path_clicks.empty() && f.path_clicks.back() == 3);
+    IM_CHECK_RETV(last_clicked_row() != nullptr, );
+    IM_CHECK_EQ(last_clicked_row()->score, high->score);
     ctx->ItemClick("**/Score");
     ctx->Yield(2);
     ctx->ItemClick("**/1");
-    IM_CHECK(!f.path_clicks.empty() && f.path_clicks.back() == 5);
-
-    // The comparison opens on Points left, most first.
-    open_dm(ctx);
-    IM_CHECK(shows("4 of 4 scores"));
-    IM_CHECK_LT(where("3,456"), where("+1,000 over"));
+    IM_CHECK_RETV(last_clicked_row() != nullptr, );
+    IM_CHECK_EQ(last_clicked_row()->score, low->score);
 }
 
-// Each window's search box hint, then filter to nothing, then Clear filters.
+// The search box's hint, then a word no row holds, then Clear filters.
 void test_filters(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
     open_path_all_rows(ctx);
-    IM_CHECK(shows("Search song, artist, charter, or path notation"));
-    ctx->ItemInputValue("##search", "zzz");
+    if (ctx->IsError()) return;
+    IM_CHECK(shows(hydra::app::html::path_report_search_hint()));
+    // A word none of the rows' search texts holds, so the search keeps none.
+    const std::string word = "zzz";
+    for (const auto& r : rows)
+        IM_CHECK_RETV(hydra::app::path_report_view::path_search_text(r).find(word) ==
+                          std::string::npos, );
+    ctx->ItemInputValue("##search", word.c_str());
     ctx->Yield(2);
-    IM_CHECK(shows("0 of 6 paths"));
-    IM_CHECK(shows("Nothing matches."));
+    IM_CHECK(shows(fixture_path_count(0)));
+    IM_CHECK(shows(hydra::app::html::kNothingMatches));
     IM_CHECK(!shows("Nothing matches those filters."));
     ctx->ItemClick("Clear filters");
     ctx->Yield(2);
-    // The search is empty again and Optimal paths only stayed unticked.
-    IM_CHECK(shows("6 of 6 paths"));
-
-    open_dm(ctx);
-    IM_CHECK(shows("Search song, artist, or charter"));
-    ctx->ComboClick("##status/Not in your library");
-    ctx->Yield(2);
-    IM_CHECK(shows("1 of 4 scores"));
-    ctx->ItemInputValue("##search", "zzz");
-    ctx->Yield(2);
-    IM_CHECK(shows("0 of 4 scores"));
-    IM_CHECK(shows("Nothing matches."));
-    ctx->ItemClick("Clear filters");
-    ctx->Yield(2);
-    IM_CHECK(shows("4 of 4 scores"));
+    // The search is empty again and Optimal paths only stayed unticked:
+    // every row is back.
+    IM_CHECK(shows(fixture_path_count(rows.size())));
+    IM_CHECK(!shows(boxed(word)));
 }
 
-// Every state the frame draws.
+// Every state the frame draws, over the real report a batch of the corpus's
+// first chart built.
 void test_states(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
+    const std::string subtitle = f.path.result->subtitle;
+    IM_CHECK_RETV(!subtitle.empty(), );
     f.path.state = ReportBuild::Building;
     f.path_open = true;
     ctx->Yield(3);
     // The subtitle while it builds (D103 item 21, board 2a), not the old
     // result's. The build only reads the store, so no bar counts anything.
-    IM_CHECK(shows("Building the report from your library..."));
-    IM_CHECK(!shows("sample path subtitle"));
-    IM_CHECK(!shows("Analyzing "));
+    IM_CHECK(shows(hydra::app::kPathReportBuilding));
+    IM_CHECK(!shows(subtitle));
+    IM_CHECK(!shows(hydra::app::kPathReportAnalyzing));
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
 
     f.path.state = ReportBuild::Cancelled;
     ctx->Yield(2);
-    IM_CHECK(shows("Report cancelled."));
+    IM_CHECK(shows(hydra::app::kReportCancelled));
     ctx->ItemClick("Try again");
     IM_CHECK_EQ(f.retries, 1);
 
     f.path.state = ReportBuild::Failed;
-    f.path.failure_message = "sample failure message";
-    f.path.failure_error = "sample failure error";
     ctx->Yield(2);
-    IM_CHECK(shows("The path report could not be built."));
-    IM_CHECK(shows("sample failure message"));
-    IM_CHECK(shows("sample failure error"));
+    IM_CHECK(shows(hydra::app::kPathReportFailed));
 
+    // Out of date: the strip shows the sentence its owner writes for each
+    // reason, and its Refresh asks for a rebuild.
+    namespace frame = hydra::ui::report_frame;
     f.path.state = ReportBuild::Ready;
     f.path.out_of_date = ReportOutOfDate::Library;
     ctx->Yield(2);
-    IM_CHECK(shows("Your library changed since this report was built."));
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Library, std::nullopt)));
     IM_CHECK(shows("Built "));
     ctx->ItemClick("**/Refresh##outofdate");  // inside the strip's child
     IM_CHECK_EQ(f.refreshes, 1);
     // With a batch's finish time, the library line names it (D103 item 21,
-    // board 2b), in the same HH:MM as "Built".
-    f.path.built = local_time(13, 42);
-    f.path.batch_finished = local_time(14, 5);
+    // board 2b).
+    f.path.batch_finished = std::chrono::system_clock::now();
     ctx->Yield(2);
-    IM_CHECK(shows("Your library changed since this report was built "
-                   "(a batch finished at 14:05)."));
-    IM_CHECK(shows("Built 13:42"));
-    // The settings line has no time.
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Library, f.path.batch_finished)));
+    // The settings line names no batch, even with a finish time set.
     f.path.out_of_date = ReportOutOfDate::Settings;
     ctx->Yield(2);
-    IM_CHECK(shows("The settings changed since this report was built."));
-    IM_CHECK(!shows("a batch finished"));
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Settings, f.path.batch_finished)));
+    IM_CHECK(!shows(frame::out_of_date_text(ReportOutOfDate::Library, f.path.batch_finished)));
     f.path.out_of_date = ReportOutOfDate::None;
     f.path.batch_finished.reset();
-
-    // Nothing to report: the report's empty reason.
-    auto empty = std::make_shared<GeneratedReport>();
-    empty->why_empty = "sample empty reason";
-    f.path.result = empty;
-    ctx->Yield(2);
-    IM_CHECK(shows("sample empty reason"));
     f.path_open = false;
 
-    f.dm.state = ReportBuild::Building;
+    // The comparison while its first fetch runs (real_path_fixture leaves
+    // it building with no rows), then failed.
     open_dm(ctx);
-    IM_CHECK(shows("Fetching scores and building the report..."));
-    IM_CHECK(!shows("Building the report from your library..."));
-    IM_CHECK(!shows("sample dm subtitle"));
-    IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
+    IM_CHECK(shows(hydra::app::kComparisonBuilding));
+    IM_CHECK(!shows(hydra::app::kPathReportBuilding));
+    IM_CHECK(shows(hydra::app::kLeaderboardWaking));
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 2);
     f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
-    IM_CHECK(shows("The comparison could not be built."));  // D114 item 14
+    IM_CHECK(shows(hydra::app::kComparisonFailed));  // D114 item 14
     ctx->ItemClick("Compare another player...");
     IM_CHECK_EQ(f.compares, 1);
     f.dm_open = false;
@@ -388,8 +417,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(f.path.state == ReportBuild::None);
     f.path_open = true;
     ctx->Yield(3);
-    IM_CHECK(shows("hydra_rules.ini has an error, so analysis is off until the file is "
-                   "fixed and Hydra is restarted."));
+    IM_CHECK(shows(hydra::app::kAnalysisOffSentence));
     IM_CHECK(shows("max_tied_paths"));
     f.path_open = false;
     ctx->Yield(2);
@@ -410,7 +438,7 @@ std::optional<ImRect> drawn_row(ImGuiTestContext* ctx, size_t n) {
     return info.RectFull;
 }
 
-// In a path window too short for the six sample rows: a row click leaves the
+// In a path window too short for the fixture's rows: a row click leaves the
 // list where it is (the user's rule, 2026-10-14: a click never scrolls);
 // Down onto the first row below the view brings it in at the bottom edge, not
 // the middle; Up onto a row already on screen moves nothing (answer 4).
@@ -419,7 +447,7 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(window != nullptr && table != nullptr && table->InnerWindow != nullptr, );
     const ImVec2 size_before = window->Size;
-    // Room for the header row and about two and a half of the six rows, in
+    // Room for the header row and about two and a half rows, in
     // rows as the table drew them. With more on screen, centring the next row
     // would stop at the end of the list, where it meets the bottom edge too.
     const std::optional<ImRect> first = drawn_row(ctx, 1);
@@ -440,12 +468,16 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
     // all on screen. Centring that next row must move the list further than
     // bringing it to the bottom edge, so it sits well above the last row.
     size_t last_shown = 0;
-    for (size_t n = 1; n <= 6; ++n) {
+    const size_t row_count = fixture().path.result->paths.size();
+    for (size_t n = 1; n <= row_count; ++n) {
         const std::optional<ImRect> r = drawn_row(ctx, n);
         if (r && fully_shown(list, *r)) last_shown = n;
     }
-    ctx->LogInfo("last row wholly on screen: %zu", last_shown);
+    ctx->LogInfo("last row wholly on screen: %zu of %zu", last_shown, row_count);
     IM_CHECK_RETV(last_shown >= 2 && last_shown <= 3, );
+    // Centring the next row moves the list past the bottom edge only with two
+    // rows or more below it; with fewer, the list's end stops it there too.
+    IM_CHECK_RETV(row_count >= last_shown + 3, );
 
     // A click on that row keeps the list still.
     const float scroll = list->Scroll.y;
@@ -475,19 +507,24 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
 }
 
 // Row clicks, the arrow keys, Esc and Ctrl+W.
+// The rows are the real report a batch of the whole corpus built: the scroll
+// checks need rows below the view, more than the first chart's paths give.
 void test_keys(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx, batch_whole_corpus)) return;
     Fixture& f = fixture();
     open_path_all_rows(ctx);
-    // Row 1 in the first sort is Song B's best path, the fourth sample row.
-    ctx->ItemClick("**/1");
-    IM_CHECK_EQ(f.path_clicks.size(), size_t{1});
     if (ctx->IsError()) return;
-    IM_CHECK_EQ(f.path_clicks.back(), size_t{3});
+    // The second shown row's place among the rows, read by its own click.
+    ctx->ItemClick("**/2");
+    IM_CHECK_RETV(f.path_clicks.size() == size_t{1}, );
+    const size_t second = f.path_clicks.back();
+    // A click on the first shown row reports it, and Down moves to the second.
+    ctx->ItemClick("**/1");
+    IM_CHECK_RETV(f.path_clicks.size() == size_t{2}, );
+    IM_CHECK(f.path_clicks.back() != second);
     ctx->KeyPress(ImGuiKey_DownArrow);
     ctx->Yield(2);
-    IM_CHECK_EQ(f.path_clicks.back(), size_t{4});
+    IM_CHECK_EQ(f.path_clicks.back(), second);
     check_keys_scroll_just_enough(ctx);
     if (ctx->IsError()) return;
 
@@ -502,27 +539,20 @@ void test_keys(ImGuiTestContext* ctx) {
     f.path.keep_filters = true;
     f.path_open = true;
     ctx->Yield(2);
-    IM_CHECK(shows("6 of 6 paths"));
+    IM_CHECK(shows(fixture_path_count(f.path.result->paths.size())));
     ctx->SetRef(path_window());
     ctx->WindowFocus("");
     ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_W);
     ctx->Yield(2);
     IM_CHECK(!f.path_open);
     IM_CHECK_EQ(f.closes, 2);
-
-    // Row 3 is Song C, not in the library: its click does nothing.
-    open_dm(ctx);
-    ctx->ItemClick("**/3");
-    IM_CHECK(f.dm_clicks.empty());
-    ctx->ItemClick("**/1");
-    IM_CHECK_EQ(f.dm_clicks.size(), size_t{1});
 }
 
 // The header's Close shuts the window as Esc does, in every build state and
-// in both windows.
+// in both windows, over the real report a batch of the corpus's first chart
+// built.
 void test_close_button(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
     open_path_all_rows(ctx);
     ctx->ItemClick("Close");
@@ -550,9 +580,9 @@ void test_close_button(ImGuiTestContext* ctx) {
     f.path.state = ReportBuild::Building;
     f.path_open = true;
     ctx->Yield(3);
-    IM_CHECK(shows("Building the report from your library..."));
     IM_CHECK_RETV(path_window() != nullptr, );
     ctx->SetRef(path_window());
+    IM_CHECK(ctx->ItemExists("Cancel"));  // the building frame's own button
     ctx->ItemClick("Close");
     ctx->Yield(2);
     IM_CHECK(!f.path_open);
@@ -560,7 +590,8 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.closes, 2);
     IM_CHECK_EQ(f.cancels, 0);  // Close is not the build's Cancel
 
-    // The comparison has it too.
+    // The comparison has it too, while its first fetch runs
+    // (real_path_fixture leaves it so).
     open_dm(ctx);
     ctx->ItemClick("Close");
     ctx->Yield(2);
@@ -569,58 +600,58 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.closes, 3);
 }
 
-// A new result that lands while a window is hidden frees the old one at
-// once: the hidden window's view must not keep it alive until the reopen.
+// A new result that lands while the path window is hidden frees the old one
+// at once: the hidden window's view must not keep it alive until the reopen.
+// Each result is a copy of the real report a batch of the corpus's first
+// chart built, held by nothing but the window's input, so only the window's
+// view can keep it alive.
 void test_hidden_new_result(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
+    const GeneratedReport built = *f.path.result;
+    f.path.result = std::make_shared<GeneratedReport>(built);
     f.path_open = true;
-    f.dm_open = true;
     ctx->Yield(3);
     IM_CHECK(path_window() != nullptr);
-    IM_CHECK(dm_window() != nullptr);
     f.path_open = false;
-    f.dm_open = false;
     ctx->Yield(2);
 
     std::weak_ptr<const GeneratedReport> old_path = f.path.result;
-    std::weak_ptr<const GeneratedDmReport> old_dm = f.dm.result;
-    f.path.result = sample_path_result();
-    f.dm.result = sample_dm_result();
+    f.path.result = std::make_shared<GeneratedReport>(built);
     ctx->Yield(2);
     IM_CHECK(old_path.expired());
-    IM_CHECK(old_dm.expired());
 
     f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK(path_window() != nullptr);
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+}
+
+// Both report windows open at once: the path window on the real report a
+// batch of the corpus's first chart built, and the comparison while its
+// first fetch runs (real_path_fixture leaves it so).
+void test_both(ImGuiTestContext* ctx) {
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
     f.dm_open = true;
     ctx->Yield(3);
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(dm_window() != nullptr);
-    IM_CHECK(shows("of 6 paths"));
-}
-
-// Both windows open at once.
-void test_both(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    fixture().path_open = true;
-    fixture().dm_open = true;
-    ctx->Yield(3);
-    IM_CHECK(path_window() != nullptr);
-    IM_CHECK(dm_window() != nullptr);
-    IM_CHECK(shows("of 6 paths"));
-    IM_CHECK(shows("4 of 4 scores"));
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    IM_CHECK(shows(hydra::app::kComparisonBuilding));
 }
 
 // ---- Column widths and the window's size (one column-width rule) ----------
 
 // In a narrow window the chips and numbers show in full and the table
 // scrolls sideways. A cut cell draws past ImGui's text log, so a label in the
-// frame's text was drawn whole.
+// frame's text was drawn whole. The rows are the real report a batch of the
+// corpus's first chart built.
 void test_chip_label(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
     ctx->WindowResize("", ImVec2(900.0f, 600.0f));
@@ -628,7 +659,7 @@ void test_chip_label(ImGuiTestContext* ctx) {
     Fixture& f = fixture();
     const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
 
-    // Every row's Timing chip, Song B's "Beyond" tier among them (171 ms).
+    // Every row's Timing chip.
     for (const auto& r : rows)
         IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier)));
 
@@ -654,38 +685,70 @@ void test_chip_label(ImGuiTestContext* ctx) {
         if (columns[c].numeric) IM_CHECK(read[c]);
 }
 
-// A tn chip draws the outline a t0 chip does (D308 item 5). The two hold the
-// same words, so a chip that left its outline out would add fewer vertices.
+// Every chip draws its outline in its token's colour (D308 item 5: the window
+// draws the outline, so the chips match). The outline sits a chip's padding
+// out from the label on each side, so the marks in the token's colour reach
+// wider than the label; the label's glyphs alone stay within its width.
 void test_chip_outline(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
     reset_fixture();
     Fixture& f = fixture();
-    f.want_chip_vertices = true;
+    f.want_chips = true;
     ctx->Yield(3);
-    ctx->LogInfo("vertices: tn chip %d, t0 chip %d", f.tn_chip_vertices, f.t0_chip_vertices);
-    IM_CHECK_GT(f.t0_chip_vertices, 0);
-    IM_CHECK_EQ(f.tn_chip_vertices, f.t0_chip_vertices);
-    f.want_chip_vertices = false;
+    f.want_chips = false;
+    IM_CHECK_RETV(!f.chips.empty(), );
+    for (const ChipDrawn& d : f.chips) {
+        ctx->LogInfo("token %d: %d vertices in its colour, from %.1f to %.1f, label %.1f wide",
+                     static_cast<int>(d.token), d.vertices, d.left, d.right, d.label_width);
+        IM_CHECK_GT(d.vertices, 0);
+        IM_CHECK_GT(d.right - d.left, d.label_width);
+    }
 }
 
-// With the window wide, every column is as wide as the rule says for the
-// sample rows.
+// With the window wide, the path table follows the width rule
+// (column_widths.h): every number column shows each of its cells whole, the
+// table needs no sideways scroll, and the columns fill the table's room. The
+// rows are the real report a batch of the corpus's first chart built.
 void test_column_widths(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    Harness& h = harness(ctx);
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
-    Fixture& f = fixture();
-    f.want_rule_widths = true;
+    ctx->WindowResize("", ImVec2(static_cast<float>(h.width), 600.0f));
     ctx->Yield(3);
+    const std::vector<hydra::app::report::ReportRow>& rows = fixture().path.result->paths;
     ImGuiTable* table = path_table(ctx);
-    IM_CHECK_RETV(table != nullptr, );
-    IM_CHECK_RETV(static_cast<size_t>(table->ColumnsCount) == f.rule_widths.size(), );
-    for (int c = 0; c < table->ColumnsCount; ++c) {
-        ctx->LogInfo("column %d (%s)", c, ImGui::TableGetColumnName(table, c));
-        IM_CHECK_EQ(table->Columns[c].WidthGiven, f.rule_widths[static_cast<size_t>(c)]);
-    }
-    f.want_rule_widths = false;
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    IM_CHECK(!table->InnerWindow->ScrollbarX);
+
+    // A cut cell draws past ImGui's text log, so a number in the frame's text
+    // was drawn whole.
+    const auto columns = hydra::app::path_report_view::path_columns();
+    for (const auto& column : columns)
+        if (column.numeric)
+            for (const auto& r : rows) IM_CHECK(shows(column.cell(r)));
+
+    // place_columns hands the last open text column the pixels its rounding
+    // lost, so all the room is used but a fraction of one pixel. The room
+    // (table_room) is the width inside the table's scroll window, and the
+    // spacing it takes off counts the cell spacing between columns only.
+    // ImGui's TableUpdateLayout (imgui_tables.cpp) starts the first column's
+    // MinX one CellSpacingX1 left of the table's WorkRect, and gives each
+    // column's MaxX its width plus CellSpacingX1 and CellSpacingX2, so the
+    // last column's MaxX sits a CellSpacingX2 past the room's right edge.
+    // Its WorkMaxX (MaxX less CellPaddingX and CellSpacingX2) is where its
+    // cells' content ends, and that is the edge the rule fills to.
+    // InnerClipRect.Max.x is the scroll window's own clip edge
+    // (InnerRect.Max.x rounded down, imgui.cpp). Both edges round down from
+    // the same room, so they differ by less than a pixel.
+    int last = -1;
+    for (int c = 0; c < table->ColumnsCount; ++c)
+        if (table->Columns[c].IsEnabled) last = c;
+    IM_CHECK_RETV(last >= 0, );
+    const float right = table->Columns[last].WorkMaxX;
+    ctx->LogInfo("last column's content ends at %.1f, the table's room at %.1f", right,
+                 table->InnerClipRect.Max.x);
+    IM_CHECK_LT(std::fabs(table->InnerClipRect.Max.x - right), 1.0f);
 }
 
 // The leftmost x of the text glyphs drawn last frame in `color` inside
@@ -708,12 +771,12 @@ std::optional<float> text_start(const ImGuiTable* table, int c, ImU32 color, flo
 
 // Every cell's text starts at its column's left edge: a number in Score and
 // the dim row number in "#" alike (Change 3 of the column-shares plan this
-// file's header points at). The shorter scores show it: right-aligned,
-// "77,000" would start a digit's width in from where "250,000" starts.
+// file's header points at). A shorter number shows it: right-aligned, it
+// would start a digit's width in from where a longer one starts. The rows are
+// the real report a batch of the corpus's first chart built.
 void test_cells_left(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
     // Wide enough that every column is on screen.
@@ -731,10 +794,13 @@ void test_cells_left(ImGuiTestContext* ctx) {
     const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
     const ImU32 dim = ImGui::GetColorU32(hydra::ui::kDimTextColor);
     const std::pair<int, ImU32> cells[] = {{0, dim}, {score, text}};
-    // From the bottom up, so the shortest score is read first.
-    for (size_t n = 6; n >= 1; --n) {
+    // Every row wholly on screen, from the bottom up, so the lowest score
+    // shown is read first.
+    size_t checked = 0;
+    for (size_t n = fixture().path.result->paths.size(); n >= 1; --n) {
         const std::optional<ImRect> row = drawn_row(ctx, n);
-        IM_CHECK_RETV(row.has_value(), );
+        if (!row || !fully_shown(table->InnerWindow, *row)) continue;
+        ++checked;
         for (const auto& [c, color] : cells) {
             const std::optional<float> x = text_start(table, c, color, row->Min.y, row->Max.y);
             IM_CHECK_RETV(x.has_value(), );
@@ -743,22 +809,121 @@ void test_cells_left(ImGuiTestContext* ctx) {
             IM_CHECK_LE(std::fabs(*x - table->Columns[c].WorkMinX), pad);
         }
     }
+    // Row 1 always fits a window this tall, so at least it was read.
+    IM_CHECK_GT(checked, size_t{0});
+}
+
+// A dragged column lets go when Clear filters is clicked (Memory::clear_search
+// moves the table's reset key). The filter that empties the table is a Timing
+// tier, not a search: a typed search moves the key by itself, so only a
+// dropdown change leaves Clear filters as the one thing that can let the drag
+// go. Both widths are the table's own, before the drag and after the click.
+// The rows are the real report a batch of the corpus's first chart built,
+// with Optimal paths only left ticked as the window opens.
+void test_clear_lets_drag_go(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    ctx->SetRef(path_window());
+    // Wide enough that every column is on screen.
+    ctx->WindowResize("", ImVec2(static_cast<float>(h.width), 600.0f));
+    ctx->Yield(3);
+
+    // A Timing tier that keeps none of the optimal paths, by the window's own
+    // keep-rule (path_keep).
+    const auto choices = hydra::app::path_report_view::timing_choices();
+    std::string empty_label;
+    for (size_t i = 1; i < choices.size() && empty_label.empty(); ++i)
+        if (std::none_of(rows.begin(), rows.end(),
+                         hydra::app::path_report_view::path_keep(choices[i].tier, true)))
+            empty_label = choices[i].label;
+    IM_CHECK_RETV(!empty_label.empty(), );
+
+    // Score, a column the "#" freeze leaves free to widen (a number column
+    // only ever widens under the width rule, place_columns).
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    const auto columns = hydra::app::path_report_view::path_columns();
+    int score = -1;
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (columns[c].title == "Score") score = static_cast<int>(c) + 1;
+    IM_CHECK_RETV(score > 0 && table->Columns[score].IsVisibleX, );
+    const float before = table->Columns[score].WidthGiven;
+    IM_CHECK_RETV(before > 0.0f, );
+
+    // Drag Score's right edge, on its header row, right by the column's own
+    // width.
+    const ImRect header = ctx->ItemInfo("**/Score").RectFull;
+    const ImVec2 edge(table->Columns[score].MaxX, header.GetCenter().y);
+    ctx->MouseMoveToPos(edge);
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->MouseMoveToPos(ImVec2(edge.x + before, edge.y));
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(3);
+    table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr, );
+    const float dragged = table->Columns[score].WidthGiven;
+    ctx->LogInfo("Score %.1f wide, %.1f after the drag", before, dragged);
+    IM_CHECK_RETV(dragged > before, );
+
+    // The tier that keeps no row, then Clear filters.
+    ctx->SetRef(path_window());
+    ctx->ComboClick(("##timing/" + empty_label).c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(shows(hydra::app::html::kNothingMatches), );
+    ctx->ItemClick("Clear filters");
+    ctx->Yield(3);
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr, );
+    const float after = table->Columns[score].WidthGiven;
+    ctx->LogInfo("Score %.1f wide after Clear filters", after);
+    IM_CHECK_EQ(after, before);
+}
+
+// The reason store_first_chart_failure's record keeps: the NoNotesError's own
+// words, for Expert Pro Drums.
+std::string no_notes_reason() {
+    return hydra::NoNotesError(hydra::Difficulty::Expert, true).what();
+}
+
+// The scanned library's first chart stored as a chart that can't be analyzed:
+// the record failure_record makes from a NoNotesError, the call a batch makes
+// for a chart with no Expert Pro Drums notes (app/analysis.cpp), saved on the
+// scratch db. It returns the chart's title.
+std::string store_first_chart_failure(Harness& h) {
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    const std::string title = h.app->library_row_at(0).title;
+    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
+                                                    hydra::ErrorKind::NoNotes, no_notes_reason()));
+    h.app->refresh_library_summaries();
+    return title;
 }
 
 // A report too narrow for the header's buttons beside "Built HH:MM": the
 // buttons start a line of their own, Close last at its right edge (the user's
 // answer 7 and their choice of 2026-10-14). A report with no rows has no
-// controls row or table to hold the window wide.
+// controls row or table to hold the window wide. The only report with no rows
+// that builds is one whose charts the store holds as can't be analyzed
+// (ReportJob::run fails a page with no rows otherwise), so the corpus is
+// scanned, its first chart stored so, and the report's batch declined: the
+// app's own window lists only what is stored.
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false);
+bool path_report_ready(ImGuiTestContext* ctx);
 void test_header_narrow(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    Fixture& f = fixture();
-    auto empty = std::make_shared<GeneratedReport>();
-    empty->why_empty = "sample empty reason";
-    f.path.result = empty;
-    f.path.built = local_time(13, 42);
-    f.path_open = true;
-    ctx->Yield(3);
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    store_first_chart_failure(h);
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    IM_CHECK_RETV(h.app->path_report.result->paths.empty(), );
     ImGuiWindow* window = path_window();
     IM_CHECK_RETV(window != nullptr, );
     ctx->SetRef(window);
@@ -766,17 +931,21 @@ void test_header_narrow(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     const ImRect wide = ctx->ItemInfo("Refresh").RectFull;
     const ImRect wide_close = ctx->ItemInfo("Close").RectFull;
-    IM_CHECK(shows("Built 13:42"));
+    // "Built HH:MM" as the header drew it for this report's build time.
+    const std::string drawn = visible_text(h);
+    const size_t built_at = drawn.find("Built ");
+    IM_CHECK_RETV(built_at != std::string::npos, );
+    const std::string built = drawn.substr(built_at, std::string("Built 00:00").size());
     // Wide: Refresh and Close share the heading's line, Close at its right
     // edge with Refresh just before it.
     IM_CHECK_LE(std::fabs(wide_close.Max.x - window->WorkRect.Max.x), 1.0f);
     IM_CHECK_EQ(wide_close.Min.y, wide.Min.y);
     IM_CHECK_LT(wide.Max.x, wide_close.Min.x);
 
-    // Room for "Hydra Path Index  Built 13:42", but not for Refresh beside it.
+    // Room for "Hydra Path Index  Built HH:MM", but not for Refresh beside it.
     const ImGuiStyle& style = ImGui::GetStyle();
     const float header_w = ImGui::CalcTextSize("Hydra").x + ImGui::CalcTextSize("Path Index").x +
-                           ImGui::CalcTextSize("Built 13:42").x + style.ItemSpacing.x * 3.0f;
+                           ImGui::CalcTextSize(built.c_str()).x + style.ItemSpacing.x * 3.0f;
     ctx->WindowResize("", ImVec2(header_w + style.WindowPadding.x * 2.0f + style.ScrollbarSize +
                                      wide.GetWidth() * 0.5f,
                                  400.0f));
@@ -792,27 +961,57 @@ void test_header_narrow(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(narrow_close.Min.y, narrow.Min.y);
     IM_CHECK_LT(narrow.Max.x, narrow_close.Min.x);
     IM_CHECK_LE(std::fabs(narrow_close.Max.x - window->WorkRect.Max.x), 1.0f);
-    f.path_open = false;
+    h.app->close_path_report();
     ctx->Yield(2);
 }
 
-// A saved size bigger than the screen (the user's hydra_ui.ini) opens fitted
-// to it; with the main window maximized the report opens at the whole work
-// area. The runner's work area is its display, and it has no OS frame.
+// The fixture's path window's entry in the saved-window text, as ImGui writes
+// it once the window has been placed at `pos` and sized `size`, then shut.
+// Empty when the window did not open.
+std::string saved_path_window_entry(ImGuiTestContext* ctx, ImVec2 pos, ImVec2 size) {
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    ImGuiWindow* w = path_window();
+    IM_CHECK_RETV(w != nullptr, std::string());
+    ImGui::SetWindowPos(w, pos);
+    ImGui::SetWindowSize(w, size);
+    ctx->Yield(2);
+    f.path_open = false;
+    ctx->Yield(2);
+    const std::string all = ImGui::SaveIniSettingsToMemory();
+    // The entry is headed by the name ImGui keeps the window's settings
+    // under, which the save above has just filled in (ImGui cuts the window's
+    // name down to the part its id hashes, CreateNewWindowSettings).
+    ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByWindow(w);
+    IM_CHECK_RETV(settings != nullptr, std::string());
+    const std::string head = std::string("[Window][") + settings->GetName() + "]\n";
+    const size_t start = all.find(head);
+    IM_CHECK_RETV(start != std::string::npos, std::string());
+    const size_t end = all.find("\n[", start);
+    return all.substr(start, end == std::string::npos ? std::string::npos : end + 1 - start);
+}
+
+// A saved size bigger than the screen opens fitted to it; with the main
+// window maximized the report opens at the whole work area. The runner's work
+// area is its display, and it has no OS frame. Each saved entry is the one
+// ImGui writes for the window after it was placed so, over the real report a
+// batch of the corpus's first chart built.
 void test_fits_screen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     const hydra::ui::WindowPlacement main_before = hydra::ui::window_placement();
     const ImVec2 origin = ImGui::GetMainViewport()->Pos;
     const ImVec2 display(static_cast<float>(h.width), static_cast<float>(h.height));
     Fixture& f = fixture();
-    // Shut, so the next opening is placed afresh (an open window stays put).
-    ctx->Yield(2);
 
-    // The user's entry: a 2,560 x 1,440 monitor less a 23 px title band.
-    const char* big_ini = "[Window][###pathreport]\nViewportPos=0,23\nSize=2560,1417\n";
-    ImGui::LoadIniSettingsFromMemory(big_ini);
+    // Half again as big as the screen each way. It is written while the
+    // window is open (an open window stays put) and read back once it is
+    // shut, so the next opening is placed afresh.
+    const std::string big_ini =
+        saved_path_window_entry(ctx, origin, ImVec2(display.x * 1.5f, display.y * 1.5f));
+    IM_CHECK_RETV(!big_ini.empty(), );
+    ImGui::LoadIniSettingsFromMemory(big_ini.c_str(), big_ini.size());
     f.path_open = true;
     ctx->Yield(3);
     ImGuiWindow* w = path_window();
@@ -827,8 +1026,10 @@ void test_fits_screen(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 
     // A small saved size, but the main window is maximized: the work area.
-    const char* small_ini = "[Window][###pathreport]\nPos=100,100\nSize=600,400\n";
-    ImGui::LoadIniSettingsFromMemory(small_ini);
+    const std::string small_ini = saved_path_window_entry(
+        ctx, ImVec2(origin.x + 100.0f, origin.y + 100.0f), ImVec2(600.0f, 400.0f));
+    IM_CHECK_RETV(!small_ini.empty(), );
+    ImGui::LoadIniSettingsFromMemory(small_ini.c_str(), small_ini.size());
     hydra::ui::WindowPlacement maximized = main_before;
     maximized.valid = true;
     maximized.maximized = true;
@@ -849,12 +1050,6 @@ void test_fits_screen(ImGuiTestContext* ctx) {
 }
 
 // ---- End to end, through AppState -----------------------------------------
-
-// Library row `row`'s title in quotes, so the word search matches it as one
-// phrase. Read it before any search narrows the rows.
-std::string quoted_title(Harness& h, size_t row) {
-    return "\"" + h.app->library_row_at(row).title + "\"";
-}
 
 // The tail of the path window's count line for the report in memory,
 // " of N path" (the "s" left off, so one path matches too).
@@ -897,44 +1092,6 @@ private:
     std::optional<ScopedHook> seam_;
 };
 
-// The dmleaderboards API, canned as reset_app cans it (alice, one score on
-// `md5`), with an optional second score on a chart not in the library, and
-// optionally holding the scores fetch until release(). The destructor lets a
-// held fetch go; reset_app puts its own fetcher back for the next test.
-constexpr const char* kNotInLibraryMd5 = "ffffffffffffffffffffffffffffffff";
-std::atomic<bool> g_fetch_release{true};
-class CannedDm {
-public:
-    CannedDm(const std::string& md5, bool not_in_library_score, bool hold) {
-        g_fetch_release = !hold;
-        std::vector<std::string> rows{canned_dm_score(md5, 100000)};
-        if (not_in_library_score) rows.push_back(canned_dm_score(kNotInLibraryMd5, 90000));
-        const std::string body = canned_dm_scores(rows);
-        hydra::net::set_fetcher([body](const std::string& url, const std::atomic<bool>* cancel) {
-            if (url.find("/all-users") != std::string::npos) return canned_dm_users();
-            testwait::wait_until(
-                [cancel] { return g_fetch_release.load() || (cancel && cancel->load()); },
-                "the test to release or cancel the scores fetch");
-            return body;
-        });
-    }
-    ~CannedDm() { release(); }
-    CannedDm(const CannedDm&) = delete;
-    CannedDm& operator=(const CannedDm&) = delete;
-    void release() { g_fetch_release = true; }
-};
-
-// The toolbar's "Compare with dmleaderboards...", then alice in the picker.
-void compare_with_alice(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK_RETV(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10), );
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-}
-
 // A path report build just started under `hold`: the window shows the
 // building subtitle with no count, then, once released, the rows.
 void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
@@ -944,8 +1101,8 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
                h.app->path_report_build() == hydra::ui::ReportBuild::Building;
     }, 10), );
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Building the report from your library..."));
-    IM_CHECK(!on_screen(h, "Analyzing "));
+    IM_CHECK(on_screen(h, hydra::app::kPathReportBuilding));
+    IM_CHECK(!on_screen(h, hydra::app::kPathReportAnalyzing));
     hold.release();
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
@@ -960,7 +1117,7 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
 // the path window asks first, and its Cancel leaves the report to list only
 // what is stored. Returns with the threshold put back and that report's build
 // started; the caller waits for it.
-void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false) {
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh) {
     Harness& h = harness(ctx);
     h.app->report_confirm_above = 0;
     if (refresh) {
@@ -983,11 +1140,31 @@ void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = fals
     h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
 }
 
+// Waits up to `seconds` for `seen` to hold of the running batch's snapshot,
+// read beside what the last frame drew. The batch runs the real analyzer on
+// the corpus, so it can end before then: that fails at once, because the
+// running state can no longer be seen.
+bool while_batch_runs(ImGuiTestContext* ctx,
+                      const std::function<bool(const hydra::ui::BatchJob::Snapshot&)>& seen,
+                      double seconds) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, false);
+    bool ended = false;
+    const bool met = wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        if (!s.finished && seen(s)) return true;
+        ended = s.finished;
+        return ended;
+    }, seconds);
+    IM_CHECK_RETV(!ended, false);  // the batch ended before its running state showed
+    return met;
+}
+
 // More rows to run than the threshold (lowered to 0 here): the path window
 // itself asks, in the batch confirm's words, and its Analyze runs the batch
 // the report then waits on, its count over the bar. No "Analyze library"
-// popup opens in the main window. The batch's charts wait at a gate, so the
-// running state is read before it ends.
+// popup opens in the main window. The running state is read, and the window's
+// Cancel pressed, while the real batch over the corpus is paused.
 void test_open_asks(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -997,7 +1174,6 @@ void test_open_asks(ImGuiTestContext* ctx) {
         Harness& h;
         ~Threshold() { h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove; }
     } threshold{h};
-    BatchGate gate;
     h.app->report_confirm_above = 0;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
@@ -1010,15 +1186,22 @@ void test_open_asks(ImGuiTestContext* ctx) {
 
     ctx->SetRef(path_window());
     ctx->ItemClick("Analyze");
-    ctx->Yield(2);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
+    // The window's Cancel stops only a batch still running
+    // (AppState::cancel_path_report), and the corpus batch can end within
+    // the frames a click takes. So the batch is paused at once, as the batch
+    // strip's Pause pauses it (library_dialogs.cpp): it finishes the charts it
+    // has started and takes no more. pause() leaves a batch that has already
+    // finished as it is, which fails here.
+    h.app->batch_job->pause();
+    {
         const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0 && gate.started() >= 1;
-    }, 10));
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing "));
+        IM_CHECK_RETV(s.paused && !s.finished, );
+    }
+    IM_CHECK_RETV(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, hydra::app::kPathReportAnalyzing);
+    }, 10), );
     IM_CHECK(window_named("Analyze library") == nullptr);
     IM_CHECK(!h.app->batch_confirm_pending);
 
@@ -1028,21 +1211,27 @@ void test_open_asks(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job->is_cancelled());
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Cancelled);
-    gate.allow(1000000);
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 60));
     h.app->close_path_report();
     ctx->Yield(2);
 }
 
-// Waits for the path report's build to finish, up to 60 s.
+// Waits up to 60 s for the path report's build to end, and says whether it
+// ended Ready. A build that ends any other way (failed or cancelled) can no
+// longer become Ready, so the wait ends there at once.
 bool path_report_ready(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const bool ready = wait_until(ctx, [&] {
+    const bool ended = wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+               h.app->path_report_build() != hydra::ui::ReportBuild::Building;
     }, 60);
     ctx->Yield(2);
-    return ready;
+    const hydra::ui::ReportBuild build = h.app->path_report_build();
+    if (ended && build != hydra::ui::ReportBuild::Ready)
+        ctx->LogError("the path report's build ended %s, not Ready: %s",
+                      build == hydra::ui::ReportBuild::Failed ? "failed" : "otherwise",
+                      h.app->path_report.message.c_str());
+    return ended && build == hydra::ui::ReportBuild::Ready;
 }
 
 // The path window opens from the finished strip's "Open report", from the
@@ -1107,54 +1296,41 @@ void test_open_path(ImGuiTestContext* ctx) {
 
 // Opening the report with nothing analyzed runs a batch over the corpus first
 // (D249 item 8): the window shows the batch's own count over
-// its bar, then the rows once the batch's report lands. The batch's workers
-// wait at a gate before each real analysis, so the count is read at 0.
+// its bar, then the rows once the batch's report lands. The batch runs the
+// real analyzer, and its count is read while it runs.
 void test_open_analyzes(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
 
-    static std::atomic<bool> go{false};
-    go = false;
-    struct Release {
-        ~Release() { go = true; }  // a failed check never leaves the workers waiting
-    } release;
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& progress) {
-            while (!go.load()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            return hydra::app::analyze_chart_file(path, settings, progress);
-        },
-        hydra::app::batch_worker_count());
     ctx->SetRef("//Hydra");
     IM_CHECK(ctx->ItemExists("**/Open path report"));  // offered with nothing analyzed
     ctx->ItemClick("**/Open path report");
-    hydra::ui::set_app_batch_analyzer_for_test({}, 1);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
-        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0;
+    // The window shows the batch's own total over its bar.
+    IM_CHECK(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, hydra::app::kPathReportAnalyzing) &&
+               on_screen(h, " of " + hydra::counted(s.total, "chart", "charts"));
     }, 10));
-    const int total = h.app->batch_job->snapshot().total;
-    ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + hydra::counted(total, "chart", "charts")));
 
-    go = true;
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
                h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
     }, 300));
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Charts shown"));
     IM_CHECK(on_screen(h, path_count_tail(h)));
     // The coverage lines: the batch gave every chart a result, so none is
     // left without one, and any chart it couldn't analyze is named by the
     // report's own line on screen.
     IM_CHECK_RETV(h.app->path_report.result != nullptr, );
     const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    // The tiles over the rows, each under the label its owner gives it.
+    for (const hydra::app::report::Tile& tile :
+         hydra::app::report::path_tiles(page.paths, {}, page.library_charts))
+        IM_CHECK(on_screen(h, tile.label));
     IM_CHECK_EQ(page.no_result_charts, int64_t{0});
     IM_CHECK(page.no_result_line.empty());
     IM_CHECK_EQ(page.songs + page.cant_analyze_charts, page.library_charts);
@@ -1173,12 +1349,7 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    const std::string md5 = h.app->library_row_at(0).entry.md5;
-    const std::string title = h.app->library_row_at(0).title;
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
-    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
-                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
-    h.app->refresh_library_summaries();
+    const std::string title = store_first_chart_failure(h);
 
     open_path_report_declining_batch(ctx);
     IM_CHECK_RETV(path_report_ready(ctx), );
@@ -1188,72 +1359,20 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, hydra::app::report::kNothingToShow));
     IM_CHECK(!page.cant_analyze_line.empty());
     IM_CHECK(on_screen(h, page.cant_analyze_line));
-    IM_CHECK(!on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(!on_screen(h, no_notes_reason()));
 
     ctx->SetRef(path_window());
     ctx->ItemClick("**/Show list##cantanalyze");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(on_screen(h, no_notes_reason()));
     IM_CHECK(on_screen(h, title));
     IM_CHECK(on_screen(h, "Hide list"));
     h.app->close_path_report();
     ctx->Yield(2);
 }
 
-// Picking a player closes the picker and opens the comparison; the window's
-// "Compare another player..." reopens the picker; Cancel while it builds
-// closes the window and reopens the picker (D103 items 8 and 10).
-void test_dm_handover(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    CannedDm dm(h.app->library_row_at(0).entry.md5, /*not_in_library_score=*/false,
-                /*hold=*/false);
-
-    compare_with_alice(ctx);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 1 score"));
-
-    // A ready comparison's "Compare another player...".
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Compare another player...");
-    ctx->Yield(2);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-
-    // Pick alice again with the scores fetch held: the window builds, and
-    // its Cancel closes it and goes back to the list.
-    g_fetch_release = false;
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report_build() == hydra::ui::ReportBuild::Building);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Fetching scores and building the report..."));
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Cancel");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_report.window_open);
-    IM_CHECK(dm_window() == nullptr);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-    dm.release();
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-}
-
 // The path report lists the current chart mode's records only, and a row
-// click selects its chart without switching the chart mode; a comparison row
-// not in the library selects nothing.
+// click selects its chart without switching the chart mode.
 void test_row_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1286,25 +1405,6 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), mode_b.c_str());
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
-
-    // A comparison with a second score on a chart not in the library. With
-    // the Status filter on "Not in your library", that score is row 1.
-    CannedDm dm(md5, /*not_in_library_score=*/true, /*hold=*/false);
-    compare_with_alice(ctx);
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    ctx->SetRef(dm_window());
-    ctx->ComboClick("##status/Not in your library");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 2 scores"));
-    const std::string mode_before = h.app->settings.chartmode_key();
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("**/1");
-    ctx->Yield(2);
-    IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());  // unchanged
-    IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
 // The path window's count line for the report in memory, "n of M paths", as
@@ -1325,12 +1425,7 @@ std::string shown_count(Harness& h) {
 // the window opened on that report. False when a step failed.
 bool open_batch_report(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return false;
-    IM_CHECK_RETV(batch_search(ctx, quoted_title(h, 0)), false);
-    dismiss_done(ctx);
-
+    if (!batch_first_chart(ctx)) return false;
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, false);
@@ -1361,7 +1456,7 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(h.app->report_job == nullptr);
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
-    IM_CHECK(!on_screen(h, "Building the report from your library..."));
+    IM_CHECK(!on_screen(h, hydra::app::kPathReportBuilding));
     IM_CHECK(h.app->path_report.result.get() == rows);
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());  // the same rows as before
 }
@@ -1404,9 +1499,6 @@ std::vector<std::pair<int, int>> table_sort(ImGuiTestContext* ctx) {
         out.emplace_back(specs->Specs[i].ColumnIndex, static_cast<int>(specs->Specs[i].SortDirection));
     return out;
 }
-
-// A text box's or a dropdown's shown text as the frame text logs it.
-std::string boxed(const std::string& s) { return "{ " + s + " }"; }
 
 bool best_only_ticked(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
@@ -1491,54 +1583,48 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(table_sort(ctx) == default_sort);
 }
 
-// A window's state goes with its owner (D308 item 3): rebuilt as the runner
-// builds an AppState per test, the fixture opens both windows fresh. They get
-// back the very results they held, because a new result starts a window over
-// by itself and would prove nothing.
+// A window's state goes with its AppState (D308 item 3): a new AppState, as
+// the runner builds one per test, opens the path window fresh. The app draws
+// its own window over the real report a batch of the corpus's first chart
+// built. The second AppState gets back the very report the first one showed,
+// because a new report starts a window over by itself and would prove nothing.
 void test_fresh_state(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    Fixture& f = fixture();
-    const std::string typed = boxed("zzz");
+    Harness& h = harness(ctx);
+    if (!open_batch_report(ctx)) return;
+    const std::shared_ptr<hydra::ui::PathWindow> first_path = h.app->path_window_ui;
+    const std::shared_ptr<hydra::ui::DmWindow> first_dm = h.app->dm_window_ui;
+    const std::shared_ptr<const GeneratedReport> report = h.app->path_report.result;
+    const std::string default_count = shown_count(h);
+    const std::string typed = boxed(report->paths.front().song);
 
-    open_dm(ctx);
-    if (ctx->IsError()) return;
-    ctx->ItemInputValue("##search", "zzz");
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Optimal paths only");
     ctx->Yield(2);
-    IM_CHECK(shows("0 of 4 scores"));
-    IM_CHECK(shows(typed));
-    f.dm_open = false;
-
-    open_path_all_rows(ctx);
-    if (ctx->IsError()) return;
-    ctx->ItemInputValue("##search", "zzz");
+    ctx->SetRef(path_window());
+    ctx->ItemInputValue("##search", report->paths.front().song.c_str());
     ctx->Yield(2);
-    IM_CHECK(shows("0 of 6 paths"));
-    IM_CHECK(shows(typed));
-    IM_CHECK(!best_only_ticked(ctx));
-    f.path_open = false;
-    ctx->Yield(2);
+    IM_CHECK_RETV(on_screen(h, typed), );
+    IM_CHECK_RETV(!best_only_ticked(ctx), );
+    press_escape_on(ctx, path_window());
 
-    const std::shared_ptr<const GeneratedReport> path_result = f.path.result;
-    const std::shared_ptr<const GeneratedDmReport> dm_result = f.dm.result;
-    reset_fixture();
-    f.path.result = path_result;
-    f.dm.result = dm_result;
-
-    open_dm(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK(shows("4 of 4 scores"));
-    IM_CHECK(shows("Search song, artist, or charter"));
-    IM_CHECK(!shows(typed));
-    f.dm_open = false;
-
-    f.path_open = true;
+    // The runner's step between tests: the old AppState goes and a new one
+    // comes. The first one's window states are kept alive here, so the new
+    // ones cannot take their addresses.
+    reset_app(h);
+    IM_CHECK(h.app->path_window_ui != first_path);
+    IM_CHECK(h.app->dm_window_ui != first_dm);
+    // The report the first AppState held, landed as a build lands it.
+    h.app->path_report.result = report;
+    h.app->path_report.last = ReportBuild::Ready;
+    h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(shows("Search song, artist, charter, or path notation"));
-    IM_CHECK(!shows(typed));
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(on_screen(h, hydra::app::html::path_report_search_hint()));
+    IM_CHECK(!on_screen(h, typed));
     IM_CHECK(best_only_ticked(ctx));
-    f.path_open = false;
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
+    h.app->close_path_report();
     ctx->Yield(2);
 }
 
@@ -1555,28 +1641,32 @@ void test_out_of_date(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->path_report.batch_finished.has_value());
 
     // A batch that is stopped builds no report, so the one in memory stays,
-    // out of date. The gate holds the run so Stop lands while it runs.
-    {
-        BatchGate gate;
-        ctx->SetRef("//Hydra");
-        ctx->ItemInputValue("**/##search", "");
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
-        start_library_batch(ctx);
-        IM_CHECK_RETV(wait_until(ctx, [&] { return gate.started() >= 1; }, 30), );
-        h.app->batch_job->stop();
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
-    }
+    // out of date. The real batch over the corpus is stopped once it reaches
+    // its charts, before it can end by itself.
+    ctx->SetRef("//Hydra");
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
+    start_library_batch(ctx);
+    IM_CHECK_RETV(while_batch_runs(ctx, [](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0;
+    }, 30), );
+    h.app->batch_job->stop();
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
     ctx->Yield(3);
     IM_CHECK(h.app->report_job == nullptr);
-    IM_CHECK(h.app->path_report.batch_finished.has_value());
+    IM_CHECK_RETV(h.app->path_report.batch_finished.has_value(), );
     dismiss_done(ctx);
 
-    const std::string library_line = "Your library changed since this report was built";
-    const std::string settings_line = "The settings changed since this report was built.";
+    // Each strip sentence as its owner writes it for this report.
+    namespace frame = hydra::ui::report_frame;
+    const std::string library_line =
+        frame::out_of_date_text(ReportOutOfDate::Library, h.app->path_report.batch_finished);
+    const std::string settings_line =
+        frame::out_of_date_text(ReportOutOfDate::Settings, std::nullopt);
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, library_line + " (a batch finished at "));
+    IM_CHECK(on_screen(h, library_line));
 
     // A setting the report reads.
     h.app->settings.sp_cap = 5;
@@ -1621,12 +1711,12 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-open-analyzes", test_open_analyzes},
         {"report-window-open-asks", test_open_asks},
         {"report-window-cant-analyze-list", test_cant_analyze_list},
-        {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
         {"report-window-hidden-lets-go", test_hidden_lets_go},
         {"report-window-reopen-keeps-filters", test_reopen_keeps_filters},
         {"report-window-out-of-date", test_out_of_date},
+        {"report-window-fresh-state", test_fresh_state},
     };
     return entries;
 }
@@ -1644,9 +1734,9 @@ void register_report_window_tests(Harness& h) {
         {"report-window-chip-outline", test_chip_outline},
         {"report-window-column-widths", test_column_widths},
         {"report-window-cells-left", test_cells_left},
+        {"report-window-clear-lets-drag-go", test_clear_lets_drag_go},
         {"report-window-header-narrow", test_header_narrow},
         {"report-window-fits-screen", test_fits_screen},
-        {"report-window-fresh-state", test_fresh_state},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);

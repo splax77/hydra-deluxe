@@ -68,3 +68,7 @@ most once a second, from the last second's bytes, and appears only after 3 s
 of loading (src/ui/preview_load_job.cpp). It reads "about m:ss left" at every
 length (h:mm:ss past an hour), in the same words as the batch strip (`time_left_text` in
 src/app/display_format.h).
+
+2026-11-21: the golden-image test named above, and its `testdata/preview/`
+folder, were removed at the user's answer ("Delete it"), so the port is no
+longer checked against the Onyx screenshot.

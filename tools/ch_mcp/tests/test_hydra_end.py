@@ -1,17 +1,19 @@
 """Tests for hydra_end, the one reader of Hydra's song end, and the fake
 hydra_replay dump the other tool tests use.
 
-No test runs hydra_replay (agent rule 14). FakeDumps stands in for
-hydra_end.make_dump: a test names a chart's song end with FakeDumps.set_end,
-and the fake writes a dump that holds only that field, which the real
-hydra_end.song_length_ms then reads.
+No test runs hydra_replay (agent rule 14). The tests here read real dumps
+and schedules hydra_replay wrote into testdata/replay and testdata/ch_runs.
+FakeDumps stands in for hydra_end.make_dump in the other tool tests: a test
+names a chart's song end with FakeDumps.set_end, and the fake writes a dump
+that holds only that field, which the real hydra_end.song_length_ms then
+reads.
 """
 
 from __future__ import annotations
 
+import glob
 import json
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -84,14 +86,15 @@ def tearDownModule():
     FAKE.stop()
 
 
-# The files whose song length used to come from song.ini or the probe formula
-# (the player audit fix plan's task F10, and D331 for the last two).
-_CH_MCP = os.path.join(_REPO_ROOT, "tools", "ch_mcp")
-_CH_PROBE = os.path.join(_REPO_ROOT, "tools", "ch_probe")
-READER_FILES = {name: os.path.join(_CH_MCP, name)
-                for name in ("bot_run.py", "game_tools.py", "sp_tools.py",
-                             "install_chart.py", "game_files.py", "trace_hits.py")}
-READER_FILES["probe_songs.py"] = os.path.join(_CH_PROBE, "probe_songs.py")
+# Every dump and schedule hydra_replay wrote into the checked-in test data.
+# Each folder's commit says which chart and command made its files.
+REAL_HYDRA_FILES = sorted(
+    glob.glob(os.path.join(_REPO_ROOT, "testdata", "replay", "*-dump.json"))
+    + glob.glob(os.path.join(_REPO_ROOT, "testdata", "replay", "*-schedule.json"))
+    + glob.glob(os.path.join(_REPO_ROOT, "testdata", "ch_runs", "*", "schedule.json")))
+# One real dump, written by `hydra_replay dump` on the Window Map test chart
+# (commit 77984463), for the tests that need a dump in place of make_dump's.
+REAL_DUMP = os.path.join(_REPO_ROOT, "testdata", "replay", "window_map-dump.json")
 
 
 class HydraEndTest(unittest.TestCase):
@@ -106,31 +109,50 @@ class HydraEndTest(unittest.TestCase):
             f.write(text)
         return path
 
+    def _real_dump_with(self, value=_ABSENT) -> dict:
+        """The real dump REAL_DUMP, with its song end replaced by `value`, or
+        dropped when no value is given."""
+        with open(REAL_DUMP, encoding="utf-8") as f:
+            doc = json.load(f)
+        del doc[hydra_end.FIELD]
+        if value is not _ABSENT:
+            doc[hydra_end.FIELD] = value
+        return doc
+
     def test_hydra_end_refuses_null_or_missing(self):
-        for text, said in (('{"song_length_ms": null}', "song_length_ms is null"),
-                           ('{"paths": []}', "has no song_length_ms field"),
-                           ('{"song_length_ms": "4000"}', "not a number"),
-                           ('{"song_length_ms": true}', "not a number"),
-                           ('[1]', "is not a JSON object"),
-                           ('{', "could not read")):
-            with self.subTest(text=text):
+        # Each refused file is named in the refusal, and so is the field for
+        # the files that are JSON objects.
+        cases = (("null", json.dumps(self._real_dump_with(None)), True),
+                 ("absent", json.dumps(self._real_dump_with()), True),
+                 ("text", json.dumps(self._real_dump_with("4000")), True),
+                 ("bool", json.dumps(self._real_dump_with(True)), True),
+                 ("not an object", "[1]", False),
+                 ("cut short", "{", False))
+        for name, text, names_field in cases:
+            with self.subTest(case=name):
+                path = self._file(text)
                 with self.assertRaises(hydra_end.SongEndMissing) as caught:
-                    hydra_end.song_length_ms(self._file(text))
-                self.assertIn(said, str(caught.exception))
-        with self.assertRaises(hydra_end.SongEndMissing):
-            hydra_end.song_length_ms(os.path.join(self.tmp, "nowhere.json"))
+                    hydra_end.song_length_ms(path)
+                self.assertIn(path, str(caught.exception))
+                if names_field:
+                    self.assertIn(hydra_end.FIELD, str(caught.exception))
+        missing = os.path.join(self.tmp, "nowhere.json")
+        with self.assertRaises(hydra_end.SongEndMissing) as caught:
+            hydra_end.song_length_ms(missing)
+        self.assertIn(missing, str(caught.exception))
 
-    def test_the_end_is_the_number_as_written(self):
-        # The Senri schedule fixture's song end.
-        self.assertEqual(hydra_end.song_length_ms(self._file('{"song_length_ms": 260504.0}')),
-                         260504.0)
-
-    def test_make_dump_runs_prep_inputs_dump_command_with_the_default_exe(self):
-        # The module's own make_dump, kept before FakeDumps patches over it.
-        with mock.patch.object(prep_inputs, "run_replay") as run:
-            _REAL_MAKE_DUMP("C:/songs/x/notes.chart", "C:/out/x-dump.json")
-        run.assert_called_once_with(prep_inputs.dump_command(
-            prep_inputs.DEFAULT_EXE, "C:/songs/x/notes.chart", "C:/out/x-dump.json"))
+    def test_the_end_is_the_number_hydra_replay_wrote(self):
+        # Every real dump and schedule: the end comes back as written, with
+        # its type kept, so a rounding, scaling or int() cast goes red even
+        # on a whole-number end.
+        self.assertTrue(REAL_HYDRA_FILES, "no hydra_replay files under testdata")
+        for path in REAL_HYDRA_FILES:
+            with self.subTest(file=os.path.relpath(path, _REPO_ROOT)):
+                with open(path, encoding="utf-8") as f:
+                    written = json.load(f)[hydra_end.FIELD]
+                got = hydra_end.song_length_ms(path)
+                self.assertIs(type(got), type(written))
+                self.assertEqual(got, written)
 
     def _dump_root(self) -> str:
         """A fresh, empty folder for chart_song_length_ms's scratch folders."""
@@ -159,54 +181,58 @@ class HydraEndTest(unittest.TestCase):
         self.assertEqual(source,
                          f"song_length_ms in a hydra_replay dump of {os.path.abspath(chart)}")
 
+    def _missing_exe(self):
+        """The real make_dump, run with prep_inputs' default exe pointed at a
+        file that does not exist, so the real runner fails the way it does
+        when hydra_replay was never built."""
+        for patch in (mock.patch.object(hydra_end, "make_dump", _REAL_MAKE_DUMP),
+                      mock.patch.object(prep_inputs, "DEFAULT_EXE",
+                                        os.path.join(self.tmp, "no_build", "hydra_replay.exe"))):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    @staticmethod
+    def _dump_written(doc: dict):
+        """A patch under which make_dump writes `doc` where the dump goes, in
+        place of a hydra_replay run."""
+        def write(chart, dump):
+            with open(dump, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+        return mock.patch.object(hydra_end, "make_dump", write)
+
     def test_chart_song_length_ms_leaves_no_scratch_folder_behind(self):
         root = self._dump_root()
         chart = os.path.join(self.tmp, "Kept", "notes.chart")
-        FAKE.set_end(chart, 4000.0)
-        hydra_end.chart_song_length_ms(chart)
+        with open(REAL_DUMP, encoding="utf-8") as f:
+            real = json.load(f)
+        with self._dump_written(real):
+            ms, _ = hydra_end.chart_song_length_ms(chart)
+        self.assertEqual(ms, real[hydra_end.FIELD])
         self.assertEqual(os.listdir(root), [])
-        # Nor when the dump fails, or when the dump it made names no end.
-        for name, kwargs in (("Failed", None), ("Null", {"value": None}),
-                             ("Absent", {})):
+        # Nor when the dump it made names no end.
+        for name, doc in (("Null", self._real_dump_with(None)),
+                          ("Absent", self._real_dump_with())):
             with self.subTest(case=name):
-                failed = os.path.join(self.tmp, name, "notes.chart")
-                if kwargs is not None:
-                    FAKE.set_end(failed, **kwargs)
-                with self.assertRaises(hydra_end.SongEndMissing):
-                    hydra_end.chart_song_length_ms(failed)
+                with self._dump_written(doc):
+                    with self.assertRaises(hydra_end.SongEndMissing):
+                        hydra_end.chart_song_length_ms(chart)
                 self.assertEqual(os.listdir(root), [])
+        # Nor when hydra_replay cannot be run at all.
+        self._missing_exe()
+        with self.assertRaises(hydra_end.SongEndMissing):
+            hydra_end.chart_song_length_ms(chart)
+        self.assertEqual(os.listdir(root), [])
 
     def test_a_failed_dump_is_no_song_end_with_hydra_replays_lines(self):
         chart = os.path.join(self.tmp, "Unset", "notes.chart")
+        self._missing_exe()
         with self.assertRaises(hydra_end.SongEndMissing) as caught:
             hydra_end.chart_song_length_ms(chart)
-        self.assertIn("hydra_replay dump failed with exit code 1", str(caught.exception))
-
-    def test_every_length_reader_calls_hydra_end(self):
-        texts = {}
-        for name, path in READER_FILES.items():
-            with open(path, encoding="utf-8") as f:
-                texts[name] = f.read()
-        for name, text in texts.items():
-            with self.subTest(file=name):
-                self.assertNotIn("song_ini_length_ms", text)
-                self.assertNotIn("probe_songs.song_length_ms", text)
-                self.assertNotIn("import song_length_ms", text)
-                # A read of song.ini's own length key, quoted, or a song.ini
-                # line that writes it.
-                self.assertIsNone(re.search(r"""["']song_length["']""", text))
-                self.assertIsNone(re.search(r"song_length\s*=", text))
-        # The probe formula itself is gone.
-        self.assertNotIn("def song_length_ms", texts["probe_songs.py"])
-        # The four that read a length themselves read it from hydra_end; the
-        # other two take it from bot_run.song_length_ms, whose source the
-        # behaviour tests in test_bot_run and test_game_tools pin.
-        for name in ("bot_run.py", "install_chart.py", "trace_hits.py", "probe_songs.py"):
-            with self.subTest(file=name):
-                self.assertIn("hydra_end.chart_song_length_ms(", texts[name])
-        for name in ("game_tools.py", "sp_tools.py"):
-            with self.subTest(file=name):
-                self.assertIn("bot_run.song_length_ms(", texts[name])
+        # The refusal names the chart and carries the runner's own lines.
+        cause = caught.exception.__cause__
+        self.assertIsInstance(cause, prep_inputs.ReplayFailed)
+        self.assertIn(chart, str(caught.exception))
+        self.assertIn(str(cause), str(caught.exception))
 
 
 if __name__ == "__main__":

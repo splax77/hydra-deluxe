@@ -50,13 +50,9 @@ std::vector<std::pair<std::string, std::string>> sng_read_metadata(const std::ve
 // entries before it.
 std::vector<SngFileEntry> sng_read_file_table(const std::vector<uint8_t>& buf);
 
-// One file's decoded bytes, or nullopt when its range is outside the buffer.
-std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& buf,
-                                                    const SngFileEntry& entry);
-
-// The same, unmasked straight into `out` (resized to the entry's length): one
-// allocation, no extra copy. False, with `out` untouched, when the entry's
-// range is outside the buffer.
+// One file's decoded bytes, unmasked straight into `out` (resized to the
+// entry's length): one allocation, no extra copy. False, with `out`
+// untouched, when the entry's range is outside the buffer.
 bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& entry,
                           std::vector<uint8_t>& out);
 
@@ -74,7 +70,7 @@ std::vector<uint8_t> sng_read_head(const ByteSource& src);
 
 // One file's decoded bytes, read on their own; `head` is sng_read_head's
 // result (it holds the XOR mask). nullopt when the entry runs past the end of
-// the file, by the same rule sng_decode_file uses for the whole file.
+// the file, by the same rule sng_decode_file_into uses for the whole file.
 std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
                                                   const std::vector<uint8_t>& head,
                                                   const SngFileEntry& entry);

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "app/config.h"  // Settings::clamp, the Backend limit's range
+#include "app/display_format.h"  // kFactSeparator
 #include "app/path_view.h"
 #include "core/model.h"
 #include "imgui.h"
@@ -367,14 +368,15 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
-    // The tag is a badge: the same pill width as every activation badge.
+    // The tag is a badge: the same pill width as every activation badge, in
+    // the tag's own colours (window_tag_pill).
     const float tag_w =
         shared_pill_width(badge_pill_text_w(), ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
     if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
     place_control_at_right_edge(tag_w);
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     draw_badge(ImGui::GetWindowDrawList(), pos.x, pos.y, tag_w, w.tag.c_str(),
-               window_tag_ink(w.is_short), px(1.0f));
+               window_tag_ink(w.is_short), px(1.0f), window_tag_pill(w.is_short));
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a
@@ -605,40 +607,36 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
 
 // ---- the folds, Copy path and the backend limit -----------------------------
 
-// A fold toggle drawn as a button that looks pressed while open.
-void fold_button(const char* label, bool& open) {
-    const bool was_open = open;
-    if (was_open) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-    if (ImGui::Button(label)) open = !open;
-    if (was_open) ImGui::PopStyleColor();
+// A fold heading drawn as a tree node, like each activation's Backend timings
+// fold, so its arrow shows whether it is open. NoAutoOpenOnLog for the same
+// reason as there: a text capture must not unfold it.
+void fold_header(const char* label, bool& open) {
+    ImGui::SetNextItemOpen(open, ImGuiCond_Always);
+    open = ImGui::TreeNodeEx(
+        label, ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog);
 }
 
 void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
                         app::PathsTabUi& ui) {
-    // One row that wraps where the next piece would run past the edge: the
-    // summary's length changes from chart to chart.
     ImGui::Spacing();
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    fold_button("Multiplier squeeze##mult", ui.mult_open);
-    const std::string summary = app::multsqueeze_summary(d.squeezes);
-    flow_next(ImGui::CalcTextSize(summary.c_str()).x, spacing);
-    ImGui::TextDisabled("%s", summary.c_str());
-    flow_next(button_slot_width("Score breakdown##breakdown"), px(16.0f));
-    fold_button("Score breakdown##breakdown", ui.breakdown_open);
-    flow_next(button_slot_width("Copy path"), px(24.0f));
-    if (ImGui::Button("Copy path")) copy_selected_path(app);
-    hint("Ctrl+C also copies the selected path.");
-    const double copied_at = app.details_ui.copied_at;
-    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {
-        flow_next(ImGui::CalcTextSize("Copied!").x, spacing);
-        ImGui::TextDisabled("Copied!");
-    }
+    // A fold's body lines up with its heading's label, past the arrow.
+    const float body_indent = ImGui::GetTreeNodeToLabelSpacing();
 
-    if (ui.mult_open) {
-        if (d.squeezes.empty()) {
-            ScopedFont font(TextRole::Prose);
-            ImGui::TextDisabled("None.");
-        }
+    // With no squeezes there is nothing to unfold: the heading is plain grey
+    // text with no arrow, and its summary says "none" once.
+    const std::string summary = app::multsqueeze_summary(d.squeezes);
+    if (d.squeezes.empty()) {
+        ImGui::Indent(body_indent);
+        ImGui::TextDisabled("Multiplier squeeze");
+        ImGui::Unindent(body_indent);
+    } else {
+        fold_header("Multiplier squeeze##mult", ui.mult_open);
+    }
+    // No gap from SameLine: kFactSeparator brings its own spaces.
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::TextDisabled("%s%s", app::kFactSeparator, summary.c_str());
+    if (ui.mult_open && !d.squeezes.empty()) {
+        ImGui::Indent(body_indent);
         for (const app::MultSqueezeView& msq : d.squeezes) {
             {
                 ScopedFont font(TextRole::Notation);
@@ -651,10 +649,24 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
             }
             ImGui::Unindent(px(24.0f));
         }
+        ImGui::Unindent(body_indent);
     }
+
+    fold_header("Score breakdown##breakdown", ui.breakdown_open);
     if (ui.breakdown_open) {
+        ImGui::Indent(body_indent);
         ScopedFont font(TextRole::Figure);
         for (const std::string& line : d.breakdown) ImGui::TextUnformatted(line.c_str());
+        ImGui::Unindent(body_indent);
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Copy path")) copy_selected_path(app);
+    hint("Ctrl+C also copies the selected path.");
+    const double copied_at = app.details_ui.copied_at;
+    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Copied!");
     }
 
     // The backend tables' display window. Purely a filter on what the tables
@@ -723,11 +735,13 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
     ImGui::BeginChild("##pathdetails", ImVec2(0.0f, 0.0f));
     if (selected_path) {
         // details() first: a new path resets ui() before anything reads it.
+        // The chords are set with the record (AppState's view job), so a
+        // shown record always has them.
         const app::PathsTabCache::Details& d = cache.details(
             *selected_path, record, generation,
-            app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
-            app.viewed.chords ? &*app.viewed.chords : nullptr);
+            app.viewed.timing ? &*app.viewed.timing : nullptr, *app.viewed.chords,
+            app.settings.backend_limit(), app.settings.rules, app.viewed.song_length_ms,
+            app.settings.view_prodrums);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
         render_path_footer(app, d, ui);

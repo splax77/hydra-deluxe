@@ -5,6 +5,7 @@
 #include <ctime>
 
 #include "app/html_page.h"   // kNothingMatches
+#include "app/user_messages.h"  // kReportCancelled
 #include "imgui_internal.h"  // TableSetColumnSortDirection, the window's item rects
 #include "ui/app_shell.h"    // report_window_class, place_report_window
 #include "ui/text_role.h"
@@ -116,12 +117,7 @@ void end_strip() { ImGui::EndChild(); }
 // time when there is one; the settings line has no time (D103 item 21).
 void out_of_date_strip(const Frame& f) {
     if (f.state != ReportBuild::Ready || f.out_of_date == ReportOutOfDate::None) return;
-    const std::string why =
-        f.out_of_date == ReportOutOfDate::Settings
-            ? "The settings changed since this report was built."
-        : f.batch_finished ? "Your library changed since this report was built (a batch finished at " +
-                                 clock_text(*f.batch_finished) + ")."
-                           : "Your library changed since this report was built.";
+    const std::string why = out_of_date_text(f.out_of_date, f.batch_finished);
     begin_strip("##outofdate", kDoneStripBg);
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(why.c_str());
@@ -193,7 +189,7 @@ bool state_body(const Frame& f) {
             return true;
         }
         case ReportBuild::Cancelled:
-            ImGui::TextUnformatted("Report cancelled.");
+            ImGui::TextUnformatted(app::kReportCancelled);
             if (ImGui::Button("Try again")) call(cb.try_again);
             return true;
         case ReportBuild::Failed:
@@ -220,6 +216,19 @@ bool state_body(const Frame& f) {
 }
 
 }  // namespace
+
+std::string out_of_date_text(ReportOutOfDate why,
+                             std::optional<std::chrono::system_clock::time_point> batch_finished) {
+    switch (why) {
+    case ReportOutOfDate::None: return {};
+    case ReportOutOfDate::Settings: return "The settings changed since this report was built.";
+    case ReportOutOfDate::Library: break;
+    }
+    if (batch_finished)
+        return "Your library changed since this report was built (a batch finished at " +
+               clock_text(*batch_finished) + ").";
+    return "Your library changed since this report was built.";
+}
 
 bool begin(bool* open, const Frame& f, Memory& m) {
     place_report_window(f.window_name.c_str());

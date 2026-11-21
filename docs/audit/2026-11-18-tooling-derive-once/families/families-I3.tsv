@@ -1,0 +1,102 @@
+id	family	question	note
+I3-001	F5	Words the ref judge prints to allow or deny a git move	
+I3-002	F5	Words the selftest prints when the judge passes its own checks	
+I3-003	F5	Which ref name counts as main	
+I3-004	F4	Git options pinned for the judge's own git calls	
+I3-005	F4	Environment variables dropped or set for the judge's git calls	
+I3-006	F2	Which trailers every commit made from Claude Code must carry	
+I3-007	F2	Which commits are exempt from the trailer rule	
+I3-008	F1	How long git may take when asked about origin	
+I3-009	F1	How long the judge may run before it refuses	
+I3-010	F3	Which folder holds the rulings the ruling check watches	
+I3-011	F4	Which ref moves that rewrite a shared branch are refused	
+I3-012	F4	Deleting main is refused; who may delete it	also F7 (only the user may delete main)
+I3-013	F4	Which branches are refused from becoming symbolic refs	
+I3-014	F5	Which moves of main are judged by the review rule	
+I3-015	F5	What happens when the review or ruling rule file is missing	
+I3-016	F5	Which base a branch's change is counted from	
+I3-017	F5	Which pushes are checked for rulings	
+I3-018	F8	When the judge restores files and index after a refused move	
+I3-019	F4	Refusal texts and the git commands they tell agents to run	also F5 (refusal reasons)
+I3-020	F2	Trailers and git identity used in the judge's selftest	
+I3-021	F6	Accepted hash length in a commit record	
+I3-022	F6	Event names written to the refusal log	
+I3-023	F3	Names of the marker files that switch the review gates on	
+I3-024	F3	Review brief paths named in refusal text	also F5 (which review the brief is for)
+I3-025	F5	Built-in code paths used when a marker lists no gate lines	
+I3-026	F5	Pages outsiders read, which need a doc review	
+I3-027	F5	Exact typed words that waive a review	
+I3-028	F5	Which files need a real-app check	
+I3-029	F5	Which file types count as C or C++ for comment-only changes	
+I3-030	F4	Git options and environment drops for every gate except the judge	
+I3-031	F6	Where the real-app record is kept and which fields it holds	
+I3-032	F5	Exact typed words that let one whole-library run through	
+I3-033	F5	Exact typed words that let a Clone Hero key call through	
+I3-034	F6	Valid commit hash shape and the all-zero hash	
+I3-035	F6	Shape of a marker file's gate lines	
+I3-036	F5	What counts as a document's review key	
+I3-037	F5	What counts as the user typing a prompt in a transcript	also F6 (transcript record shape)
+I3-038	F5	When a typed waiver counts as valid	
+I3-039	F5	Refusal causes and the advice each one gives	
+I3-040	F5	What counts as a clean review verdict	
+I3-041	F5	How code in a main move is accepted: verdict, carry or waiver	
+I3-042	F5	When a document's review sign-off is accepted	
+I3-043	F5	Which code changes count toward a review	
+I3-044	F5	Whether editing or deleting the doc-review marker needs review	
+I3-045	F5	Which edits count as comment-only and skip review	
+I3-046	F5	When a real-app record satisfies the UI check	
+I3-047	F5	The carry rule for a clean merge of base and branch	
+I3-048	F5	Return words of the main-move explanation function	
+I3-049	F2	Which agent type counts as a reviewer	
+I3-050	F2	What review key a reviewer brief must name	also F5 (review key identity)
+I3-051	F2	Whether a reviewer dispatch may ask for isolation	
+I3-052	F2	Refusal of a dispatch naming two or more keys	
+I3-053	F2	When a dispatch with no key is refused	
+I3-054	F1	How many folders a brief may name before the cap	
+I3-055	F3	What a folder path in a brief looks like	
+I3-056	F3	Which repo a review key is judged in	also F5 (review decision)
+I3-057	F5	Why a review key cannot be reviewed	
+I3-058	F6	What the dispatch handover record holds	
+I3-059	F5	When the dispatch hook applies to a repo	
+I3-060	F5	What happens when the dispatch hook crashes	
+I3-061	F3	Name of the doc-review marker file	
+I3-062	F5	Small-text size limits that need no review	
+I3-063	F5	How text size is counted for the review limit	
+I3-064	F5	When a repo counts as gated for docs	
+I3-065	F5	Which tool calls the publish gate checks	
+I3-066	F5	What counts as a sign-off for a document	
+I3-067	F5	Refusal text for a document with no sign-off	
+I3-068	F4	Command-line forms of the publish gate check	
+I3-069	F3	Which folder the ruling check judges and where its format page lives	
+I3-070	F6	Allowed section headings in the rulings files	
+I3-071	F6	Shape of one ruling line	
+I3-072	F1	Install date used to backfill older rulings	
+I3-073	F5	Button labels and question text for filing a ruling	
+I3-074	F6	Pointer file name and the entries it holds	
+I3-075	F5	Test for whether a ruling's words are the user's own	
+I3-076	F5	Test for whether the user approved a filed ruling	
+I3-077	F5	Route letting older ruling lines pass without approval	
+I3-078	F5	Moving a ruling line out of Unconfirmed counts as adding it	
+I3-079	F5	Removed ruling lines are never judged	
+I3-080	F4	By-hand command for checking a ruling line	
+I3-081	F3	Where the card tools live and which transcripts are read	
+I3-082	F1	How much of a transcript is read, cut at the last complete line	
+I3-083	F5	Whether a crash in the ruling check refuses the change	
+I3-084	F5	What the by-hand ruling check prints	
+I3-085	F4	Kinds of GitHub text and the gh command each one runs	also F5 (publishing kinds)
+I3-086	F4	Which fields each GitHub text kind requires	
+I3-087	F4	Flags refused in the extra gh arguments	
+I3-088	F3	Python program path used by the gates	
+I3-089	F5	Whether the publish gate check runs before text is posted	
+I3-090	F4	What the git ref-gate shim allows or refuses	
+I3-091	F3	Where the ref-gate shim is installed	also F4 (install refusal conditions)
+I3-092	F3	Python path, line endings and temp file name in the installer	
+I3-093	F3	How Windows paths are turned into shell paths	
+I3-094	F8	Which parts of settings.json the fragment replaces or merges	also F4 (permission lists)
+I3-095	F3	Live settings file path and sync state folder	
+I3-096	F4	Shell commands the permission allow list permits	
+I3-097	F4	Shell commands the permission deny list refuses	
+I3-098	F4	Shell commands the permission ask list prompts for	
+I3-099	F8	Which hooks run at session start, prompt, tool use and stop	also F4 (shell refusal hooks)
+I3-100	F3	Python path written into each hook and script	
+I3-101	F5	Which paths in the .claude repo need review before a main move	

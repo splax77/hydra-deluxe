@@ -1,19 +1,24 @@
 """Tests for the checksum finder (overlay spike, question 2): the hash forms,
-the Il2Cpp string decode, the direct search, the pointer walk and the
-finder's run.
+the direct search, the pointer walk and the song clock notes.
 
-No game: a real Process over fake memory answers the reads, a fake region
-list stands in for VirtualQueryEx, and a fake engine finder stands in for the
-live search.
+The hash forms run on a real chart and the score file the game wrote after
+playing it. The clock notes run on song clock readings recorded from inside
+the game. The search and the walk run the finder's real readers
+(ReadProcessMemory and VirtualQueryEx, on a read-only handle) over pages this
+test process allocates for itself, so no stand-in answers a single read.
 """
 
 from __future__ import annotations
 
-import functools
+import ctypes
+import hashlib
 import io
+import json
+import mmap
 import os
 import struct
 import sys
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,330 +27,327 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe import il2cpp_strings as S  # noqa: E402
 from tools.ch_probe import process  # noqa: E402
 from tools.ch_probe.experiments import find_checksum as F  # noqa: E402
-from tools.ch_probe.tests import fakes  # noqa: E402
 
-# The MD5 of the NS E star cutoffs notes.mid, equal to the game's checksum for
-# that chart in scorestats.json (the spike plan, "What the code does today").
-HASH = "234C917654CC7257E2BAFCF7D761304B"
+# A real chart and the game's own score file from a run of it. The score file
+# was copied from hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1.
+_PITCH_DARK_NOTES = os.path.join(_REPO_ROOT, "testdata", "input",
+                                 "test_pitch_dark_ratio", "notes.mid")
+_PITCH_DARK_SCORESTATS = os.path.join(
+    _REPO_ROOT, "testdata", "ch_runs", "pitch-dark-run1",
+    "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
 
-RAW = b"\x23\x4c\x91\x76\x54\xcc\x72\x57\xe2\xba\xfc\xf7\xd7\x61\x30\x4b"
-UTF16_UPPER = (b"2\x003\x004\x00C\x009\x001\x007\x006\x00"
-               b"5\x004\x00C\x00C\x007\x002\x005\x007\x00"
-               b"E\x002\x00B\x00A\x00F\x00C\x00F\x007\x00"
-               b"D\x007\x006\x001\x003\x000\x004\x00B\x00")
-UTF16_LOWER = (b"2\x003\x004\x00c\x009\x001\x007\x006\x00"
-               b"5\x004\x00c\x00c\x007\x002\x005\x007\x00"
-               b"e\x002\x00b\x00a\x00f\x00c\x00f\x007\x00"
-               b"d\x007\x006\x001\x003\x000\x004\x00b\x00")
-ASCII_UPPER = b"234C917654CC7257E2BAFCF7D761304B"
-ASCII_LOWER = b"234c917654cc7257e2bafcf7d761304b"
-
-BASE = 0x180000000
-ENGINE = 0x10000000
-CLOCK = ENGINE + C.OFF_SONG_CLOCK
-VERIFY_CONSTS = {C.RVA_CONST_NORMAL_BACK: C.EXPECT_NORMAL_BACK_S,
-                 C.RVA_CONST_NORMAL_FRONT: C.EXPECT_NORMAL_FRONT_S}
+# The song clock read from inside the game every quarter second over the end
+# of a song: moving while it plays, then the same reading twice once the song
+# is over. Copied from hydra-data/ch-mcp-runs/2026-10-28/l2/clock.jsonl.
+_SONG_OVER_CLOCK = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                                "2026-10-28-l2", "clock-song-over.jsonl")
 
 
-def string_object(text: str) -> bytes:
-    """A System.String object as the game lays it out: a zeroed header, the
-    length at +0x10, the UTF-16LE characters from +0x14."""
-    return (b"\0" * 0x10 + struct.pack("<i", len(text))
-            + text.encode("utf-16-le"))
+def _read_scorestats() -> dict:
+    with open(_PITCH_DARK_SCORESTATS, encoding="utf-8") as f:
+        return json.load(f)
 
 
-def object_with(slots: dict) -> bytes:
-    """A 0x400-byte object whose 8-byte slots hold the given values."""
-    raw = bytearray(0x400)
-    for offset, value in slots.items():
-        struct.pack_into("<Q", raw, offset, value)
-    return bytes(raw)
+def _notes_md5() -> bytes:
+    with open(_PITCH_DARK_NOTES, "rb") as f:
+        return hashlib.md5(f.read()).digest()
 
 
-class RecordingOpener:
-    """Stands in for open_process and remembers how it was called."""
-
-    def __init__(self, proc):
-        self.proc = proc
-        self.calls = []
-
-    def __call__(self, *args, **kwargs):
-        self.calls.append((args, kwargs))
-        return self.proc
+def _song_over_readings() -> list:
+    """The recorded samples, in order, each as its payload dict."""
+    with open(_SONG_OVER_CLOCK, encoding="utf-8") as f:
+        return [json.loads(line)["payload"] for line in f if line.strip()]
 
 
-class FakeTime:
-    """A clock that moves only when the code under test sleeps."""
-
-    def __init__(self):
-        self.t = 1000.0
-        self.sleeps = []
-
-    def now(self):
-        return self.t
-
-    def sleep(self, seconds):
-        self.sleeps.append(seconds)
-        self.t += seconds
+def _moving_and_frozen_pairs():
+    """Two consecutive readings while the song plays, and the two last
+    readings, which the game gave after the song was over."""
+    samples = _song_over_readings()
+    playing = [s for s in samples if not s["isSongOver"]]
+    moving = (playing[0]["songTime"], playing[1]["songTime"])
+    frozen = (samples[-2]["songTime"], samples[-1]["songTime"])
+    assert samples[-2]["isSongOver"] and samples[-1]["isSongOver"]
+    return moving, frozen
 
 
-def run_finder(proc, regions, *, find_engine=None, opener=None, sleep=None):
-    out = io.StringIO()
-    clock = FakeTime()
-    code = F.run(
-        ["--hash", HASH],
-        open_proc=opener or RecordingOpener(proc),
-        find_engine=find_engine or (lambda p, patterns, out: ENGINE),
-        regions=regions,
-        sleep=sleep or clock.sleep,
-        now=clock.now,
-        out=out)
-    return code, out.getvalue()
+# The checksum the game wrote for the chart it played: the hash the finder
+# searches memory for.
+HASH = _read_scorestats()["checksum"]
+
+RAW = _notes_md5()
+ASCII_UPPER = HASH.upper().encode("ascii")
+ASCII_LOWER = HASH.lower().encode("ascii")
+
+
+# --- this process's own memory, read the way the finder reads the game -------
+
+# VirtualAlloc commits memory a page at a time, so a page is the smallest
+# region the region walk can report.
+PAGE = mmap.PAGESIZE
+_MEM_COMMIT = 0x1000
+_MEM_RESERVE = 0x2000
+_MEM_RELEASE = 0x8000
+_PAGE_READWRITE = 0x04
+
+_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_k32.VirtualAlloc.restype = ctypes.c_void_p
+_k32.VirtualAlloc.argtypes = [ctypes.c_void_p, ctypes.c_size_t,
+                              ctypes.c_uint32, ctypes.c_uint32]
+_k32.VirtualFree.restype = ctypes.c_int
+_k32.VirtualFree.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32]
+_k32.OpenProcess.restype = ctypes.c_void_p
+_k32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+
+
+class OwnMemoryCase(unittest.TestCase):
+    """A test that allocates pages in this process and reads them through
+    the real reader on a read-only handle to this same process, opened with
+    the rights the finder asks for (process.access_mask)."""
+
+    def setUp(self):
+        handle = _k32.OpenProcess(process.access_mask(True), False,
+                                  os.getpid())
+        if not handle:
+            raise OSError(ctypes.get_last_error(), "OpenProcess on self failed")
+        self.proc = process.Process(0, process.make_reader(handle),
+                                    process.read_only_writer,
+                                    pid=os.getpid(), handle=handle)
+        self.addCleanup(self.proc.close)
+
+    def reserve(self, pages: int) -> int:
+        """Reserve `pages` pages with none committed: reading them fails."""
+        addr = _k32.VirtualAlloc(None, pages * PAGE, _MEM_RESERVE,
+                                 _PAGE_READWRITE)
+        if not addr:
+            raise OSError(ctypes.get_last_error(), "VirtualAlloc failed")
+        self.addCleanup(_k32.VirtualFree, addr, 0, _MEM_RELEASE)
+        return addr
+
+    def commit(self, addr: int, pages: int) -> int:
+        """Commit `pages` zeroed read-write pages at `addr`."""
+        got = _k32.VirtualAlloc(addr, pages * PAGE, _MEM_COMMIT,
+                                _PAGE_READWRITE)
+        if not got:
+            raise OSError(ctypes.get_last_error(), "VirtualAlloc commit failed")
+        return got
+
+    def page(self) -> int:
+        """One committed page of its own, a region of its own."""
+        addr = self.reserve(1)
+        return self.commit(addr, 1)
+
+    @staticmethod
+    def put(addr: int, data: bytes) -> None:
+        ctypes.memmove(addr, data, len(data))
+
+    @staticmethod
+    def put_u64(addr: int, value: int) -> None:
+        ctypes.memmove(addr, struct.pack("<Q", value), 8)
+
+    @staticmethod
+    def put_double(addr: int, value: float) -> None:
+        ctypes.memmove(addr, struct.pack("<d", value), 8)
+
+
+def _hits_in(result, start: int, size: int):
+    """The (address, form name) of each hit inside [start, start + size)."""
+    return [(h.address, h.form.name) for h in result.hits
+            if start <= h.address < start + size]
 
 
 class EncodeFormsTest(unittest.TestCase):
-    def test_the_five_forms_of_the_known_hash(self):
-        forms = S.encode_forms(HASH)
+    def test_the_raw_form_is_the_md5_of_the_chart_the_game_played(self):
+        # The game's checksum for a folder chart is the MD5 of its notes file
+        # (docs/clone-hero/01-reading-a-chart.md, CR-10), so the raw pattern
+        # the finder searches for must be those digest bytes.
+        raw = [f.pattern for f in S.encode_forms(HASH) if f.name == S.FORM_RAW]
+        self.assertEqual(raw, [_notes_md5()])
+
+    def test_each_form_reads_back_as_the_game_checksum(self):
+        forms = {f.name: f for f in S.encode_forms(HASH)}
+        self.assertEqual(set(forms), {S.FORM_RAW, S.FORM_UTF16_UPPER,
+                                      S.FORM_UTF16_LOWER, S.FORM_ASCII_UPPER,
+                                      S.FORM_ASCII_LOWER})
+        self.assertEqual(forms[S.FORM_RAW].pattern.hex().upper(),
+                         HASH.upper())
         self.assertEqual(
-            [(f.name, f.pattern, f.utf16) for f in forms],
-            [("raw bytes", RAW, False),
-             ("UTF-16 upper hex", UTF16_UPPER, True),
-             ("UTF-16 lower hex", UTF16_LOWER, True),
-             ("ASCII upper hex", ASCII_UPPER, False),
-             ("ASCII lower hex", ASCII_LOWER, False)])
+            forms[S.FORM_UTF16_UPPER].pattern.decode("utf-16-le"),
+            HASH.upper())
+        self.assertEqual(
+            forms[S.FORM_UTF16_LOWER].pattern.decode("utf-16-le"),
+            HASH.lower())
+        self.assertEqual(forms[S.FORM_ASCII_UPPER].pattern.decode("ascii"),
+                         HASH.upper())
+        self.assertEqual(forms[S.FORM_ASCII_LOWER].pattern.decode("ascii"),
+                         HASH.lower())
+        # Only the UTF-16 forms can be a System.String's characters, which
+        # the pointer walk follows.
+        self.assertEqual({name for name, f in forms.items() if f.utf16},
+                         {S.FORM_UTF16_UPPER, S.FORM_UTF16_LOWER})
 
     def test_lower_case_input_gives_the_same_forms(self):
         self.assertEqual(S.encode_forms(HASH.lower()), S.encode_forms(HASH))
 
     def test_a_string_that_is_not_a_hash_is_refused(self):
-        with self.assertRaises(ValueError):
-            S.encode_forms(HASH[:-1])
-        with self.assertRaises(ValueError):
-            S.encode_forms(HASH[:-1] + "G")
+        stats = _read_scorestats()
+        # The game's checksum one digit short, and another text field of the
+        # same score file.
+        for text in (stats["checksum"][:-1], stats["song_name"]):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    S.encode_forms(text)
 
 
-class DecodeStringTest(unittest.TestCase):
-    def test_a_string_object_decodes_to_the_hash(self):
-        self.assertEqual(S.decode_il2cpp_string(string_object(HASH)), HASH)
-
-    def test_an_absurd_length_is_refused(self):
-        raw = b"\0" * 0x10 + struct.pack("<i", 5000) + b"\0" * 64
-        self.assertIsNone(S.decode_il2cpp_string(raw))
-
-    def test_a_negative_length_is_refused(self):
-        raw = b"\0" * 0x10 + struct.pack("<i", -1) + b"\0" * 64
-        self.assertIsNone(S.decode_il2cpp_string(raw))
-
-    def test_fewer_characters_than_the_length_says_is_refused(self):
-        self.assertIsNone(S.decode_il2cpp_string(string_object(HASH)[:-2]))
-
-
-class DirectSearchTest(unittest.TestCase):
-    def test_hits_at_region_edges_are_counted_once(self):
-        # Two regions side by side: the raw hash ends region one and starts
-        # region two. The region walk names region one twice.
-        r1, r2 = 0x20000, 0x20040
-        data1 = b"\x11" * 0x30 + RAW
-        data2 = RAW + b"\x22" * 0x30
-        proc, _ = fakes.fake_process({r1: data1, r2: data2}, BASE)
-        forms = S.encode_forms(HASH)
-        result = F.scan_for_hash(
-            proc, forms, regions=lambda p: [(r1, 0x40), (r2, 0x40), (r1, 0x40)])
-        self.assertEqual([(h.address, h.form.name) for h in result.hits],
-                         [(0x20030, "raw bytes"), (0x20040, "raw bytes")])
-        # The bytes before a hit stop at its own region's start.
-        self.assertEqual(result.hits[0].before, b"\x11" * 32)
-        self.assertEqual(result.hits[1].before, b"")
+class DirectSearchTest(OwnMemoryCase):
+    def test_hits_at_a_regions_two_ends_are_found_and_stop_at_its_start(self):
+        # The raw hash fills the first and the last bytes of one page, found
+        # by the finder's own walk over this process's regions.
+        region = self.page()
+        last = region + PAGE - len(RAW)
+        self.put(region, RAW)
+        self.put(last, RAW)
+        self.assertIn((region, PAGE), list(F.live_rw_regions(self.proc)))
+        result = F.scan_for_hash(self.proc, S.encode_forms(HASH))
+        self.assertEqual(_hits_in(result, region, PAGE),
+                         [(region, S.FORM_RAW), (last, S.FORM_RAW)])
+        hits = {h.address: h for h in result.hits}
+        # A hit at the region's first byte has nothing before it, even when
+        # the memory below the region is readable; the last hit carries the
+        # region's own bytes before it.
+        self.assertEqual(hits[region].before, b"")
+        self.assertEqual(hits[last].before,
+                         self.proc.read(last - F.CONTEXT_BYTES,
+                                        F.CONTEXT_BYTES))
 
     def test_an_unreadable_region_is_skipped(self):
-        r1 = 0x20000
-        proc, _ = fakes.fake_process({r1: ASCII_UPPER}, BASE)
-        result = F.scan_for_hash(proc, S.encode_forms(HASH),
-                                 regions=lambda p: [(0x90000, 0x100),
-                                                    (r1, len(ASCII_UPPER))])
+        # Two pages reserved, only the second committed: reading the first
+        # fails in ReadProcessMemory itself.
+        reserved = self.reserve(2)
+        readable = self.commit(reserved + PAGE, 1)
+        self.put(readable, ASCII_UPPER)
+        with self.assertRaises(OSError):
+            self.proc.read(reserved, PAGE)
+        result = F.scan_for_hash(self.proc, S.encode_forms(HASH),
+                                 regions=lambda p: [(reserved, PAGE),
+                                                    (readable, PAGE)])
         self.assertEqual(result.regions, 1)
-        self.assertEqual(result.bytes_scanned, 32)
-        self.assertEqual([(h.address, h.form.name) for h in result.hits],
-                         [(r1, "ASCII upper hex")])
+        self.assertEqual(result.bytes_scanned, PAGE)
+        self.assertEqual(_hits_in(result, readable, PAGE),
+                         [(readable, S.FORM_ASCII_UPPER)])
 
 
-class PointerWalkTest(unittest.TestCase):
-    def test_a_two_hop_path_prints_its_exact_offsets(self):
-        a, b, s = 0x30000, 0x40000, 0x50000
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({0x58: a}),
-             a: object_with({0x20: b}),
-             b: object_with({0x10: s}),
-             s: string_object(HASH)},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0, 1.5, 2.0]})
-        code, text = run_finder(proc, lambda p: [(s, len(string_object(HASH)))])
-        self.assertEqual(code, 0)
-        self.assertIn(
-            "engine+0x58 -> +0x20 -> +0x10 = 234C917654CC7257E2BAFCF7D761304B",
-            text)
-        self.assertIn(f"{s + 0x14:#x}  UTF-16 upper hex", text)
+class PointerWalkTest(OwnMemoryCase):
+    def _engine_pointing_at(self, objects):
+        engine = self.page()
+        for slot, obj in enumerate(objects, start=1):
+            self.put_u64(engine + slot * F.POINTER_SIZE, obj)
+        return engine
 
-    def test_no_path_within_the_object_cap_says_not_found(self):
-        objs = [0x30000, 0x31000, 0x32000]
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({0x8: objs[0], 0x10: objs[1], 0x18: objs[2]}),
-             objs[0]: object_with({}), objs[1]: object_with({}),
-             objs[2]: object_with({})},
-            BASE)
-        result = F.walk_pointers(proc, ENGINE, [0x50000], max_objects=2)
+    def test_the_walk_stops_at_its_object_cap_and_says_so(self):
+        objects = [self.page() for _ in range(3)]
+        engine = self._engine_pointing_at(objects)
+        # Nothing points at the target, so only the cap can end the walk
+        # early. With no cap in the way it reads the engine and each object.
+        target = self.page()
+        whole = F.walk_pointers(self.proc, engine, [target])
+        self.assertEqual(whole.paths, [])
+        self.assertEqual(whole.objects_read, 1 + len(objects))
+        self.assertFalse(whole.hit_cap)
+        cap = len(objects) - 1
+        capped = F.walk_pointers(self.proc, engine, [target], max_objects=cap)
+        self.assertEqual(capped.paths, [])
+        self.assertEqual(capped.objects_read, cap)
+        self.assertTrue(capped.hit_cap)
+
+    def test_no_path_says_not_found_within_the_hop_limit(self):
+        # A UTF-16 hit whose string object nothing points to.
+        string_obj = self.page()
+        self.put(string_obj + S.STRING_CHARS_OFFSET,
+                 HASH.upper().encode("utf-16-le"))
+        hits = [h for h in F.scan_for_hash(
+            self.proc, S.encode_forms(HASH),
+            regions=lambda p: [(string_obj, PAGE)]).hits if h.form.utf16]
+        self.assertEqual([h.address for h in hits],
+                         [string_obj + S.STRING_CHARS_OFFSET])
+        engine = self._engine_pointing_at([])
+        out = io.StringIO()
+        result = F._pointer_report(self.proc, engine, hits, time.perf_counter,
+                                   out)
+        text = out.getvalue()
         self.assertEqual(result.paths, [])
-        self.assertEqual(result.objects_read, 2)
-        self.assertTrue(result.hit_cap)
-
-    def test_no_path_still_exits_0_with_the_direct_hits_listed(self):
-        s = 0x50000
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({0x8: 0x30000}),
-             0x30000: object_with({0x8: ENGINE}),
-             s: string_object(HASH)},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [3.0]})
-        code, text = run_finder(proc, lambda p: [(s, len(string_object(HASH)))])
-        self.assertEqual(code, 0)
-        self.assertIn("pointer path not found within 2 hops", text)
-        self.assertIn(f"{s + 0x14:#x}  UTF-16 upper hex", text)
-        self.assertIn("read 2 objects, took", text)
-        self.assertIn("clock frozen", text)
+        self.assertIn(f"pointer path not found within {F.MAX_HOPS} hops",
+                      text)
+        self.assertIn(f"read {result.objects_read} objects, took", text)
 
 
-class SongEntryHolderTest(unittest.TestCase):
-    def test_a_pointer_to_the_song_entry_names_its_holder(self):
-        entry = 0x70000            # the SongEntry; its checksum at +0x38
-        globals_obj = 0x80000      # holds the SongEntry at +0x28
-        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
-        globals_bytes = object_with({0x28: entry})[:0x40]
-        # A copy of the pointer one byte off alignment is not a holder.
-        stray = b"\0" + struct.pack("<Q", entry) + b"\0" * 7
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({}), entry: entry_bytes,
-             globals_obj: globals_bytes, 0x90000: stray},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0, 2.0]})
-        regions = lambda p: [(entry, len(entry_bytes)),
-                             (globals_obj, len(globals_bytes)),
-                             (0x90000, len(stray))]
-        code, text = run_finder(proc, regions)
-        self.assertEqual(code, 0)
-        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- held at 0x80028 "
-                      "(candidate GlobalVariables = 0x80000)", text)
-        self.assertIn("  1 holders, took", text)
-
-    def test_no_pointer_to_the_song_entry_says_so(self):
-        entry = 0x70000
-        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({}), entry: entry_bytes},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0]})
-        code, text = run_finder(proc, lambda p: [(entry, len(entry_bytes))])
-        self.assertEqual(code, 0)
-        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- no pointer to "
-                      "it found", text)
-        self.assertIn("  0 holders, took", text)
-
-
-class MovingMemory:
-    """Memory whose region contents change when the finder sleeps between
-    its two searches."""
-
-    def __init__(self, cells):
-        self.cells = dict(cells)
-
-    def read(self, addr, size):
-        raw = self.cells.get(addr)
-        if raw is None:
-            raise OSError(f"nothing mapped at {addr:#x}")
-        return raw[:size]
-
-
-class RescanTest(unittest.TestCase):
+class RescanTest(OwnMemoryCase):
     def test_a_hash_that_moves_between_passes_is_reported_moved(self):
-        region = 0x60000
-        before = b"\0" * 0x40 + ASCII_LOWER + b"\0" * 0x60
-        after = b"\0" * 0x80 + ASCII_LOWER + b"\0" * 0x20
-        memory = MovingMemory({ENGINE: object_with({}), region: before,
-                               CLOCK: struct.pack("<d", 4.0)})
-        proc = process.Process(BASE, memory.read, process.read_only_writer)
-        for rva, value in VERIFY_CONSTS.items():
-            memory.cells[proc.resolve(rva)] = struct.pack("<d", value)
-        sleeps = []
+        region = self.page()
+        forms = S.encode_forms(HASH)
 
-        def sleep(seconds):
-            sleeps.append(seconds)
-            memory.cells[region] = after
+        def search():
+            return F.scan_for_hash(self.proc, forms,
+                                   regions=lambda p: [(region, PAGE)]).hits
 
-        code, text = run_finder(proc, lambda p: [(region, len(before))],
-                                sleep=sleep)
-        self.assertEqual(code, 0)
-        self.assertEqual(sleeps, [10.0])
-        self.assertIn("0 held, 1 moved, 1 new", text)
-        self.assertIn(f"moved  {region + 0x40:#x}  ASCII lower hex", text)
-        self.assertIn(f"new    {region + 0x80:#x}  ASCII lower hex", text)
-
-
-class RunTest(unittest.TestCase):
-    def test_the_game_is_opened_read_only(self):
-        proc, _ = fakes.fake_process({ENGINE: object_with({})}, BASE,
-                                     consts=VERIFY_CONSTS, clocks={CLOCK: [1.0]})
-        opener = RecordingOpener(proc)
-        code, _text = run_finder(proc, lambda p: [], opener=opener)
-        self.assertEqual(code, 0)
-        self.assertEqual(opener.calls, [((), {"read_only": True})])
-
-    def test_no_playing_song_exits_2_with_the_message(self):
-        frozen = 0x20000
-        proc, _ = fakes.fake_process(
-            None, BASE, consts=VERIFY_CONSTS,
-            doubles={frozen + C.OFF_TOTAL_WINDOW: 0.17},
-            clocks={frozen + C.OFF_SONG_CLOCK: [3.0]})
-        clock = FakeTime()
-        finder = functools.partial(
-            engine_finder.find_live_engine_capped,
-            scan=lambda p, b, f: ([frozen], 0, 0),
-            sleep=clock.sleep, now=clock.now)
-        scanned = []
-        code, text = run_finder(proc, lambda p: scanned.append(p) or [],
-                                find_engine=finder)
-        self.assertEqual(code, 2)
-        self.assertIn(
-            "no playing song found in 120 s; start the song and run again",
-            text)
-        self.assertEqual(scanned, [])
+        # One form stays put; the other moves to the next slot along.
+        self.put(region, ASCII_UPPER)
+        old = region + PAGE // 2
+        new = old + len(ASCII_LOWER)
+        self.put(old, ASCII_LOWER)
+        first = search()
+        self.put(old, b"\0" * len(ASCII_LOWER))
+        self.put(new, ASCII_LOWER)
+        second = search()
+        held, moved, appeared = F.compare_passes(first, second)
+        self.assertEqual([(h.address, h.form.name) for h in held],
+                         [(region, S.FORM_ASCII_UPPER)])
+        self.assertEqual([(h.address, h.form.name) for h in moved],
+                         [(old, S.FORM_ASCII_LOWER)])
+        self.assertEqual([(h.address, h.form.name) for h in appeared],
+                         [(new, S.FORM_ASCII_LOWER)])
 
 
-class ClockStateTest(unittest.TestCase):
+class ClockStateTest(OwnMemoryCase):
     def test_the_three_states(self):
-        self.assertEqual(F.clock_state(1.0, 1.5), "moving")
-        self.assertEqual(F.clock_state(1.0, 1.0), "frozen")
-        self.assertEqual(F.clock_state(1.0, None),
-                         "stopped (the engine object could not be read)")
-        self.assertEqual(F.clock_state(None, 1.0),
-                         "stopped (the engine object could not be read)")
+        moving, frozen = _moving_and_frozen_pairs()
+        self.assertEqual(F.clock_state(*moving), F.CLOCK_MOVING)
+        self.assertEqual(F.clock_state(*frozen), F.CLOCK_FROZEN)
+        # A clock read from memory that cannot be read, on either side.
+        unread = F._read_clock(self.proc, self.reserve(1) - C.OFF_SONG_CLOCK)
+        self.assertIsNone(unread)
+        self.assertEqual(F.clock_state(moving[0], unread), F.CLOCK_STOPPED)
+        self.assertEqual(F.clock_state(unread, moving[1]), F.CLOCK_STOPPED)
 
 
-class ClockNoteTest(unittest.TestCase):
+class ClockNoteTest(OwnMemoryCase):
     def test_the_note_carries_both_clock_readings(self):
-        self.assertEqual(F.clock_note(10.0, 10.0),
-                         "frozen (song clock 10.00 -> 10.00 s)")
-        self.assertEqual(F.clock_note(1.0, 1.5),
-                         "moving (song clock 1.00 -> 1.50 s)")
+        for before, after in _moving_and_frozen_pairs():
+            with self.subTest(before=before, after=after):
+                note = F.clock_note(before, after)
+                self.assertTrue(note.startswith(F.clock_state(before, after)))
+                first = note.index(f"{before:.2f}")
+                self.assertGreater(note.index(f"{after:.2f}", first + 1),
+                                   first)
 
     def test_an_unreadable_clock_has_no_readings(self):
-        self.assertEqual(F.clock_note(1.0, None),
-                         "stopped (the engine object could not be read)")
+        moving, _frozen = _moving_and_frozen_pairs()
+        unread = F._read_clock(self.proc, self.reserve(1) - C.OFF_SONG_CLOCK)
+        self.assertEqual(F.clock_note(moving[0], unread), F.CLOCK_STOPPED)
 
     def test_the_report_prints_the_readings_of_a_frozen_pass(self):
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({})}, BASE, consts=VERIFY_CONSTS,
-            clocks={CLOCK: [3.0]})
-        _code, text = run_finder(proc, lambda p: [])
-        self.assertIn("clock frozen (song clock 3.00 -> 3.00 s)", text)
+        # The song clock the game held after the song was over, put where the
+        # finder reads it on the engine object.
+        _moving, (reading, _same) = _moving_and_frozen_pairs()
+        engine = self.page()
+        self.put_double(engine + C.OFF_SONG_CLOCK, reading)
+        out = io.StringIO()
+        F._timed_scan(self.proc, engine, S.encode_forms(HASH),
+                      lambda p: [], time.perf_counter, out, "First search")
+        self.assertIn(f"clock {F.clock_note(reading, reading)}",
+                      out.getvalue())
 
 
 if __name__ == "__main__":

@@ -327,7 +327,7 @@ bool term_matches(const QueryTerm& term, const SearchableRow& row) {
 }  // namespace
 
 bool term_applies_to(QueryField term_field, QueryField column) {
-    return term_field == QueryField::Any || column == QueryField::Any || term_field == column;
+    return term_field == QueryField::Any || term_field == column;
 }
 
 std::string fold_for_search(std::string_view text) {
@@ -452,7 +452,7 @@ bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFac
     if (q.stars || q.squeeze_max_ms || q.squeeze_min_ms) {
         if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
         if (q.stars && *facts.stars != *q.stars) return false;
-        // A path that needs no timing (Path::needs_timing) passes any limit
+        // A path that needs no timing (an empty Path::difficulty) passes any limit
         // and reaches no floor: it has nothing to squeeze.
         if (q.squeeze_max_ms && facts.hardest_ms) {
             const bool below =

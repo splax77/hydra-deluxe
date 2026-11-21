@@ -116,11 +116,11 @@ Known weaknesses, said out loud. Hydra's exe carries no git stamp (`src/core/ver
 - AC3: a dirty tree records `dirty: true` (`test_dirty_tree_is_recorded`).
 - AC4: a session the user closed (the `_kill_report` path: exit code 0, no quit sent) still writes the record when the helper notices (`test_user_close_writes_record`), and a crashed or killed window writes nothing (`test_crash_writes_no_record`). A `keep_window=True` stop writes the record (`test_keep_window_writes_record`).
 - AC5: the stop reply names the file path and the commit (`test_stop_reply_names_record`).
-- AC6: the docs section states the record's fields, where the file is and what `dirty` means, and `hydra_tests.exe "-tc=docs match code*"` stays green.
+- AC6: the docs section states the record's fields, where the file is and what `dirty` means.
 
 **Steps.** Worktree `hx-realapp-record`. Tests red. Add `realapp_record(session)` beside `snapshot_library`; count commands and shots in `Session`. Write it in `_stop_session` for window mode. Update the docs section.
 
-**Verify.** `py -I tools/test_hydra_ui_mcp.py` (the helper's suite, fake transport only; `HYDRA_LIVE_WINDOW_TEST` unset), and `build-cpp\Release\hydra_tests.exe "-tc=docs match code*"`.
+**Verify.** `py -I tools/test_hydra_ui_mcp.py` (the helper's suite, fake transport only; `HYDRA_LIVE_WINDOW_TEST` unset).
 
 ### T4. A UI change needs a real-app record before main moves (hooks)
 
@@ -204,7 +204,7 @@ What this cannot cover, said in the task's docs line: a shell script that posts 
 
 ### T7. The pointer checker (Hydra)
 
-**Goal.** A script that checks every file path and hook name in the memory notes and `docs/agents/` against what exists, like the docs-vs-code test does for numbers. It finds the broken pointers the review listed (`tools/ch_mcp/start_method.json`, `tools/derive_once_precheck.ps1`, `gates/doc_review_sources.ps1`, `main_move_check.ps1` in the wrong folder) and the next ones.
+**Goal.** A script that checks every file path and hook name in the memory notes and `docs/agents/` against what exists. It finds the broken pointers the review listed (`tools/ch_mcp/start_method.json`, `tools/derive_once_precheck.ps1`, `gates/doc_review_sources.ps1`, `main_move_check.ps1` in the wrong folder) and the next ones.
 
 **Files.** new `tools/check_pointers.py`, new `tools/test_check_pointers.py`. It imports `tools/doc_tokens.py`, which T6 creates, so T7 starts after T6 is merged.
 
@@ -338,7 +338,7 @@ Two patterns here match what others built. Deterministic hooks at the tool-call 
 | A window session writes a real-app record with seven fields | T3 Design | T3 | `test_window_stop_writes_realapp_record`, `test_user_close_writes_record` |
 | Headless sessions write nothing | T3 AC2 | T3 | `test_headless_writes_no_record` |
 | A dirty tree is recorded as dirty | T3 AC3 | T3 | `test_dirty_tree_is_recorded` |
-| The docs state the record | T3 AC6 | T3 | `hydra_tests.exe "-tc=docs match code*"` |
+| The docs state the record | T3 AC6 | T3 | the reviewer reads the section against the code |
 | A `src/ui/` change needs a clean record in range, else refused with the waiver phrase | T4 Goal | T4 | `test_ui_change_needs_realapp_record`, `test_realapp_record_in_range_allows`, `test_realapp_record_outside_range_refused`, `test_dirty_realapp_record_refused` |
 | The user can waive it with a typed phrase | T4 Design | T4 | `test_realapp_waiver` |
 | Non-UI changes never read the record | T4 AC6 | T4 | `test_non_ui_change_skips_realapp` |

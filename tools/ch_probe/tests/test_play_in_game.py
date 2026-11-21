@@ -1,4 +1,5 @@
-"""play_chart.play_in_game against a fake kit agent.
+"""play_chart.play_in_game against a real run's recorded kit agent events,
+and, where no run recorded the case, against a fake kit agent.
 
 Run from the repo root with:
     py -m pytest -q -p no:cacheprovider tools/ch_probe/tests/test_play_in_game.py
@@ -6,10 +7,13 @@ Run from the repo root with:
 
 from __future__ import annotations
 
+import csv
 import io
+import json
 import os
 import queue
 import sys
+import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,12 +21,26 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
+from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe.experiments import live  # noqa: E402
 from tools.ch_probe.experiments import play_chart as P  # noqa: E402
-from tools.ch_probe.experiments.overlay_logs import SEND_COLUMN  # noqa: E402
+from tools.ch_probe.experiments import score_compare  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _unit_end_fields  # noqa: E402
+
+# Files copied from hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1 (each test
+# names which lines). The run played its chords on the kit agent and wrote
+# every event the agent sent to kit-1.jsonl.
+_G3 = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1")
+
+# The addresses a run hands the agent; nothing reads them in a test.
+CLOCK_ADDR, SCORE_ADDR = 0x100, 0x200
+
+# A split chord's later order group goes down this long after its first
+# group: a hand-picked schedule input. It reaches only the play message.
+LATER_GROUP_MS = 5.0
 
 
 def press(index, chart_ms, lanes, **kw):
@@ -44,19 +62,12 @@ def chord(index, ms, *presses):
     return P.Chord(index, index * 100, ms, lanes, ["none"] * len(lanes), presses=presses)
 
 
-def sent_event(seq, chord_index, clock_ms, score_before, score_after, note=""):
+def sent_event(seq, chord_index, clock_ms, score_before, score_after):
     return {"kind": K.EVENT_SENT, "seq": seq, "index": chord_index,
             "clock_ms_at_press": clock_ms, "down_frame": 10 + seq,
             "up_frame": 12 + seq, "down_ms": 1_000_000.0 + seq, "up_ms": 1_000_006.0 + seq,
             "score_before": score_before, "score_after": score_after,
-            "frame_gap_ms": 3.0, "agent_note": note}
-
-
-def dropped_event(seq, chord_index, clock_ms, score):
-    return {"kind": K.EVENT_DROPPED, "seq": seq, "index": chord_index,
-            "clock_ms_at_press": clock_ms, "down_frame": None,
-            "up_frame": None, "down_ms": None, "up_ms": None, "score_before": score,
-            "score_after": score, "frame_gap_ms": 900.0, "agent_note": ""}
+            "frame_gap_ms": 3.0, "agent_note": ""}
 
 
 def started(seqs=()):
@@ -71,16 +82,12 @@ def stopped(reason):
 
 class FakePlayer:
     """kit_tools.GamePlayer's three parts. `script` maps a posted message's
-    type to the events to queue after it, each list used once in order.
-    `refuse` maps a message type to the error its post raises, as
-    GamePlayer.post raises the agent's refusal."""
+    type to the events to queue after it, each list used once in order."""
 
-    def __init__(self, script, late=None, refuse=None):
+    def __init__(self, script):
         self.events = queue.Queue()
         self.posted = []
         self.script = {k: list(v) for k, v in script.items()}
-        self._late = late
-        self._refuse = refuse or {}
 
     def alive(self):
         return True
@@ -90,290 +97,282 @@ class FakePlayer:
         batches = self.script.get(message["type"]) or []
         if batches:
             for event in batches.pop(0):
-                if self._late is not None:
-                    self._late()
                 self.events.put(event)
-        if message["type"] in self._refuse:
-            raise self._refuse[message["type"]]
+        return {"ok": True}
+
+
+class RecordedPlayer:
+    """kit_tools.GamePlayer's three parts over a kit agent's recorded
+    messages (a run's kit-N.jsonl). The first play message posted queues
+    every play_events event the file holds, in its order, keeping the sent
+    and dropped events of `seqs` only; a later post queues nothing. Once the
+    queue is empty the session reads as gone, so a run that waits for an
+    event the recording lacks ends at once as "lost"."""
+
+    def __init__(self, path, seqs):
+        keep = set(seqs)
+        self.recorded = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                payload = json.loads(line)["payload"]
+                if payload.get("type") != "play_events":
+                    continue
+                self.recorded.extend(
+                    e for e in payload["events"]
+                    if e["kind"] not in (K.EVENT_SENT, K.EVENT_DROPPED) or e["seq"] in keep)
+        self.events = queue.Queue()
+        self.posted = []
+
+    def alive(self):
+        return not self.events.empty()
+
+    def post(self, message):
+        self.posted.append(message)
+        if message["type"] == K.PLAY_TYPE and len(self.posted) == 1:
+            for event in self.recorded:
+                self.events.put(event)
         return {"ok": True}
 
 
 def run(chords, player, **kw):
-    return P.play_in_game(chords, player, clock_addr=0x100, score_addr=0x200,
+    return P.play_in_game(chords, player, clock_addr=CLOCK_ADDR, score_addr=SCORE_ADDR,
                           out=io.StringIO(), **kw)
+
+
+def recorded_log(name):
+    """The lines of a press log copied from the g3 run."""
+    with open(os.path.join(_G3, name), encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
+def recorded_chords(log_lines):
+    """The chords of a recorded press log, at the run's own chart times. A
+    chord's first row is its first order group; a further row of the same
+    index is a later group, LATER_GROUP_MS after it. Lanes reach only the
+    play message, which no row reads."""
+    presses = {}
+    for r in csv.DictReader(log_lines):
+        index, ms = int(r["index"]), float(r["chart_ms"])
+        if index not in presses:
+            presses[index] = [press(index, ms, [Lane.RED])]
+        else:
+            presses[index].append(press(index, ms, [Lane.BLUE], aim_ms=LATER_GROUP_MS,
+                                        after_ms=LATER_GROUP_MS))
+    return [chord(index, group[0].chart_ms, *group) for index, group in presses.items()]
+
+
+def repressed(one_press_chord, lanes, **kw):
+    """A one-press chord's press made again on `lanes` with `kw`, and the
+    chord holding it."""
+    p = one_press_chord.presses[0]
+    q = press(p.index, p.chart_ms, lanes, **kw)
+    return q, chord(p.index, p.chart_ms, q)
+
+
+def watched_sp_end(active):
+    """The Star Power end the g3 run's sp_watch-1.csv recorded on its first
+    row whose active byte is set (`active`) or clear, read the way
+    engine.EngineModel.sp_end reads the same two fields. The file is the
+    watch's header, its first row and six rows around its first activation."""
+    with open(os.path.join(_G3, "sp_watch-1.csv"), encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (int(row["sp_active_byte"]) != 0) == active:
+                return float(row["sp_end_s"]) if active else None
+    raise AssertionError(f"sp_watch-1.csv holds no row with the active byte "
+                         f"{'set' if active else 'clear'}")
 
 
 class PlayInGameTest(unittest.TestCase):
     def test_the_play_message_carries_the_schedule_and_every_number(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50),
-                                            stopped(K.STOP_REASON_DONE)]]})
-        run(chords, player, cap_s=30.0)
+        # The agent's side is the g3 run's recorded events (kit-1-head.jsonl,
+        # see test_a_real_runs_agent_events_write_the_press_log_that_run_wrote).
+        chords = recorded_chords(recorded_log("press-1-head.csv"))
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(len(chords)))
+        cap_s = 30.0
+        result = run(chords, player, cap_s=cap_s)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
         (message,) = player.posted
         self.assertEqual(message["type"], K.PLAY_TYPE)
-        self.assertEqual((message["clock_addr"], message["score_addr"], message["cap_ms"],
-                          message["score_delay_ms"], message["start_lead_ms"],
-                          message["hold_frames"], message["stall_ms"],
-                          message["jump_back_ms"]),
-                         (0x100, 0x200, 30000.0, 5.0, 150.0, 2, 5000.0, 1000.0))
-        self.assertEqual(message["entries"], [
-            {"seq": 0, "index": 0, "at_ms": 1000.0, "last_send_ms": 1050.0,
-             "elements": [{"id": 0, "value": 1.0}], "after_ms": None, "after_seq": None,
-             "end_read_after": None}])
+        # Each number is the one its owner names: the caller's addresses and
+        # cap, play_chart's score delay, live's start lead and stop checks,
+        # and kit_tools' hold.
+        self.assertEqual(
+            {key: message[key] for key in ("clock_addr", "score_addr", "cap_ms",
+                                           "score_delay_ms", "start_lead_ms", "hold_frames",
+                                           "stall_ms", "jump_back_ms")},
+            {"clock_addr": CLOCK_ADDR, "score_addr": SCORE_ADDR, "cap_ms": C.s_to_ms(cap_s),
+             "score_delay_ms": C.s_to_ms(P.SCORE_READ_DELAY_S),
+             "start_lead_ms": live.START_LEAD_MS, "hold_frames": K.KIT_HOLD_FRAMES,
+             "stall_ms": C.s_to_ms(live.STALL_S), "jump_back_ms": C.s_to_ms(live.JUMP_BACK_S)})
+        # One entry per press, in schedule order, each carrying its press's
+        # chord, fire time, last send time and lanes.
+        presses = [p for c in chords for p in c.presses]
+        self.assertEqual(len(message["entries"]), len(presses))
+        for seq, (entry, p) in enumerate(zip(message["entries"], presses)):
+            self.assertEqual((entry["seq"], entry["index"], entry["at_ms"],
+                              entry["last_send_ms"], entry["after_seq"],
+                              entry["end_read_after"]),
+                             (seq, p.index, p.at_ms, p.last_send_ms, None, None))
+            self.assertEqual([e["id"] for e in entry["elements"]],
+                             [K.lane_element(lane).id for lane in p.lanes])
 
-    def test_a_sent_row_and_a_dropped_row_fill_every_column_score_compare_reads(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED])),
-                  chord(1, 1100.0, press(1, 1100.0, [Lane.BLUE]))]
-        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50),
-                                            dropped_event(1, 1, 1200.0, 50),
-                                            stopped(K.STOP_REASON_DONE)]]})
+    def test_a_real_runs_rows_load_into_score_compare_with_every_kit_field(self):
+        # The g3 run's events (kit-1-head.jsonl) give rows whose press log
+        # score_compare.load_press_log, the comparer's own reader, reads back:
+        # one Press per row, with the score the agent read and every kit
+        # column filled.
+        chords = recorded_chords(recorded_log("press-1-head.csv"))
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(len(chords)))
         result = run(chords, player)
-        self.assertEqual(result.stop, P.STOP_DONE)
-        self.assertEqual((result.sent, result.dropped), (1, 1))
-        for row in result.rows:
-            for column in ("index", "chart_ms", "clock_ms_at_press", "score_before",
-                           "score_after", SEND_COLUMN):
-                self.assertIsNotNone(row.get(column), column)
-        self.assertEqual([r[SEND_COLUMN] for r in result.rows], [P.SENT, P.DROPPED])
-        self.assertEqual(result.rows[1]["score_after"], 50)
-
-    def test_a_sent_row_carries_frame_gap_ms_and_a_missed_retime_carries_agent_note(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED])),
-                  chord(1, 1100.0, press(1, 1100.0, [Lane.BLUE], end_read_after=0,
-                                         aim_end_ms=1500.0))]
-        player = FakePlayer({K.PLAY_TYPE: [[
-            started(), sent_event(0, 0, 1001.0, 0, 50),
-            sent_event(1, 1, 1101.0, 50, 100, note=K.NOTE_RETIME_MISSED),
-            stopped(K.STOP_REASON_DONE)]]})
-        result = run(chords, player)
-        self.assertEqual(result.rows[0]["frame_gap_ms"], 3.0)
-        self.assertEqual(result.rows[0]["agent_note"], "")
-        self.assertEqual(result.rows[1]["agent_note"], K.NOTE_RETIME_MISSED)
-        self.assertIn(K.NOTE_RETIME_MISSED, result.message)
-        self.assertIn("chords 1", result.message)
-
-    def test_an_end_read_posts_one_retime_of_retime_from_ends_output(self):
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0, seq=0)
-        other = press(1, 1500.0, [Lane.RED], seq=1)
-        timed = press(2, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0, seq=2)
-        chords = [chord(0, 1000.0, head), chord(1, 1500.0, other), chord(2, 2000.0, timed)]
-        player = FakePlayer({
-            K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]],
-            K.RETIME_TYPE: [[sent_event(1, 1, 1501.0, 50, 100),
-                             sent_event(2, 2, 2021.0, 100, 150),
-                             stopped(K.STOP_REASON_DONE)]]})
-        result = run(chords, player, read_sp_end=lambda: 1.52)
-        retimes = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
-        self.assertEqual(len(retimes), 1)
-        # Every entry not yet reported goes, the moved one under the seq it
-        # had in the play message: a press that already fired, whose event is
-        # still unread, is then ignored by the agent, not fired a second time.
-        kept, moved = P.retime_from_end([other, timed], 0, 1520.0)
-        self.assertIs(kept, other)
-        self.assertEqual(moved.seq, 2)
-        self.assertEqual(retimes[0], K.retime_message(
-            0, [K.play_entry(1, kept, None), K.play_entry(2, moved, None)]))
-        self.assertEqual(retimes[0]["entries"][1]["at_ms"], 2020.0)
-        self.assertEqual([e["seq"] for e in player.posted[0]["entries"]], [0, 1, 2])
-        self.assertEqual(result.rows[0]["end_read_ms"], 1520.0)
-        self.assertEqual(result.stop, P.STOP_DONE)
-
-    def test_a_later_group_in_a_retime_names_its_heads_seq(self):
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
-        later = press(1, 2000.0, [Lane.GREEN], end_read_after=0, aim_end_ms=1500.0,
-                      aim_ms=5.0, after_ms=5.0)
-        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed, later)]
-        player = FakePlayer({
-            K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]],
-            K.RETIME_TYPE: [[sent_event(1, 1, 2021.0, 50, 100),
-                             sent_event(2, 1, 2026.0, 50, 100),
-                             stopped(K.STOP_REASON_DONE)]]})
-        result = run(chords, player, read_sp_end=lambda: 1.52)
-        (retime,) = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
-        self.assertEqual([(e["seq"], e["after_seq"], e["after_ms"]) for e in retime["entries"]],
-                         [(1, None, None), (2, 1, 5.0)])
         self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        written = os.path.join(scratch.name, "press.csv")
+        P.write_press_log(written, result.rows)
+        loaded = score_compare.load_press_log(written)
+        events = [e for e in player.recorded if e["kind"] == K.EVENT_SENT]
+        self.assertEqual(len(loaded), len(events))
+        for row, event in zip(loaded, events):
+            self.assertEqual((row.index, row.clock_ms_at_press, row.score_before,
+                              row.score_after),
+                             (event["index"], event["clock_ms_at_press"],
+                              event["score_before"], event["score_after"]))
+            for column in KIT_PRESS_COLUMNS:
+                self.assertNotEqual(getattr(row, column), "", column)
+
+    def test_a_real_runs_agent_events_write_the_press_log_that_run_wrote(self):
+        # The kit agent's events of the first three chords of a real run, and
+        # the run's stop, read back through play_in_game and write_press_log,
+        # give the press log rows that run wrote. Both files are copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1: kit-1-head.jsonl is
+        # kit-1.jsonl's lines 4 to 7 (the skipped event and seqs 0 to 2) and
+        # its line holding the stop; press-1-head.csv is press-1.csv's header
+        # and first three rows.
+        folder = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1")
+        with open(os.path.join(folder, "press-1-head.csv"), encoding="utf-8") as f:
+            recorded_log = f.read().splitlines()
+        reader = csv.DictReader(recorded_log)
+        recorded_rows = list(reader)
+        # The schedule is the run's own chart times; a chord's lanes reach
+        # only the play message, which no row reads.
+        chords = [chord(int(r["index"]), float(r["chart_ms"]),
+                        press(int(r["index"]), float(r["chart_ms"]), [Lane.RED]))
+                  for r in recorded_rows]
+        player = RecordedPlayer(os.path.join(folder, "kit-1-head.jsonl"),
+                                seqs=range(len(chords)))
+        result = run(chords, player)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        written = os.path.join(scratch.name, "press.csv")
+        P.write_press_log(written, result.rows)
+        with open(written, encoding="utf-8") as f:
+            self.assertEqual(f.read().splitlines(), recorded_log)
+
+    def test_an_end_read_retimes_the_timed_press_by_the_read_minus_its_planned_end(self):
+        # The agent's side is the g3 run's recorded events of its first three
+        # chords (kit-1-head.jsonl); the end read is the end the game stored
+        # at that run's first activation (sp_watch-1.csv). The plan's end,
+        # planned_end_ms, is a hand-picked schedule input.
+        planned_end_ms = 104_800.0
+        (c0, c1, c2) = recorded_chords(recorded_log("press-1-head.csv"))
+        _, c0 = repressed(c0, [Lane.RED], planned_end_ms=planned_end_ms)
+        other = c1.presses[0]
+        timed, c2 = repressed(c2, [Lane.BLUE], end_read_after=c0.index,
+                              aim_end_ms=planned_end_ms)
+        chords = [c0, c1, c2]
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(3))
+        read_s = watched_sp_end(active=True)
+        result = run(chords, player, read_sp_end=lambda: read_s)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        read_ms = C.s_to_ms(read_s)
+        self.assertEqual(result.rows[0]["end_read_ms"], read_ms)
+        (retime,) = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
+        self.assertEqual(retime["read_after"], c0.index)
+        # Every entry not yet reported goes, each under the seq it had in the
+        # play message: a press that already fired, whose event is still
+        # unread, is then ignored by the agent, not fired a second time.
+        play_seqs = {e["index"]: e["seq"] for e in player.posted[0]["entries"]}
+        self.assertEqual([(e["seq"], e["at_ms"]) for e in retime["entries"]],
+                         [(play_seqs[other.index], other.at_ms),
+                          (play_seqs[timed.index], timed.at_ms + (read_ms - planned_end_ms))])
 
     def test_an_end_read_with_star_power_off_still_posts_a_retime(self):
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
-        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed)]
-        player = FakePlayer({
-            K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]],
-            K.RETIME_TYPE: [[sent_event(1, 1, 2001.0, 50, 100),
-                             stopped(K.STOP_REASON_DONE)]]})
-        result = run(chords, player, read_sp_end=lambda: None)
-        retimes = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
-        self.assertEqual(retimes, [K.retime_message(
-            0, [K.play_entry(1, P.replace(timed, seq=1), None)])])
+        # The agent's side is the g3 run's recorded events of its first two
+        # chords (kit-1-head.jsonl); the end read is a row of the run's
+        # sp_watch-1.csv taken before its first activation.
+        (c0, c1, _) = recorded_chords(recorded_log("press-1-head.csv"))
+        planned_end_ms = c1.presses[0].chart_ms
+        _, c0 = repressed(c0, [Lane.RED], planned_end_ms=planned_end_ms)
+        timed, c1 = repressed(c1, [Lane.BLUE], end_read_after=c0.index,
+                              aim_end_ms=planned_end_ms)
+        chords = [c0, c1]
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(2))
+        read_s = watched_sp_end(active=False)
+        result = run(chords, player, read_sp_end=lambda: read_s)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        (retime,) = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
+        # The timed press goes again under its seq, where the schedule put it.
+        self.assertEqual([(e["seq"], e["at_ms"]) for e in retime["entries"]],
+                         [(player.posted[0]["entries"][1]["seq"], timed.at_ms)])
         self.assertEqual(result.rows[0]["end_read_ms"], P.NO_ACTIVATION_READ)
 
-    def test_a_retime_refused_after_the_play_ended_keeps_every_row_and_the_stop_word(self):
-        # The end read after chord 0 was slow, so the agent played every
-        # press and sent its stop before the retime reached it.
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        other = press(1, 1500.0, [Lane.RED])
-        timed = press(2, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
-        chords = [chord(0, 1000.0, head), chord(1, 1500.0, other), chord(2, 2000.0, timed)]
-        error = "retime failed: Error: retime: no play is running"
-        refusal = FA.ReadFailed(FA.END_AGENT_ERROR, f"the agent sent an error: {error}",
-                                {"error": error})
-        player = FakePlayer({K.PLAY_TYPE: [[
-            started(), sent_event(0, 0, 1001.0, 0, 50), sent_event(1, 1, 1501.0, 50, 100),
-            sent_event(2, 2, 2001.0, 100, 150), stopped(K.STOP_REASON_DONE)]]},
-            refuse={K.RETIME_TYPE: refusal})
-        rows = []
-        result = run(chords, player, read_sp_end=lambda: 1.52, on_press=rows.append)
-        self.assertEqual(result.stop, P.STOP_DONE, result.message)
-        self.assertEqual([r["index"] for r in result.rows], [0, 1, 2])
-        self.assertEqual(rows, result.rows)
-        self.assertIn("retime after chord 0's end read was refused", result.message)
-        self.assertIn("play had already ended", result.message)
-        self.assertIn("retime: no play is running", result.message)
-        self.assertNotIn(K.stop_play_message(), player.posted)
-
-    def test_a_retime_refused_while_the_play_runs_stops_the_run_as_reply(self):
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
-        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed)]
-        error = "retime failed: Error: an entry lacks its elements"
-        refusal = FA.ReadFailed(FA.END_AGENT_ERROR, f"the agent sent an error: {error}",
-                                {"error": error})
-        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]]},
-                            refuse={K.RETIME_TYPE: refusal})
-        result = run(chords, player, read_sp_end=lambda: 1.52)
-        self.assertEqual(result.stop, "reply")
-        self.assertIn("an entry lacks its elements", result.message)
-        self.assertEqual([r["index"] for r in result.rows], [0])
-        self.assertEqual(player.posted[-1], K.stop_play_message())
-
-    def test_a_retime_post_with_no_reply_stops_the_run_as_reply(self):
-        # Only the agent's own refusal can mean the play ended; a post that
-        # got no reply stops the run even with the agent's stop queued.
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
-        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed)]
-        player = FakePlayer({K.PLAY_TYPE: [[
-            started(), sent_event(0, 0, 1001.0, 0, 50), sent_event(1, 1, 2001.0, 50, 100),
-            stopped(K.STOP_REASON_DONE)]]},
-            refuse={K.RETIME_TYPE: FA.ReadFailed(FA.END_CAP, "no reply to retime")})
-        result = run(chords, player, read_sp_end=lambda: 1.52)
-        self.assertEqual(result.stop, "reply")
-        self.assertIn("no reply to retime", result.message)
-
-    def test_an_unknown_seq_stops_the_run_as_reply(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(7, 0, 1001.0, 0, 50)]]})
+    def test_an_event_for_a_seq_no_entry_holds_stops_the_run_as_reply(self):
+        # The g3 run's recorded events of its first three chords
+        # (kit-1-head.jsonl) played against a schedule of only the first two:
+        # the third event names a seq the play message never gave.
+        chords = recorded_chords(recorded_log("press-1-head.csv"))[:2]
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(3))
+        unknown = player.recorded[-2]["seq"]
+        self.assertNotIn(unknown, range(len(chords)))
         result = run(chords, player)
         self.assertEqual(result.stop, "reply")
-        self.assertIn("seq 7", result.message)
+        self.assertIn(str(unknown), result.message)
+        self.assertEqual(len(result.rows), len(chords))
         self.assertEqual(player.posted[-1], K.stop_play_message())
 
     def test_each_agent_stop_reason_gives_its_stop_word(self):
-        words = {K.STOP_REASON_DONE: P.STOP_DONE, K.STOP_REASON_STOPPED: "stopped",
-                 K.STOP_REASON_CAP: "cap", K.STOP_REASON_FROZEN: "frozen",
-                 K.STOP_REASON_PAST_END: "past_end"}
-        for reason, word in words.items():
+        # No recorded run stopped for a reason but done, so the agent's stop
+        # is typed here. play_in_game's rule: done is STOP_DONE, and every
+        # other reason that ends a run keeps its own word.
+        for reason in (K.STOP_REASON_DONE, K.STOP_REASON_STOPPED, K.STOP_REASON_CAP,
+                       K.STOP_REASON_FROZEN, K.STOP_REASON_PAST_END):
             chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
             batch = [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(reason)]
             result = run(chords, FakePlayer({K.PLAY_TYPE: [batch]}))
+            word = P.STOP_DONE if reason == K.STOP_REASON_DONE else reason
             self.assertEqual(result.stop, word, reason)
 
-    def test_a_jump_back_sends_the_plan_again_and_starts_the_counts_over(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        player = FakePlayer({K.PLAY_TYPE: [
-            [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(K.STOP_REASON_JUMPED_BACK)],
-            [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(K.STOP_REASON_DONE)]]})
+    def test_a_split_chords_later_group_names_its_head_and_its_delay(self):
+        # The g3 run's chord 3 went down in two order groups. Its schedule is
+        # press-1-split.csv (press-1.csv's header and first five rows) and the
+        # agent's side kit-1-split.jsonl (kit-1.jsonl's lines 4 to 9, the
+        # skipped event and seqs 0 to 4, and line 396, which holds the stop).
+        chords = recorded_chords(recorded_log("press-1-split.csv"))
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-split.jsonl"), seqs=range(5))
         result = run(chords, player)
-        self.assertEqual([m["type"] for m in player.posted], [K.PLAY_TYPE, K.PLAY_TYPE])
-        self.assertEqual(player.posted[0]["entries"], player.posted[1]["entries"])
-        self.assertEqual((result.stop, result.sent, len(result.rows)), (P.STOP_DONE, 1, 1))
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        entries = player.posted[0]["entries"]
+        (split,) = [c for c in chords if len(c.presses) == 2]
+        first, later = [e for e in entries if e["index"] == split.index]
+        self.assertEqual((first["after_seq"], first["after_ms"]), (None, None))
+        self.assertEqual((later["after_seq"], later["after_ms"]),
+                         (first["seq"], split.presses[1].after_ms))
 
-    def test_an_unknown_stop_reason_stops_the_run_as_reply(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        result = run(chords, FakePlayer({K.PLAY_TYPE: [[started(), stopped("melted")]]}))
-        self.assertEqual(result.stop, "reply")
-
-    def test_events_that_arrive_900_ms_late_still_give_every_row_in_order(self):
-        # The fake blocks 900 ms of a fake clock before each event; the
-        # agent fired every press on time, so no row may say dropped.
-        clock = [0.0]
-
-        def late():
-            clock[0] += 0.9
-
-        chords = [chord(k, 1000.0 + 100 * k, press(k, 1000.0 + 100 * k, [Lane.RED]))
-                  for k in range(4)]
-        batch = [started()] + [sent_event(k, k, 1001.0 + 100 * k, 50 * k, 50 * k + 50)
-                               for k in range(4)] + [stopped(K.STOP_REASON_DONE)]
-        result = run(chords, FakePlayer({K.PLAY_TYPE: [batch]}, late=late),
-                     now=lambda: clock[0])
-        self.assertEqual([r["index"] for r in result.rows], [0, 1, 2, 3])
-        self.assertEqual(result.dropped, 0)
-        self.assertEqual(result.stop, P.STOP_DONE)
-
-    def test_a_stop_events_cause_and_lift_error_are_in_the_message(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        stop = dict(stopped(K.STOP_REASON_STOPPED), cause="no frame came for 5000 ms",
-                    lift_error="the pad write failed")
-        result = run(chords, FakePlayer({K.PLAY_TYPE: [[started(), stop]]}))
-        self.assertEqual(result.stop, "stopped")
-        self.assertIn("no frame came for 5000 ms", result.message)
-        self.assertIn("the pad write failed", result.message)
-
-    def test_a_done_that_carries_a_cause_is_not_a_clean_done(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        stop = dict(stopped(K.STOP_REASON_DONE), cause="a kit write failed: boom")
-        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50), stop]]})
+    def test_a_real_split_chords_rows_are_the_rows_that_run_wrote(self):
+        # The same g3 files as the test above: a chord played in two order
+        # groups gives one row per group, as the run's own press log has them.
+        lines = recorded_log("press-1-split.csv")
+        chords = recorded_chords(lines)
+        player = RecordedPlayer(os.path.join(_G3, "kit-1-split.jsonl"), seqs=range(5))
         result = run(chords, player)
-        self.assertEqual(result.stop, "reply")
-        self.assertIn("a kit write failed: boom", result.message)
-
-    def test_an_error_the_agent_reports_stops_the_run_as_reply(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
-        error = {"kind": K.EVENT_ERROR, "error": "the stall check failed: boom"}
-        player = FakePlayer({K.PLAY_TYPE: [[started(), error]]})
-        result = run(chords, player)
-        self.assertEqual(result.stop, "reply")
-        self.assertIn("the stall check failed: boom", result.message)
-        self.assertEqual(player.posted[-1], K.stop_play_message())
-
-    def test_a_split_chords_rows_match_play_chords_rows_but_the_timing_columns(self):
-        first = press(0, 1000.0, [Lane.RED])
-        later = press(0, 1000.0, [Lane.BLUE], aim_ms=5.0, after_ms=5.0)
-        chords = [chord(0, 1000.0, first, later)]
-        player = FakePlayer({K.PLAY_TYPE: [[
-            started(), sent_event(0, 0, 1001.0, 0, 50), sent_event(1, 0, 1006.0, 0, 50),
-            stopped(K.STOP_REASON_DONE)]]})
-        rows = run(chords, player).rows
-        self.assertEqual(player.posted[0]["entries"][1]["after_seq"], 0)
-        self.assertEqual(player.posted[0]["entries"][1]["after_ms"], 5.0)
-
-        class Clock:
-            t = 0.0
-
-            def read(self):
-                Clock.t += 0.0005
-                # Starts more than the start lead before the chord.
-                return (0.8 + Clock.t, 0.8 + Clock.t)
-
-        def kit_press(lanes, axes, then=()):
-            return {"down_frame": 10, "up_frame": 12, "down_ms": 1.0, "up_ms": 2.0,
-                    "groups": [{"down_frame": 10, "up_frame": 12, "down_ms": 1.0,
-                                "up_ms": 2.0},
-                               {"down_frame": 11, "up_frame": 13, "down_ms": 1.5,
-                                "up_ms": 2.5}]}
-
-        scores = iter([0, 0, 50])
-        old_run = P.play_chords(chords, Clock(), lambda: next(scores), kit_press,
-                                sleep=lambda s: None, out=io.StringIO(), kit=True)
-        self.assertEqual(old_run.stop, P.STOP_DONE, old_run.message)
-        old = old_run.rows
-        compared = ("index", "chart_ms", "lead_ms", "score_before", "score_after",
-                    SEND_COLUMN, "scored_between", "retimed", "end_read_ms")
-        self.assertEqual([{c: r.get(c) for c in compared} for r in rows],
-                         [{c: r.get(c) for c in compared} for r in old])
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        written = os.path.join(scratch.name, "press.csv")
+        P.write_press_log(written, result.rows)
+        with open(written, encoding="utf-8") as f:
+            self.assertEqual(f.read().splitlines(), lines)
 
 
 if __name__ == "__main__":

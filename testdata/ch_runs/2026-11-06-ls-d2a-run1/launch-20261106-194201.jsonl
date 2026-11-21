@@ -1,0 +1,4 @@
+{"type": "send", "payload": {"state": "idle", "id": 1}}
+{"type": "send", "payload": {"state": "waiting", "before": null, "after": null, "entry_before": null, "module": null, "loader_runs": 0, "bytes_at_first_run": null, "patched_at_ms": null, "reason": null, "id": 3}}
+{"type": "send", "payload": {"state": "patched", "before": "BA 01 00 00 00", "after": "BA 00 00 00 00", "entry_before": "40 56 57 41 55 48 81 EC C0 00 00 00", "module": {"base": "0x7ff8fa760000", "size": 72732672}, "loader_runs": 0, "bytes_at_first_run": null, "patched_at_ms": 1794012121857, "reason": null, "id": 4}}
+{"type": "send", "payload": {"state": "patched", "before": "BA 01 00 00 00", "after": "BA 00 00 00 00", "entry_before": "40 56 57 41 55 48 81 EC C0 00 00 00", "module": {"base": "0x7ff8fa760000", "size": 72732672}, "loader_runs": 1, "bytes_at_first_run": "BA 00 00 00 00", "patched_at_ms": 1794012121857, "reason": null, "id": 6}}

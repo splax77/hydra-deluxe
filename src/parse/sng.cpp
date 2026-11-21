@@ -138,13 +138,6 @@ std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
     return bytes;
 }
 
-std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& buf,
-                                                    const SngFileEntry& entry) {
-    std::optional<std::vector<uint8_t>> out(std::in_place);
-    if (!sng_decode_file_into(buf, entry, *out)) return std::nullopt;
-    return out;
-}
-
 SngNotes sng_read_notes(const ByteSource& src, const std::vector<uint8_t>& head) {
     // Which entry is the notes file is pick_notes_file's question.
     const std::vector<SngFileEntry> entries = sng_read_file_table(head);

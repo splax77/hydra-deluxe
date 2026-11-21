@@ -1,0 +1,688 @@
+heading line	heading
+A1.md:9	What is and is not checked for question 3
+A10.md:5	Reading set R0 (every record's "Read" starts with this)
+A10.md:9	Answers that hold for every record (the records point here and add only what differs)
+A10.md:22	Records
+A10.md:640	Counts and questions for the main session
+A13.md:13	tests/test_engine_sweeps.cpp
+A13.md:654	tests/test_fill_deadline.cpp
+A13.md:964	Charts and screens I needed and did not have
+A13.md:973	Not opened (said once)
+A14.md:5	How to read these records
+A14.md:19	File 1: tests/test_fill_report.cpp (22 test cases)
+A14.md:401	File 2: tests/test_fills_and_skips.cpp (10 test cases)
+A14.md:580	File 3: tests/test_fitted_text_cache.cpp (6 test cases)
+A14.md:690	File 4: tests/test_helpers.cpp (4 test cases)
+A14.md:765	Counts and the end of the slice
+A15.md:5	Common read set (every record starts from it)
+A15.md:15	What the screens showed (read for question 3)
+A15.md:543	Side notes
+A15.md:553	Captures needed and not there (question 3)
+A16.md:5	What I opened for the whole file (the per-record "Read" lines add to this)
+A16.md:15	Charts and captures this file needed and did not have
+A16.md:23	Splits and production findings, in one list (each also sits in its record)
+A16.md:454	Count
+A17.md:5	What I opened for the whole slice
+A17.md:21	Captures and real inputs the slice needs (none exist today)
+A17.md:31	Production-code findings and splits (also on the records below)
+A17.md:717	40. tests/test_main.cpp, the whole file (the suite's `main`)
+A18.md:5	What I opened for the whole file
+A18.md:16	Charts and screens this file needed and did not have
+A18.md:24	Splits and production findings, in one list (each also sits in its record)
+A18.md:619	Side notes: test names holding a comma
+A18.md:622	Verdict count
+A19.md:19	test_path_list.cpp
+A19.md:266	test_pb_text.cpp
+A19.md:436	test_precheck.cpp
+A19.md:518	Count (precheck file has 5 TEST_CASE lines; the brief said 7)
+A2.md:5	What every record leans on
+A20.md:5	What every record below shares
+A20.md:575	Not reached
+A20.md:578	Charts and captures needed that I did not have
+A21.md:465	preview golden
+A21.md:503	What the unread parts mean
+A21.md:507	Charts and captures needed (none exist in records-engine or records-screen)
+A22.md:5	Shared reads and shared findings
+A22.md:20	Load progress (`tests/test_preview_load_progress.cpp`)
+A22.md:363	Renderer (`tests/test_preview_renderer.cpp`)
+A22.md:613	Timeline (`tests/test_preview_timeline.cpp`)
+A22.md:1110	Side notes
+A23.md:456	Charts and captures needed (claim not checked)
+A24.md:522	Counts and open items
+A25.md:5	Read for every record below
+A25.md:19	Splits and production findings, collected (also on their records)
+A25.md:28	File tests/test_report_page.cpp
+A25.md:226	File tests/test_report_rows.cpp
+A26.md:11	Part 1. tests/test_run_guard.cpp
+A26.md:109	Part 2. tests/test_rules.cpp
+A26.md:506	Part 3. tests/test_report_view.cpp
+A26.md:728	What I could not check
+A27.md:5	What every record below shares
+A27.md:20	test_saved_figure_fill.cpp
+A27.md:182	test_song_audio.cpp
+A27.md:235	test_search_target.cpp
+A27.md:430	test_song_input.cpp
+A27.md:731	Charts and captures needed, and what I did not do
+A28.md:5	Read once for the whole file
+A28.md:11	What the real-chart records show (used by question 3 below)
+A28.md:23	Production findings and splits for the whole file (each on its own line)
+A28.md:418	Side notes
+A28.md:428	Count
+A29.md:5	Reads and facts shared by every record
+A29.md:47	Records
+A3.md:5	What every record below shares
+A3.md:389	Splits and findings
+A3.md:403	Charts needed and not in the set
+A3.md:407	Count
+A30.md:5	Common reads (named "C1" to "C7" in each record)
+A30.md:548	Findings and splits (each its own line)
+A30.md:556	Charts and captures needed that I did not have
+A30.md:569	Count per verdict
+A31.md:5	What every record below shares
+A31.md:22	tests/test_stem_reader.cpp
+A31.md:267	tests/test_store_library.cpp
+A32.md:5	Read once for the whole file
+A33.md:5	What every record below shares
+A33.md:559	End of records
+A34.md:5	What every record shares
+A34.md:566	Counts
+A34.md:573	Splits and open items (own lines)
+A35.md:245	Split lines
+A35.md:250	Side notes
+A35.md:257	Not reached
+A35.md:260	Charts or captures needed and not had
+A36.md:5	Facts every record leans on
+A36.md:855	Totals and open items
+A37.md:5	Shorthand used in the Read lines
+A37.md:18	tests/test_user_messages.cpp
+A37.md:426	tests/test_winstr.cpp
+A37.md:803	tests/ui/uitest_batch_reports.cpp
+A38.md:19	window
+A38.md:26	click
+A38.md:34	check / uncheck
+A38.md:41	type
+A38.md:48	open
+A38.md:55	key
+A38.md:62	wait
+A38.md:69	timeout
+A38.md:75	wait-idle
+A38.md:82	wait-text
+A38.md:88	expect-text / expect-not-text
+A38.md:95	text
+A38.md:101	dump
+A38.md:108	rect
+A38.md:114	state
+A38.md:120	screenshot
+A38.md:127	reset
+A38.md:133	quit
+A38.md:139	unknown verb
+A38.md:146	failure tail
+A4.md:7	Reading rules used for every record
+A4.md:790	Summary of verdicts (48 test cases)
+A4.md:794	Splits and findings
+A40.md:11	uitest_engine.cpp
+A40.md:326	uitest_harness.cpp
+A40.md:624	Test cases not reached
+A40.md:628	Charts and captures needed
+A40.md:632	Production-code findings
+A42.md:194	Production-code findings
+A42.md:200	Splits
+A42.md:206	Side notes
+A42.md:214	Counts
+A43.md:5	Common reading for every record in uitest_live.cpp
+A43.md:15	Tests
+A43.md:260	uitest_main.cpp (no test; the `hydra_uitest.exe` entry point)
+A43.md:316	Beyond the 16 tests (not asked, noted)
+A43.md:320	Counts
+A47.md:5	Table and registration
+A47.md:9	Common reading (applies to every record below)
+A47.md:198	Side notes
+A48.md:17	Part 1. The tests
+A48.md:364	Part 2. Functions that hold no test
+A48.md:435	Counts
+A49.md:16	Part 1. pbtest_window.cpp
+A49.md:170	Part 2. scan.cpp
+A49.md:418	Part 3. pbtest_main.cpp
+A5.md:5	Read once, for every record below
+A5.md:13	How I answered question 3 for this file
+A5.md:487	Splits (two parts answering one question differently)
+A5.md:493	Not done
+A6.md:5	What every record shares
+A6.md:17	Records
+A6.md:685	Splits and findings across the file
+A6.md:697	Counts
+A7.md:7	What every record in this file shares
+A8.md:13	test_batch_text.cpp
+A8.md:246	test_best_finish.cpp
+A8.md:325	test_column_widths.cpp
+A9.md:5	What every record in this file shares
+A9.md:13	Records
+A9.md:687	tests/test_dm_other_speed.cpp
+A9.md:755	Side notes
+B1.md:5	Reading common to every record
+B1.md:17	tests/test_cli.cpp
+B1.md:367	tests/test_dynamics_breakdown.cpp
+B1.md:718	tests/test_fuzz_regressions.cpp
+B2.md:5	Shared answers
+B2.md:9	S-G: generated fills
+B2.md:19	test_generated_fills.cpp
+B2.md:214	test_midi.cpp
+B2.md:216	S-M: shared answers for the midi cases
+B2.md:706	test_pathstring_read.cpp
+B2.md:708	S-P: shared answers for the pathstring cases
+B3.md:397	Findings for the main session
+B4.md:5	Shared answers
+B4.md:9	S-O: who owns these rules, and who calls them
+B4.md:16	S-R: what the real-chart records show (Q3 for the whole file)
+B4.md:25	S-L: the corpus-loop helper (`for_each_corpus_schedule`, lines 89-102)
+B4.md:30	S-H: hand-built charts
+B4.md:34	The records
+B4.md:321	Counts
+B4.md:325	Findings for the main session
+B5.md:15	Production-code findings (also repeated in the records they come from)
+B5.md:21	Splits
+B6.md:5	Shared answers
+B6.md:15	Records
+B6.md:461	Lane group answers (records for lines 542 to 673 and 725)
+B7.md:5	Read once for the whole file
+B7.md:366	Splits
+B7.md:372	Production-code findings
+B7.md:378	Side notes
+C1.md:5	Facts shared by the activation-row and badge-pill records
+C1.md:17	tests/test_activation_row_layout.cpp
+C1.md:362	tests/test_badge_pill.cpp
+C1.md:532	tests/test_app_settings.cpp
+C1.md:735	tests/test_audio_decode.cpp
+C1.md:939	tests/test_audio_device.cpp
+C1.md:970	tests/test_audio_mixer.cpp
+C1.md:1079	tests/test_audio_player.cpp
+C1.md:1290	tests/test_build_flags.cpp
+C1.md:1322	Totals and stops
+C10.md:9	File 1: tests/test_preview_config.cpp
+C10.md:200	File 2: tests/test_rules_file.cpp
+C10.md:347	File 3: tests/test_section_names.cpp
+C10.md:505	File 4: tests/test_preview_source.cpp
+C10.md:1016	File 5: tests/test_preview_transport.cpp
+C11.md:14	test_sng.cpp
+C11.md:260	test_song_length.cpp
+C11.md:505	Side notes for test_song_length.cpp
+C11.md:512	test_song_panel_state.cpp
+C11.md:599	test_sp_end_clamp.cpp
+C11.md:720	Side notes and splits
+C12.md:5	What every record in this file leans on
+C13.md:5	What every record in this file leans on
+C14-C15-fuzz.md:5	Reading common to every fuzz record
+C14-C15-fuzz.md:123	tests/single_owner/engine.cpp: the functions the scan tests call
+C14.md:5	Files with no test case
+C14.md:10	How question 3 was done for this slice
+C2.md:11	File 1: tests/test_chart_index.cpp
+C2.md:129	File 2: tests/test_chord_code.cpp
+C2.md:163	File 3: tests/test_difficulty_table.cpp
+C2.md:197	File 4: tests/test_disco_flip.cpp
+C2.md:273	File 5: tests/test_display_format.cpp
+C2.md:349	File 6: tests/test_dynamics_tag.cpp
+C2.md:466	File 7: tests/test_fast_tempo.cpp
+C2.md:585	File 8: tests/test_fill_landing.cpp
+C2.md:809	Side notes
+C2.md:819	Production-code findings
+C2.md:823	Splits
+C2.md:828	Charts and screens needed and not in the records
+C2.md:838	Count per verdict
+C3.md:11	File 1: tests/test_five_lane.cpp (534 lines, 37 test cases)
+C3.md:13	File notes
+C3.md:27	Records
+C3.md:482	File 2: tests/test_font_coverage.cpp (164 lines, 4 test cases)
+C3.md:484	File notes
+C3.md:554	File 3: tests/test_http_download.cpp (131 lines, 5 test cases)
+C3.md:556	File notes
+C3.md:641	File 4: tests/test_icons.cpp (32 lines, 1 test case)
+C3.md:660	File 5: tests/test_image_decode.cpp (60 lines, 3 test cases)
+C3.md:662	File notes
+C3.md:711	File 6: tests/test_kick2x.cpp (245 lines, 10 test cases)
+C3.md:713	File notes
+C3.md:859	File 7: tests/test_label_layout.cpp (81 lines, 4 test cases)
+C3.md:861	File notes
+C3.md:922	File 8: tests/test_launch.cpp (101 lines, 4 test cases)
+C3.md:924	File notes
+C6.md:16	File 1: tests/test_note_window.cpp (394 lines, 15 cases)
+C6.md:485	File 2: tests/test_obj_loader.cpp (186 lines, 8 cases)
+C6.md:695	File 3: tests/test_overlay_layout.cpp (516 lines, 22 cases)
+C6.md:1220	File 4: tests/test_path_costs.cpp (253 lines, 10 cases)
+C6.md:1465	Counts
+C7.md:5	Shorthand used in every record
+C7.md:18	test_pb_coach.cpp
+C7.md:335	test_pb_files.cpp
+C7.md:462	test_pb_state.cpp
+C7.md:544	test_perf_digest.cpp
+C7.md:617	test_phrase_end.cpp
+C8.md:5	What all 28 cases test, and what I opened
+C8.md:21	tests/test_precheck_check1.cpp
+C8.md:131	tests/test_precheck_check24.cpp
+C8.md:204	tests/test_precheck_check3.cpp
+C8.md:294	tests/test_precheck_check5.cpp
+C8.md:351	tests/test_precheck_git.cpp
+C8.md:519	Splits (two parts of Hydra answering one question differently)
+C8.md:531	Production-code findings
+C8.md:538	Counts
+C9.md:5	Shared answers (each record points here by tag)
+C9.md:19	1. tests/test_precheck_pick.cpp (40 cases)
+C9.md:589	2. tests/test_precheck_pick_exe.cpp (6 cases)
+C9.md:683	3. tests/test_precheck_pick_lines.cpp (4 cases)
+C9.md:745	4. tests/test_precheck_pick_names.cpp (14 cases)
+C9.md:953	5. tests/test_precheck_rows.cpp (5 cases)
+C9.md:1029	6. tests/test_preview_clock.cpp (2 cases)
+C9.md:1065	Splits and tallies
+D1.md:5	Shared answers (each record points here by code, so a record says only what is its own)
+D1.md:15	BotRunTest (test_bot_run.py)
+D1.md:553	test_build_facts.py
+D1.md:637	test_build_stamp.py
+D1.md:702	test_chdis.py
+D1.md:729	test_compare_dumps.py
+D1.md:781	test_compare_scorestats.py
+D1.md:826	Closing notes
+D10.md:11	Production-code findings and splits (whole slice)
+D10.md:28	Shared answers (S-EN)
+D10.md:40	Records
+D10.md:226	Shared answers (S-EF)
+D10.md:237	Records
+D10.md:307	Shared answers (S-FC)
+D10.md:318	Records
+D10.md:458	Shared answers (S-HW)
+D10.md:468	Records
+D10.md:584	Shared answers (S-ID)
+D10.md:594	Records
+D10.md:729	Shared answers (S-OC)
+D10.md:740	Records
+D10.md:778	Shared answers (S-OL)
+D10.md:788	Records
+D11.md:5	Shared answers (every record points here)
+D11.md:1522	Counts and what was not done
+D12.md:9	Production findings and splits
+D12.md:21	Shared answers (S-PG)
+D12.md:32	Records
+D12.md:160	Shared answers (S-PI)
+D12.md:170	Records
+D12.md:240	Shared answers (S-PC)
+D12.md:250	Records
+D12.md:356	Shared answers (S-PS)
+D12.md:365	Records
+D12.md:461	Shared answers (S-PR)
+D12.md:471	Records
+D12.md:635	Shared answers (S-RO)
+D12.md:642	Records
+D12.md:673	Shared answers (S-S2)
+D12.md:680	Records
+D12.md:736	Shared answers (S-SC)
+D12.md:746	Records
+D13.md:7	Shared answers
+D13.md:27	Production findings and splits for the whole slice
+D13.md:37	test_sp_compare.py
+D13.md:367	test_sp_watch.py
+D13.md:501	test_watch_checks.py
+D13.md:594	test_stall_harness.py
+D13.md:680	test_tick_rate_vs_hydra.py
+D13.md:692	tools/test_agent_cost.py
+D14.md:7	Splits and production findings that cover several records
+D14.md:14	File block H: tools/test_check_handoff.py (20 tests)
+D14.md:126	File block P: tools/test_check_pointers.py (18 tests)
+D14.md:225	File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parametrized over two flag sets)
+D14.md:277	File block F: tools/test_effort_test_faults.py (26 tests)
+D14.md:415	File block S: tools/test_effort_test_scout.py (10 tests)
+D14.md:474	File block X: tools/test_effort_test_shuffle.py (14 tests)
+D14.md:552	File block T: tools/test_effort_test_taint.py (25 tests)
+D15.md:5	How to read this page
+D15.md:9	Shared answers
+D15.md:294	TransportLayer (stand-in server)
+D15.md:347	BuildPassTool (real `build_slot.ps1` on a temp slot folder)
+D15.md:359	SdkClient
+D15.md:364	RealExeLayer (skips without a built `hydra_uitest.exe`; none ran for this audit)
+D2.md:5	Shared answers (each record points here by code and says only what is its own)
+D2.md:7	Foreground tests (test_foreground.py)
+D2.md:16	Dump tests (test_dump_facts.py)
+D2.md:25	Frida tests (test_frida_attach.py)
+D2.md:40	test_foreground.py (tools/ch_mcp/tests/test_foreground.py)
+D2.md:224	test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)
+D2.md:228	ParseDumpTests
+D2.md:364	SignatureTests
+D2.md:421	DumpBuildTests (uses FakeRunner, lines 245-263, in place of Il2CppDumper)
+D2.md:481	FactsTableTests (uses `_TableFixture`, 419-449, a temp folder with TINY_DUMP)
+D2.md:684	NamesMapTests (map of readable names for scrambled ones; fixture MAP_DUMP, 635-652)
+D2.md:799	test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)
+D2.md:803	DetachTest (`FA.run_agent`)
+D2.md:876	EndTest
+D2.md:926	DroppedSessionDetachTest
+D2.md:940	DefaultWaitTest (`_default_wait`; real `threading.Event` and the real clock)
+D2.md:978	NotRunningTest
+D2.md:1015	LiveAgentTest (`FA.LiveAgent`; ReplySession/ReplyScript, 422-450)
+D2.md:1413	SummaryTest (`summarize_clock`, `main`)
+D2.md:1487	ByNameOnlyTest
+D2.md:1525	AllowedCallsTest (`call_findings` etc.; helper functions in the test file, 81-150)
+D2.md:1719	KitPlayHookTest
+D2.md:1805	DestroyedSkipTest
+D2.md:1843	LaunchAgentTest
+D2.md:1893	LaunchRepliesTest (skipped when node is missing; runs launch_core.ts through node)
+D2.md:1931	BuildScriptsTest
+D2.md:1947	Production-code findings
+D2.md:1953	Splits (two parts of Hydra answering one question)
+D2.md:1958	Charts and captures needed (none is an engine chart)
+D2.md:1962	What I did not reach or read
+D3.md:9	Production-code findings and splits (also on the records)
+D3.md:18	Shared answers, Rig-based tests (AttachTest, ReadTest, SnapshotEngineLinesTest, MenuTest's Rig tests, TraceTest) 
+D3.md:152	SnapshotEngineLinesTest (:414-497). Extra shared answers
+D3.md:210	MenuFieldsTest (:541-637). Shared answers
+D3.md:242	MenuTest (:669-817), Shared answers
+D3.md:336	StateWordsTest (:820-852). Shared answers
+D3.md:360	TraceTest (:855-991). Shared answers
+D3.md:431	Shared answers (all 50 tests)
+D3.md:644	Shared answers (all 29 tests)
+D3.md:676	RegistryTest shared answers
+D3.md:726	SetGameSettingTest shared answers
+D4.md:5	Shared answers (each record points here by code)
+D4.md:18	Start-of-run, quiet check, ch_start
+D4.md:108	ch_stop, shutdown
+D4.md:158	ensure_backup
+D4.md:176	ch_install_chart
+D4.md:204	stats and compare
+D4.md:254	ch_press and ch_key
+D4.md:369	The run cap and the play status
+D4.md:429	The auto-player session
+D4.md:471	The kit route
+D4.md:529	Declined fills
+D4.md:582	The squeeze lines, on three real saved schedules
+D4.md:650	Status text details
+D4.md:709	The chained start (ch_run_chart)
+D4.md:759	The press log file
+D4.md:866	Not reached and charts needed
+D4.md:872	Findings and splits
+D5.md:5	Shared answers (each record points here by code and says only what is its own)
+D5.md:355	MarkerTest (the open-run marker: a killed worker's way to put its backup back)
+D5.md:569	RecorderTest (how ch_start, ch_run_chart and the stops drive the machine recorder)
+D5.md:713	PidRunningTest
+D5.md:736	AtexitFactTest
+D5.md:753	PlayerLimitsLinesTest (the reply lines and the edge probe of the 2026-11-07 player-limits plan)
+D5.md:865	DroppedStatusTest (ch_play_status with a dropped press)
+D5.md:899	BlockedPressLogTest (PS1 of docs/superpowers/plans/2026-11-12-player-stall-fixes.md)
+D6.md:5	Shared facts for every record
+D6.md:17	G-end (group block)
+D6.md:132	G-patch (group block)
+D6.md:294	G-core (group block)
+D6.md:439	G-kit (group block)
+D6.md:764	Short form for the rest of test_kit_tools.py
+D7.md:9	Findings and splits (also on the records)
+D7.md:24	Shared answers
+D7.md:35	class CapturedTable (real table captured on Windows, `recorder_sample.bin`)
+D7.md:128	class FakeTable
+D7.md:144	class ReadsAs
+D7.md:153	class Deltas
+D7.md:180	class WriteSample
+D7.md:206	class Loop (FakeLoop: fake clock, fake table, real reader thread in two tests)
+D7.md:235	test_a_short_clock_read_leaves_the_column_empty (:583)  DEAD
+D7.md:282	test_a_short_clock_read_leaves_the_column_empty (:682)  the one that runs
+D7.md:304	class OnDisk
+D7.md:313	class ReadTable
+D7.md:332	class CommandLine
+D7.md:364	class Imports
+D7.md:371	class RealRun (real processes)
+D7.md:403	class ClockRange
+D7.md:416	Shared answers
+D7.md:429	class Constants
+D7.md:451	class CpuShares (fixture: 100 samples at 20 ms, four processes; 99 slices, 1980 ms)
+D7.md:496	class ReadyStretches
+D7.md:544	class StretchesAcrossLateSamples
+D7.md:578	class ClockSteps
+D7.md:628	class MatchedPair
+D7.md:655	class SampleGaps
+D7.md:665	class Cost
+D7.md:672	class FirstLine
+D7.md:682	class ByProcess
+D7.md:693	class SettingsHeader
+D7.md:710	class TheFront
+D7.md:729	class ARecordingAsTheRecorderWritesIt
+D7.md:740	class TheRecordingsEnd
+D7.md:753	class BadFolders
+D7.md:765	class AsAScript
+D7.md:776	Shared answers
+D7.md:788	class OpenSongTest
+D7.md:898	class ExpectWordsTest
+D7.md:920	class NumbersTest
+D7.md:931	class StepsFileTest (the checked-in `menu_steps.json`)
+D8.md:11	Production-code findings and splits
+D8.md:20	Shared answers (S-MW)
+D8.md:32	Records
+D8.md:264	Shared answers (S-MF)
+D8.md:274	Records
+D8.md:378	Shared answers (S-PS)
+D8.md:389	Records
+D8.md:492	Shared answers (S-Q)
+D8.md:503	Records
+D8.md:797	Shared answers (S-RL)
+D8.md:808	Records
+D8.md:991	Shared answers (S-SV)
+D8.md:1002	Records
+D9.md:5	How to read these records
+E1.md:5	Shared answers (each record says where it departs)
+E1.md:18	test_agent_files.py (Read: test 1-58; `test_docs_numbers.py:33` for AGENTS_DIR; `planner.md`, `reviewer.md`, `docs/agents/premise-map.md` not read)
+E1.md:37	test_agent_stop.py (Read: test 1-493; `agent_stop.py` 1-198; `percall.py` greps only; `review_rules.py`, `common.py` not read)
+E1.md:157	test_common.py (Read: test 1-183; `common.py` not read, so every record is limited to test-side reading)
+E1.md:228	test_percall_key.py (Read: test 1-222; `percall.py:58` and `:20` by grep only; `percall._key_call` body not read; `review_rules.KEY_ALLOW_TEXT` at `review_rules.py:54` ("allow key run"))
+E1.md:297	test_docs_numbers.py (Read: test 1-200; `progress.py:14` only; Hydra docs named by the tests not opened by me; the test reads `C:\Users\Patrick\Downloads\Hydra\hydra-test` (main checkout) unless GATES_HYDRA_ROOT is set)
+E1.md:360	test_bash_windows_rule.py (Read: test 1-331; `bash_windows_rule.py` 1-246 in full; `percall.py:4,113-133` by grep; `docs/agents/rulings/review-and-hooks.md:40`; `docs/probe_results.md` not read)
+E1.md:507	test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of its constants and function names, lines 17-181); `docs/agents/rulings/review-and-hooks.md:17`; body of `_piece_refusal`/`check` not read)
+E1.md:661	test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,133` by grep; Hydra D189 and D273 item 3 cited in the docstring, `docs/audit/2026-10-03-fix-decisions.md` not opened)
+E2.md:9	Group R (test_percall_rewrite.py)
+E2.md:176	Group P (test_posture.py)
+E2.md:394	test_progress.py (75 records)
+E2.md:404	FirstCall
+E2.md:432	CallBudget
+E2.md:468	TimeBudget
+E2.md:492	StatusAge
+E2.md:540	Routing
+E2.md:590	Crash
+E2.md:617	HandbackSave
+E2.md:642	WholeLibrary
+E2.md:702	KeyRoute
+E2.md:787	PlayChartKeysRoute
+E2.md:837	StatusShape
+E2.md:878	NumbersLiveOnce
+E2.md:906	test_publish.py (40 records)
+E2.md:915	GateTests
+E2.md:1015	RepoPathTests
+E2.md:1035	KeyTests
+E2.md:1045	Ps1Base / PublishPs1Tests
+E2.md:1123	NewKindTests
+E2.md:1170	Splits and findings
+E3.md:5	How to read these records
+E3.md:9	Shared answers
+E3.md:29	File 1: test_refusals.py (88 lines, 5 cases)
+E3.md:66	File 2: test_review_dispatch.py (363 lines, 36 cases)
+E3.md:273	File 3: test_ref_judge.py (850 lines, 57 cases)
+E3.md:552	RulingGateTests (:696) (real `ruling_rules.py` and real card tools on hand-made transcripts)
+E3.md:599	File 4: test_review_rules.py (1,017 lines, 120 cases)
+E3.md:954	Counts and findings
+E4.md:9	test_ruling_rules.py
+E4.md:160	test_stall.py
+E4.md:310	test_shell_output.py
+E4.md:514	test_status_append.ps1
+E4.md:542	test_h53_session_cards_start.ps1
+E4.md:716	test_h52_cleanup_sweep.ps1
+T3-run2.md:5	Shared reads (R0), cited by every record
+T3-run2.md:417	Extra reads for records 25-53
+T3.md:7	What I read for every record (the "Common reads")
+T3.md:15	Splits and production findings that apply to more than one record
+T3.md:25	Records
+T3.md:960	Counts and totals
+delta-DL1.md:5	What every record below shares
+delta-DL1.md:15	Helpers (test_store_records.cpp and store_file_fixtures.h)
+delta-DL1.md:27	Records
+delta-DL1.md:478	Removed test cases
+delta-DL1.md:481	Counts
+delta-DL2.md:7	What every record below shares
+delta-DL3.md:7	What every record shares
+delta-DL3.md:19	Part 1: tests/test_app_click.cpp (11 new)
+delta-DL3.md:201	Part 2: tests/test_app_library.cpp
+delta-DL3.md:430	Changed through a helper, test_app_library.cpp
+delta-DL3.md:472	Part 3: tests/test_app_reports.cpp
+delta-DL3.md:607	Part 4: helpers in tests/app_state_fixtures.h
+delta-DL3.md:609	H1. stored_record_is_empty (tests/app_state_fixtures.h, diff lines +203-214)
+delta-DL3.md:617	H2. run_redo_batch_over (tests/app_state_fixtures.h, changed)
+delta-DL3.md:625	Splits and findings
+delta-DL3.md:635	Not reached or not confirmed
+delta-DL5.md:5	What every record shares
+delta-DL5.md:14	test_fills_and_skips.cpp
+delta-DL5.md:97	Removed: lone_fill_activation helper and the two old test names
+delta-DL5.md:103	test_batch_text.cpp
+delta-DL5.md:145	test_cli.cpp
+delta-DL5.md:187	test_activation_rows.cpp
+delta-DL5.md:229	test_docs_match_code.cpp
+delta-DL5.md:256	test_engine_sweeps.cpp
+delta-DL5.md:291	test_preview_controller.cpp
+delta-DL5.md:314	tests/ui (changed bodies; `hydra_uitest` drives these, not run)
+delta-DL5.md:355	Helpers and rule file
+delta-DL5.md:368	27. tests/single_owner/rules/tests/concept-G5.json
+delta-DL5.md:372	28. tools/test_compare_db.py: record tables with efill_window_ms
+delta-DL5.md:380	Not reached for a full record (no new line in their own bodies)
+delta-DL5.md:388	Charts and captures needed and not available
+delta-DL5.md:395	Splits
+delta-DL5.md:401	Count
+delta-DL5b.md:5	What every record here shares
+delta-DL5b.md:22	test_activation_rows.cpp
+delta-DL5b.md:169	test_docs_match_code.cpp
+delta-DL5b.md:194	tools/test_compare_db.py
+delta-DL5b.md:441	Removal of `lone_fill_activation`
+delta-DL5b.md:447	Splits
+delta-DL5b.md:454	Charts and captures needed and not available
+delta-DL5b.md:461	Count
+window-WN1.md:5	How the window reaches these tests (read once, used by every row)
+window-WN1.md:14	Counts
+window-WN1.md:457	Splits and open items
+window-WN2.md:5	Read once for the whole group
+window-WN2.md:29	Summary table
+window-WN2.md:33	tests/test_sp_end.cpp (24 test cases; 20 B, 4 C, 0 N)
+window-WN2.md:62	tests/test_sp_end_clamp.cpp (7 test cases; 6 B, 1 C)
+window-WN2.md:74	tests/test_sp_meter_curve.cpp (27 test cases; 3 B, 4 C, 20 N)
+window-WN2.md:88	tests/test_best_finish.cpp (4 test cases; 1 B, 3 C)
+window-WN2.md:97	tests/test_stars.cpp (17 test cases; 2 C, 15 N)
+window-WN2.md:106	tests/test_track_state.cpp (23 test cases; 2 B by property, 21 N)
+window-WN2.md:117	tests/test_fast_tempo.cpp (8 test cases; 1 B, 7 C)
+window-WN2.md:132	tests/test_squeeze_rating.cpp (29 test cases; 1 C, 28 N)
+window-WN2.md:140	Delta round
+window-WN2.md:144	C records
+window-WN2.md:365	Typed numbers found that can move
+window-WN2.md:373	Splits
+window-WN2.md:377	Not reached, by exact name
+window-WN3.md:5	What every row rests on
+window-WN3.md:17	Counts
+window-WN3.md:31	test_engine_sweeps.cpp
+window-WN3.md:103	test_fills_and_skips.cpp
+window-WN3.md:206	test_tied_variants.cpp
+window-WN3.md:275	test_path_costs.cpp
+window-WN3.md:358	test_helpers.cpp
+window-WN3.md:367	Helpers
+window-WN3.md:372	Findings, one line each
+window-WN3.md:380	Not reached
+window-WN3.md:384	Count
+window-WN4.md:5	What I found about the window (read in code)
+window-WN4.md:12	How far I read (honest limit)
+window-WN4.md:19	tests/test_replay.cpp: A 0, B 42, C 6, delta round 0
+window-WN4.md:72	tests/test_pb_coach.cpp: A 0, B 0, C 19, delta round 0
+window-WN4.md:96	tests/test_perf_digest.cpp: A 0, B 0, C 0, delta round 8
+window-WN4.md:109	tests/test_pb_text.cpp: A 0, B 4, C 6, delta round 0
+window-WN4.md:124	tests/test_analysis.cpp: A 0, B 48, C 0, delta round 0
+window-WN4.md:177	tests/test_app_reports.cpp: A 0, B 20, C 0, delta round 10
+window-WN4.md:212	tests/test_preview_scene.cpp: A 0, B 31, C 2, delta round 0
+window-WN4.md:250	tests/test_pathstring_read.cpp: A 0, B 6, C 4, delta round 0
+window-WN4.md:265	tests/test_report_rows.cpp: A 0, B 30, C 0, delta round 0
+window-WN4.md:300	tests/test_app_click.cpp: A 0, B 28, C 1, delta round 11
+window-WN4.md:345	tests/test_saved_figure_fill.cpp: A 0, B 6, C 4, delta round 0
+window-WN4.md:360	tests/test_replay_schedule.cpp: A 0, B 40, C 0, delta round 0
+window-WN4.md:405	tests/test_replay_windows.cpp: A 0, B 7, C 0, delta round 0
+window-WN4.md:417	tests/test_cli.cpp: A 0, B 18, C 1, delta round 2
+window-WN4.md:443	tests/test_activation_rows.cpp: A 1, B 27, C 2, delta round 7
+window-WN4.md:485	tests/test_preview_golden.cpp: A 0, B 2, C 0, delta round 0
+window-WN4.md:492	tests/test_song_parse.cpp: A 1, B 50, C 0, delta round 1
+window-WN4.md:549	tests/test_preview_controller.cpp: A 0, B 27, C 0, delta round 1
+window-WN4.md:582	Helpers
+window-WN4.md:591	C records
+window-WN4a.md:5	The window, read in code
+window-WN4a.md:13	Where this file differs from the WN4 file
+window-WN4a.md:20	The tables
+window-WN4a.md:22	tests/test_replay.cpp: A 0, B 42, C 6, delta round 0 (48 test cases)
+window-WN4a.md:75	tests/test_replay_schedule.cpp: A 0, B 38, C 2, delta round 0 (40 test cases)
+window-WN4a.md:120	tests/test_replay_windows.cpp: A 0, B 7, C 0, delta round 0 (7 test cases)
+window-WN4a.md:132	tests/test_pathstring_read.cpp: A 0, B 10, C 0, delta round 0 (10 test cases)
+window-WN4a.md:147	tests/test_preview_scene.cpp: A 0, B 30, C 3, delta round 0 (33 test cases)
+window-WN4a.md:185	tests/test_preview_controller.cpp: A 0, B 23, C 4, delta round 1 (28 test cases)
+window-WN4a.md:218	C records
+window-WN4a.md:507	Weak floors and counts on search output (B rows, not disputed, listed so a 60 ms run can be watched)
+window-WN4a.md:514	Every typed number that a 60 ms run can move (list)
+window-WN4a.md:522	Splits
+window-WN4a.md:529	Not read line by line
+window-WN4b.md:5	What the window does here (read in code)
+window-WN4b.md:17	Kinds, by file
+window-WN4b.md:19	tests/test_pb_coach.cpp: A 0, B 6, C 13, delta round 0
+window-WN4b.md:43	tests/test_pb_text.cpp: A 0, B 1, C 9, delta round 0
+window-WN4b.md:58	tests/test_saved_figure_fill.cpp: A 0, B 2, C 8, delta round 0
+window-WN4b.md:73	Helper `tests/dm_fixture.h`
+window-WN4b.md:77	Typed numbers on assertion lines that a run at 60 ms can move
+window-WN4b.md:110	C records
+window-WN4b.md:135	2. coach click: an impossible click ... (test_pb_coach.cpp:99), B
+window-WN4b.md:274	11. coach remove: a tick with no window changes nothing (tests/test_pb_coach.cpp:427), B
+window-WN4b.md:634	Splits
+window-WN4b.md:639	Verdict counts for the 30 C records
+window-WN4b.md:645	Not reached
+window-WN4c.md:11	What I found about the window (by reading)
+window-WN4c.md:17	How far I read, and what I did not read
+window-WN4c.md:25	tests/test_activation_rows.cpp: A 0, B 27, C 3, delta round 7 (37 cases)
+window-WN4c.md:67	tests/test_app_click.cpp: A 0, B 28, C 1, delta round 11 (40 cases)
+window-WN4c.md:112	tests/test_app_reports.cpp: A 0, B 20, C 0, delta round 10 (30 cases)
+window-WN4c.md:147	tests/test_cli.cpp: A 0, B 18, C 1, delta round 2 (21 cases)
+window-WN4c.md:173	tests/test_analysis.cpp: A 0, B 48, C 0, delta round 0 (48 cases)
+window-WN4c.md:226	tests/test_report_rows.cpp: A 0, B 30, C 0, delta round 0 (30 cases)
+window-WN4c.md:261	tests/test_song_parse.cpp: A 0, B 51, C 0, delta round 1 (52 cases)
+window-WN4c.md:318	tests/test_preview_golden.cpp: A 0, B 1, C 1, delta round 0 (2 cases)
+window-WN4c.md:325	tests/test_perf_digest.cpp: A 0, B 0, C 0, delta round 8 (8 cases)
+window-WN4c.md:338	Helpers
+window-WN4c.md:346	C records
+window-WN4c.md:469	Typed numbers that a run at 60 ms can move (assertion lines, non-delta cases)
+window-WN4c.md:478	Splits
+window-WN4c.md:485	Not reached
+window-WN4c.md:489	Anything I stopped on
+window-WN5.md:5	Which window the search gets in these files
+window-WN5.md:25	Typed numbers that can move (findings, one line each)
+window-WN5.md:36	Row tables
+window-WN5.md:40	tests/ui/uitest_details.cpp (26 test cases: C 1, B 24, delta 1)
+window-WN5.md:71	tests/ui/uitest_preview.cpp (16 test cases: C 5, B 11)
+window-WN5.md:92	tests/ui/uitest_paths.cpp (12 test cases: C 11, B 1)
+window-WN5.md:109	tests/ui/uitest_library.cpp (31 test cases: B 29, delta 2)
+window-WN5.md:119	tests/ui/uitest_live.cpp (16 test cases: B 15, delta 1)
+window-WN5.md:126	tests/ui/uitest_report_windows.cpp (24 test cases: B 24)
+window-WN5.md:132	Helper and non-case files (no test case; what each does for the window)
+window-WN5.md:144	C records
+window-WN5.md:434	Counts and notes
+window-WN6.md:5	Which window these tests run under
+window-WN6.md:13	Typed fill ticks in the harness header
+window-WN6.md:17	Table of test cases
+window-WN6.md:67	Facts shared by all C records
+window-WN6.md:74	Records
+window-WN6.md:316	Typed numbers found that a run at 60 ms can move, by line
+window-WN6.md:324	Not reached, and stops
+window-WN7.md:5	Which window these tests run under
+window-WN7.md:23	Counts
+window-WN7.md:34	test_path_list.cpp
+window-WN7.md:54	test_pb_files.cpp
+window-WN7.md:67	test_preview_boxes.cpp
+window-WN7.md:127	test_app_library.cpp
+window-WN7.md:186	Typed numbers a run at 60 ms can move
+window-WN7.md:196	C records
+window-WN7.md:283	Not read whole
+window-WN8.md:5	How the search is reached in this group
+window-WN8.md:15	Counts
+window-WN8.md:27	tests/test_dm_report.cpp
+window-WN8.md:64	tests/test_dm_other_speed.cpp
+window-WN8.md:73	tests/test_fill_report.cpp
+window-WN8.md:102	tests/test_report_rows.cpp
+window-WN8.md:131	tests/test_config.cpp: the `batch_run()` cases with no record in `records/delta-DL4.md`
+window-WN8.md:142	C records
+window-WN8.md:241	Typed numbers on assertion lines that a run at 60 ms can move
+window-WN8.md:252	Splits
+window-WN8.md:257	Gaps and what I did not do

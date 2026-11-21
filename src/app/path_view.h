@@ -155,15 +155,15 @@ struct ActivationsView {
 // timeline_end. With none there is no timeline.
 // `pro_drums` is the Pro Drums setting the record was analyzed with; the
 // chord rows name their notes in its words (note_label).
-// `chords` is the analysed song's chord_times. It may be null: then no row
-// gets a Dynamic Hit Window row, and every other field is the same.
+// `chords` is the analysed song's chord_times; each Dynamic Hit Window row
+// reads its notes from them (core::squeeze_window_ends,
+// core::early_fill_window_end).
 ActivationsView build_activations(const Path& path, const HydraRecord& record,
-                                  const SongTiming* timing,
+                                  const SongTiming* timing, const ChordTimes& chords,
                                   std::optional<double> backend_limit_ms = std::nullopt,
                                   const core::Rules& rules = core::default_rules(),
                                   std::optional<double> song_length_ms = std::nullopt,
-                                  bool pro_drums = true,
-                                  const ChordTimes* chords = nullptr);
+                                  bool pro_drums = true);
 
 // The badges on an activation row: one per Activation::badge_timings() entry,
 // in its order, each worded with its ms as format_ms writes it (D265):
@@ -222,7 +222,7 @@ PathListView build_path_list(const HydraRecord& record);
 // ---- the path list as buttons (the Paths tab and the Preview's list) --------
 
 // What every list calls the best all-0 path: the Paths tab's heading over its
-// section, and the Path Builder's left-list row.
+// section, the Path Builder's left-list row and the Preview picker's all-0 item.
 inline constexpr const char* kBestAllZeroLabel = "Best all-0 path";
 
 // One path as a button in the list.
@@ -320,11 +320,10 @@ public:
     // The selected path's squeezes, activations and score breakdown. A new
     // path or record also resets ui() for it; a display setting does not.
     const Details& details(const Path& path, const HydraRecord& record, int record_generation,
-                           const SongTiming* timing, std::optional<double> backend_limit_ms,
-                           const core::Rules& rules,
+                           const SongTiming* timing, const ChordTimes& chords,
+                           std::optional<double> backend_limit_ms, const core::Rules& rules,
                            std::optional<double> song_length_ms = std::nullopt,
-                           bool pro_drums = true,
-                           const ChordTimes* chords = nullptr);
+                           bool pro_drums = true);
     // The path list as buttons, rebuilt when the record or the score range moves.
     const PathButtonsView& buttons(const HydraRecord& record, int record_generation,
                                    int depth_mode, int depth_value);

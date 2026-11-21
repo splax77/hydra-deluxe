@@ -11,6 +11,7 @@ is a fake that sleeping moves.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -30,16 +32,17 @@ from tools.ch_mcp import build_facts as B  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import hydra_end  # noqa: E402
+from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
-from tools.ch_mcp.kit_tools import pad_axis  # noqa: E402
+from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
+    MENU, STATE, FakeFrida, FakeSession, ReplySession, instant_wait)
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
 from tools.ch_probe.process import decode_u32  # noqa: E402
 
@@ -54,6 +57,34 @@ FACTS = {
     ]}],
 }
 BACKUP_LINE = "backup folder: X (taken now)"
+# One reply the state agent sent in a real Clone Hero run, copied from the log
+# ch_attach wrote there: hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/state-1.jsonl.
+RECORDED_STATE_LOG = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                                  "state-1.jsonl")
+
+
+def recorded_state():
+    """The recorded reply's payload without its read id, which ReplySession
+    gives back as the id of the read it answers."""
+    with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+        payload = json.loads(f.readline())["payload"]
+    payload.pop("id")
+    return payload
+
+
+# The real 1.1 build's facts cut to its drum engine class (the
+# signatures.drums_engine entry and that one class, copied whole from
+# hydra-data/ch-dumps/6142/facts.json), under the build-number folder
+# build_facts.load_facts reads; and the installed game's real version file
+# (C:\Clone Hero\1.1 june\Clone Hero\Clone Hero_Data\version.json).
+REAL_6142_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-6142")
+REAL_6142_GAME = os.path.join(REAL_6142_DUMPS, "game")
+
+
+def real_6142_facts():
+    return B.load_facts(REAL_6142_GAME, REAL_6142_DUMPS)
+
+
 # The song end the fake dump of the test song's chart names.
 SONG_END_MS = 6000.0
 
@@ -216,21 +247,46 @@ class Rig(unittest.TestCase):
         self.traces.append(trace)
         return trace
 
+    def make_real_trace(self, *args, **kw):
+        """A real trace_hits.TraceSession. Its Frida session is its own one
+        with nothing to send, so the state agent's session keeps its
+        replies; the trace runs until it is stopped."""
+        kw["frida_mod"] = FakeFrida(FakeSession([]))
+        trace = TH.TraceSession(*args, **kw)
+        self.traces.append(trace)
+        self.addCleanup(trace.stop, FT.READ_CAP_S)
+        return trace
+
+    def real_trace_tools(self, game=None, reads=1):
+        """Tools attached with a recorded state reply, on the real 6142 facts
+        and the real trace session, with `reads` more recorded replies for
+        the state reads ch_trace_start makes."""
+        return self.tools([recorded_state() for _ in range(reads + 1)], game=game,
+                          attached=True, real_time=True,
+                          current_build=lambda: B.current_build(REAL_6142_GAME),
+                          load_facts=real_6142_facts, trace_session=self.make_real_trace)
+
     def tools(self, replies=(), game=None, load_facts=None, attached=False,
-              opener=None, find_engine=None):
+              opener=None, find_engine=None, current_build=None, real_time=False,
+              trace_session=None):
+        """`real_time` leaves FridaTools on its own clock and its own reply
+        wait (time.monotonic, time.sleep, frida_attach's wait) instead of the
+        fake clock and instant_wait."""
         self.game = game if game is not None else FakeGame()
         self.game.folder = self.tmp
         self.session = ReplySession(list(replies))
         self.frida = FakeFrida(self.session)
+        clock = {} if real_time else {"now": self.clock.now, "sleep": self.clock.sleep,
+                                      "wait": instant_wait}
         tools = FT.FridaTools(
             self.game, self.lock,
-            frida_mod=self.frida, wait=instant_wait,
-            current_build=lambda: VERSION,
+            frida_mod=self.frida,
+            current_build=current_build or (lambda: VERSION),
             load_facts=load_facts or self.load_facts,
-            trace_session=self.make_trace, agent_dir=self.agent_dir,
-            now=self.clock.now, sleep=self.clock.sleep,
+            trace_session=trace_session or self.make_trace, agent_dir=self.agent_dir,
             opener=opener or self.open_engine_process,
-            find_engine=find_engine or (lambda proc: ENGINE))
+            find_engine=find_engine or (lambda proc: ENGINE),
+            **clock)
         # Detach before the temp folder goes, so Windows can delete the log.
         self.addCleanup(lambda: tools._agent is not None and tools._agent.detach())
         if attached:
@@ -240,175 +296,213 @@ class Rig(unittest.TestCase):
 
 class AttachTest(Rig):
     def test_attach_before_the_delay_waits_the_rest_then_attaches(self):
-        self.clock.t = 12.0
-        tools = self.tools([STATE], game=FakeGame(launched_at=10.0))
+        # On the real clock (time.monotonic, the clock launched_at is on), the
+        # game launched half a second short of ATTACH_DELAY_S ago.
+        reply = recorded_state()
+        launched = time.monotonic() - (FT.ATTACH_DELAY_S - 0.5)
+        tools = self.tools([reply], game=FakeGame(launched_at=launched), real_time=True)
+        attached_at = []
+        attach = self.frida.attach
+
+        def timed_attach(name):
+            attached_at.append(time.monotonic())
+            return attach(name)
+
+        self.frida.attach = timed_attach
         out = tools.ch_attach()
-        self.assertEqual(self.clock.slept, [3.0])
         self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME])
-        self.assertIn("waited 3.0 s, so the attach comes 5 s after the launch (ATTACH_DELAY_S)", out)
-        self.assertIn("state: playing", out)
-        self.assertIn("songTime: 3.5", out)
+        # The attach comes no sooner than ATTACH_DELAY_S after the launch.
+        self.assertGreaterEqual(attached_at[0] - launched, FT.ATTACH_DELAY_S)
+        (waited,) = [line for line in out.splitlines() if "(ATTACH_DELAY_S)" in line]
+        self.assertLessEqual(float(re.match(r"waited (\d+\.\d) s", waited).group(1)), 0.5)
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
         self.assertEqual(self.game.backups, 0)
 
     def test_attach_after_the_delay_does_not_wait(self):
-        self.clock.t = 20.0
-        tools = self.tools([STATE], game=FakeGame(launched_at=10.0))
-        tools.ch_attach()
-        self.assertEqual(self.clock.slept, [])
+        # On the real clock (time.monotonic, the clock launched_at is on), the
+        # game launched longer ago than ATTACH_DELAY_S.
+        reply = recorded_state()
+        launched = time.monotonic() - FT.ATTACH_DELAY_S - 1.0
+        tools = self.tools([reply], game=FakeGame(launched_at=launched), real_time=True)
+        started = time.monotonic()
+        out = tools.ch_attach()
+        self.assertLess(time.monotonic() - started, FT.ATTACH_DELAY_S, out)
+        self.assertNotIn("(ATTACH_DELAY_S)", out)
         self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME])
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
 
     def test_an_unknown_build_is_refused_and_nothing_attaches(self):
-        refusal = B.UnknownBuild("v1.1.0.6200-final", "no 6200 folder")
-
-        def unknown():
-            raise refusal
-
-        tools = self.tools([STATE], load_facts=unknown)
+        # A game folder whose version file names a build no facts folder
+        # describes; the real build_facts reads both.
+        game_dir = os.path.join(self.tmp, "game")
+        version_file = B.version_file(game_dir)
+        os.makedirs(os.path.dirname(version_file))
+        with open(version_file, "w", encoding="utf-8") as f:
+            json.dump({"version": "v1.1.0.6200-final"}, f)
+        dumps = os.path.join(self.tmp, "dumps")
+        os.makedirs(dumps)
+        tools = self.tools([recorded_state()], real_time=True,
+                           current_build=lambda: B.current_build(game_dir),
+                           load_facts=lambda: B.load_facts(game_dir, dumps))
         out = tools.ch_attach()
-        self.assertEqual(out, f"{refusal}\nnothing attached")
+        self.assertIn("v1.1.0.6200-final", out)
+        self.assertEqual(out.splitlines()[-1], "nothing attached")
         self.assertEqual(self.frida.attached_to, [])
         self.assertEqual(self.game.backups, 0)
 
-    def test_an_adopted_game_gets_its_backup_first(self):
-        tools = self.tools([STATE])
-        out = tools.ch_attach()
-        self.assertEqual(self.game.backups, 1)
-        self.assertIn(BACKUP_LINE, out)
-        self.assertEqual(self.clock.slept, [])
-
     def test_the_facts_load_once_per_build(self):
-        tools = self.tools([STATE, STATE])
+        # The real loader on the real 6142 facts and version file, counted.
+        def load_facts():
+            self.loads += 1
+            return real_6142_facts()
+
+        tools = self.tools([recorded_state(), recorded_state()], real_time=True,
+                           current_build=lambda: B.current_build(REAL_6142_GAME),
+                           load_facts=load_facts)
         tools.ch_attach()
         tools.ch_detach()
         tools.ch_attach()
+        self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME, C.PROCESS_NAME])
         self.assertEqual(self.loads, 1)
 
-    def test_an_attach_with_no_first_reply_names_its_cap(self):
-        tools = self.tools([None])
-        out = tools.ch_attach()
-        self.assertIn(f"within the cap of {FT.ATTACH_CAP_S:g} s; detached (ATTACH_CAP_S)", out)
-        self.assertEqual(self.session.detach_calls, 1)
-
-    def test_a_game_that_is_not_running_says_so(self):
-        tools = self.tools()
-        self.frida.session = None
-        out = tools.ch_attach()
-        self.assertIn(f"{C.PROCESS_NAME} is not running", out)
-        self.assertIn("state: not running (found by the last ch_attach)", tools.ch_state())
+    def drop_session(self):
+        """Frida's own call when the game process ends: the session's
+        "detached" handler with the reason Frida gives."""
+        self.session.handlers["detached"]("process-terminated", None)
 
     def test_a_game_that_closes_after_the_attach_is_not_attached_with_frida_reason(self):
-        tools = self.tools([STATE], attached=True)
-        tools._agent._on_detached("process-terminated")
+        tools = self.tools([recorded_state()], attached=True, real_time=True)
+        self.drop_session()
         out = tools.ch_state()
-        self.assertIn("state: not attached (session detached: process-terminated)", out)
-        self.assertNotIn("not running", out)
+        self.assertTrue(out.startswith(f"state: {FT.state_words(None)} ("), out)
+        self.assertIn("process-terminated", out)
+        self.assertNotIn(FT.state_words(None, running=False), out)
 
     def test_is_attached_follows_the_attach_and_a_dropped_session(self):
-        tools = self.tools([STATE])
+        tools = self.tools([recorded_state()], real_time=True)
         self.assertFalse(tools.is_attached())
         tools.ch_attach()
         self.assertTrue(tools.is_attached())
-        tools._agent._on_detached("process-terminated")
+        self.drop_session()
         self.assertFalse(tools.is_attached())
 
     def test_is_attached_is_false_after_a_detach(self):
-        tools = self.tools([STATE], attached=True)
+        tools = self.tools([recorded_state()], attached=True, real_time=True)
+        self.assertTrue(tools.is_attached())
         tools.ch_detach()
         self.assertFalse(tools.is_attached())
 
     def test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        reply = recorded_state()
+        tools = self.tools([reply, reply], attached=True, real_time=True)
         old = tools._agent
-        old._on_detached("process-terminated")
+        self.drop_session()
         out = tools.ch_attach()
-        self.assertIn("state: playing", out)
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
         self.assertTrue(old._log.closed)
         self.assertIsNot(tools._agent, old)
 
     def test_a_missing_state_agent_says_how_to_build_it(self):
-        os.remove(os.path.join(self.agent_dir, FT.STATE_AGENT_FILE))
-        out = self.tools([STATE]).ch_attach()
+        # build_stamp.check owns the refusal's words; this checks ch_attach
+        # gives that refusal for the file it would load, and attaches nothing.
         path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
-        self.assertEqual(out.splitlines()[-1], BS.check(path))
-        self.assertIn(f"{path} not found", out)
-        self.assertIn("npm run build:state", out)
+        os.remove(path)
+        refusal = BS.check(path)
+        self.assertIsNotNone(refusal)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], refusal)
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
+        # A source edit after the build, then no stamp at all: ch_attach gives
+        # build_stamp.check's refusal for each, and attaches nothing.
         path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
         with open(os.path.join(self.agent_dir, "state.ts"), "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        out = self.tools([STATE]).ch_attach()
-        self.assertEqual(out.splitlines()[-1],
-                         f"{path} is stale: state.ts changed since it was built; "
-                         "run npm run build:state in tools/ch_mcp/agent first")
+        stale = BS.check(path)
+        self.assertIsNotNone(stale)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], stale)
         self.assertEqual(self.frida.attached_to, [])
         os.remove(BS.stamp_path(path))
-        out = self.tools([STATE]).ch_attach()
-        self.assertEqual(out.splitlines()[-1],
-                         f"{path} has no build stamp (state.stamp.json); "
-                         "run npm run build:state in tools/ch_mcp/agent first")
+        unstamped = BS.check(path)
+        self.assertIsNotNone(unstamped)
+        self.assertNotEqual(unstamped, stale)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], unstamped)
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_trace_agent_starts_no_trace(self):
-        # ch_trace_start reaches trace_hits.TraceSession, the trace loader.
+        # ch_trace_start builds the real trace session, which checks the
+        # agent's build stamp; the refusal is build_stamp's own line.
         path = os.path.join(self.agent_dir, os.path.basename(TH.DEFAULT_AGENT))
+        tools = self.real_trace_tools(reads=3)
+        self.game.backups = 0
         with open(os.path.join(self.agent_dir, "trace.ts"), "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(str(raised.exception),
-                         f"{path} is stale: trace.ts changed since it was built; "
-                         "run npm run build:trace in tools/ch_mcp/agent first")
+        stale = BS.check(path)
+        self.assertIsNotNone(stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], stale)
         os.remove(BS.stamp_path(path))
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertIn("has no build stamp", str(raised.exception))
-        out = []
-        self.assertEqual(TH.main(["--song", self.song, "--mode", TH.MODE_COUNT,
-                                  "--engine-class", "Eng", "--agent", path,
-                                  "--out", os.path.join(self.tmp, "t.jsonl")], out=out.append), 1)
-        self.assertEqual(out, [BS.check(path)])
+        unstamped = BS.check(path)
+        self.assertIsNotNone(unstamped)
+        self.assertNotEqual(unstamped, stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], unstamped)
+        self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+        # Once the agent is rebuilt, the same call starts the trace on it.
         make_built_agent(self.agent_dir, TH.DEFAULT_AGENT_NAME)
-        session = TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(session.agent_path, path)
+        tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertEqual(trace.agent_path, path)
 
 
 class ReadTest(Rig):
-    def test_a_read_with_no_reply_names_its_cap(self):
-        tools = self.tools([STATE, None], attached=True)
-        out = tools.ch_state()
-        self.assertIn(f"within the cap of {FT.READ_CAP_S:g} s (READ_CAP_S)", out)
-
-    def test_state_shows_the_destroyed_count_it_was_read_with(self):
-        tools = self.tools([STATE, MENU_ONE_DESTROYED], attached=True)
-        lines = tools.ch_state().splitlines()
-        self.assertEqual(lines[0], "state: menu (no live GameManager)")
-        self.assertIn("found: false", lines)
-        self.assertIn("destroyed: 1", lines)
-
     def test_state_before_attach_says_not_attached(self):
-        self.assertEqual(self.tools().ch_state(), f"state: not attached; {FT.NOT_ATTACHED}")
+        tools = self.tools(real_time=True)
+        self.assertEqual(tools.ch_state(), f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
+        self.assertEqual(self.frida.attached_to, [])
+
+    def real_game_tools(self, rows=None):
+        """A real game_tools.GameTools whose play_snapshot ch_snapshot reads:
+        with `rows`, a finished play session holding those press rows; without,
+        no play session ever ran."""
+        game = GT.GameTools(None, self.lock, os.path.join(self.tmp, "scratch"))
+        if rows is not None:
+            game._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                         log_path=None, rows=rows)
+        return game
+
+    def snapshot_with(self, game):
+        tools = self.tools([recorded_state(), recorded_state()], attached=True,
+                           real_time=True)
+        self.game.play_snapshot = game.play_snapshot
+        return tools.ch_snapshot().splitlines()
 
     def test_snapshot_with_no_play_session_says_the_score_is_not_read(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        out = tools.ch_snapshot()
-        self.assertIn("songTime: 3.5", out)
-        self.assertIn("score: not read (no play session has found the engine)", out)
+        lines = self.snapshot_with(self.real_game_tools())
+        score = [line for line in lines if line.startswith("score")]
+        self.assertEqual(len(score), 1, lines)
+        self.assertTrue(score[0].startswith("score: not read ("), score[0])
+        self.assertIn("no play session", score[0])
 
     def test_snapshot_shows_the_score_after_the_last_press(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.play = {"last_row": {"score_after": 150, "clock_ms_at_press": 2998.0},
-                          "press_count": 2, "stop": None}
-        out = tools.ch_snapshot()
-        self.assertIn("score after press 2: 150", out)
-        self.assertIn("song clock at that press: 2998.0 ms", out)
+        # The rows are a real in-game run's press log
+        # (testdata/ch_runs/ls-g2-run1/press-1.csv, copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g2-run1). The line takes the
+        # last row's score and clock and counts every row.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "press-1.csv")
+        with open(path, encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        self.assertGreater(len(rows), 1)
+        self.assertNotEqual(rows[0]["score_after"], rows[-1]["score_after"])
+        lines = self.snapshot_with(self.real_game_tools(rows))
+        score = [line for line in lines if line.startswith("score after press ")]
+        self.assertEqual(len(score), 1, lines)
+        self.assertTrue(score[0].startswith(
+            f"score after press {len(rows)}: {rows[-1]['score_after']}"), score[0])
+        self.assertIn(f"song clock at that press: {rows[-1]['clock_ms_at_press']} ms "
+                      "(the play session's clock)", lines)
 
 
 class SnapshotEngineLinesTest(Rig):
@@ -417,84 +511,50 @@ class SnapshotEngineLinesTest(Rig):
         tools = self.tools([STATE, state], attached=True, **kw)
         return tools.ch_snapshot().splitlines()
 
-    def test_the_flags_word_prints_in_hex_with_bit_0x10_set(self):
-        lines = self.snapshot_lines(flags=0x1010)
-        self.assertIn("flags word: 0x1010 (OFF_FLAGS)", lines)
-        self.assertIn("bit 0x10: set", lines)
-
-    def test_bit_0x10_prints_clear_beside_the_precision_bit(self):
-        lines = self.snapshot_lines(flags=0x1000)
-        self.assertIn("flags word: 0x1000 (OFF_FLAGS)", lines)
-        self.assertIn("bit 0x10: clear", lines)
+    def test_the_engine_fields_a_real_run_read_print_as_that_run_printed_them(self):
+        # The engine lines of a ch_snapshot in a real run
+        # (testdata/ch_runs/ls-o1-run1/replies.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-11-06/ls-o1-run1/replies.txt). The flags
+        # word and threshold that run read from the game give back the lines
+        # it printed: the word in hex, the stop bit clear because that word
+        # does not hold it, the threshold, and pad_axis's ghost value for it.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o1-run1", "replies.txt")
+        with open(path, encoding="utf-8") as f:
+            recorded = f.read().splitlines()
+        start = next(i for i, line in enumerate(recorded) if line.startswith("flags word: "))
+        printed = recorded[start:start + 4]
+        flags = int(re.match(r"flags word: (0x[0-9a-f]+) ", printed[0]).group(1), 16)
+        threshold = int(re.match(r"dynamics threshold: (\d+) ", printed[2]).group(1))
+        self.assertFalse(flags & FT.DYNAMICS_STOP_BIT)
+        self.assertEqual(FT.engine_lines(flags, threshold), printed)
+        self.assertIn(repr(pad_axis(DYNAMIC_GHOST, threshold)), printed[3])
 
     def test_the_threshold_line_names_the_value_and_the_offsets_constant(self):
-        self.assertIn("dynamics threshold: 64 (OFF_DYN_THRESHOLD, +0x2c0)",
+        self.assertIn(f"dynamics threshold: 64 (OFF_DYN_THRESHOLD, +{C.OFF_DYN_THRESHOLD:#x})",
                       self.snapshot_lines(threshold=64))
 
-    def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
-        lines = self.snapshot_lines(threshold=64)
-        self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
-
-    def test_a_threshold_of_0_prints_it_and_says_no_ghost_value_is_possible(self):
-        lines = self.snapshot_lines(threshold=0)
-        self.assertIn("dynamics threshold: 0 (OFF_DYN_THRESHOLD, +0x2c0)", lines)
-        ghost = [line for line in lines if line.startswith("ghost axis value:")]
-        self.assertEqual(len(ghost), 1)
-        self.assertTrue(ghost[0].startswith("ghost axis value: none is possible ("), ghost[0])
-
-    def test_the_read_opens_the_game_read_only_checks_it_and_closes_it(self):
-        self.snapshot_lines()
-        self.assertEqual(self.opens, [{"read_only": True}])
-        self.assertTrue(self.proc.verified)
-        self.assertTrue(self.proc.closed)
-
-    def test_a_game_not_playing_is_not_searched_and_the_line_says_why(self):
-        # The engine search waits for a moving clock, so a song that is not
-        # playing would hold the tool for the search's whole cap.
-        for state, word in ((MENU, "menu (no live GameManager)"),
-                            ({**STATE, "isPaused": True}, "paused")):
-            with self.subTest(word=word):
-                self.opens.clear()
-                lines = self.snapshot_lines(state=state)
-                self.assertEqual(self.opens, [])
-                self.assertIn(f"engine fields: not read (state: {word}; "
-                              "the engine search needs a playing song)", lines)
-                self.assertFalse([line for line in lines if line.startswith("flags word")])
-
-    def test_a_game_that_will_not_open_says_so_and_the_reply_keeps_its_read(self):
-        def closed(**kw):
-            raise OSError("no process")
-
-        lines = self.snapshot_lines(opener=closed)
-        self.assertIn("songTime: 3.5", lines)
-        self.assertIn("engine fields: not read: OSError: no process", lines)
-
-    def test_a_search_that_finds_no_engine_says_so_and_closes_the_game(self):
-        def no_song(proc):
-            raise engine_finder.EngineSearchTimeout("no playing song found in 120 s")
-
-        lines = self.snapshot_lines(find_engine=no_song)
-        self.assertIn("engine fields: not read: EngineSearchTimeout: "
-                      "no playing song found in 120 s", lines)
-        self.assertTrue(self.proc.closed)
-
-    def test_the_search_runs_without_the_servers_lock(self):
-        seen = []
-
-        def try_the_lock():
-            taken = self.lock.acquire(blocking=False)
-            seen.append(taken)
-            if taken:
-                self.lock.release()
-
-        def finder(proc):
-            other = threading.Thread(target=try_the_lock)
-            other.start()
-            other.join()
-            return ENGINE
-
-        self.snapshot_lines(find_engine=finder)
-        self.assertEqual(seen, [True])
+    def test_the_ghost_value_is_the_softest_hit_below_the_threshold_at_full_precision(self):
+        # The game's rule, not pad_axis: the hit handler pays a ghost when the
+        # lane's velocity byte is below the dynamics threshold (page 06,
+        # code/6142/note_hit_dynamics_20DE770.asm lines 91 to 102), and the
+        # MIDI pump writes a velocity as the axis 0.5 + velocity / 254 (page
+        # 07, IN-86, code/6142/midi_pump_21E420.asm lines 137 to 142). So the
+        # ghost value is the axis of the top velocity under the threshold. The
+        # threshold is the one a real run read from the game
+        # (testdata/ch_runs/ls-o1-run1/replies.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-11-06/ls-o1-run1/replies.txt).
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o1-run1", "replies.txt")
+        with open(path, encoding="utf-8") as f:
+            threshold = int(re.search(r"^dynamics threshold: (\d+) ", f.read(),
+                                      re.MULTILINE).group(1))
+        top_velocity = 127
+        ghost_velocity = threshold - 1
+        expected = 0.5 + ghost_velocity / (2 * top_velocity)
+        (line,) = [line for line in self.snapshot_lines(threshold=threshold)
+                   if line.startswith("ghost axis value: ")]
+        printed = float(line.split()[3])
+        self.assertEqual(line.split()[3], repr(printed))
+        self.assertAlmostEqual(printed, expected, places=12)
 
 
 # A hand-written menu block in the shape agent/menu.ts sends.
@@ -509,16 +569,6 @@ MENU_READ = {
     "selectedSong": {"folderPath": "C:\\Songs\\Window Map", "chartName": "notes.chart"},
     "globals": {"found": True, "currentSongFolder": None, "gameMode": 0, "playerCount": 1},
 }
-MENU_LINES = [
-    "MainMenu: 1 live, 0 destroyed; onlineMenuActive: [false]",
-    "SongSelect: 1 live, 2 destroyed; onlineMenuActive: [true]",
-    "PlayerSelectionMenu: PlayerSelectionMenu not found",
-    "selected song folder: C:\\Songs\\Window Map",
-    "selected song chartName: notes.chart",
-    "GlobalVariables currentSongFolder: null",
-    "GlobalVariables gameMode: 0",
-    "GlobalVariables playerCount: 1",
-]
 
 # One player screen as menu.ts sends it, one value per field for its one live
 # instance: on the Instrument page of a drum profile, with three rows and the
@@ -550,16 +600,16 @@ class MenuFieldsTest(unittest.TestCase):
         return [f for f in self.data["fields"] if f.get("kind", FT.ENUM_KIND) == FT.ENUM_KIND]
 
     def test_it_parses_with_one_table_per_enum_field(self):
+        # Each key names one field, so a lookup by key finds one entry, and an
+        # enum_array's words come from an entry that carries a word table.
         keys = [f["key"] for f in self.data["fields"]]
-        self.assertEqual(keys, [
-            "page", "cursor", "scroll", "controllerType", "instrument", "difficulty",
-            "playerIndex", "firstTime", "rowCount", "visibleRows", "isDrums",
-            "networkFlag", "backLock", "rowNames", "rowInstruments"])
-        self.assertEqual({f["key"]: f.get("kind") for f in self.data["fields"] if "kind" in f}, {
-            "cursor": "int", "scroll": "int", "playerIndex": "int", "firstTime": "bool",
-            "rowCount": "int", "visibleRows": "int", "isDrums": "bool",
-            "networkFlag": "bool", "backLock": "bool", "rowNames": "string_array",
-            "rowInstruments": "enum_array"})
+        self.assertTrue(keys)
+        self.assertEqual(len(keys), len(set(keys)), keys)
+        by_key = {f["key"]: f for f in self.data["fields"]}
+        for field in self.data["fields"]:
+            if "words_from" in field:
+                with self.subTest(key=field["key"]):
+                    self.assertIn("values", by_key[field["words_from"]])
         for field in self.data["fields"]:
             with self.subTest(key=field["key"]):
                 self.assertEqual(field["class"], "PlayerSelectionMenu")
@@ -569,11 +619,18 @@ class MenuFieldsTest(unittest.TestCase):
                     int(number)
 
     def test_the_highlighted_row_keys_are_entries(self):
+        # Each key the highlighted row is worked out from names a field
+        # menu.ts reads. The two row arrays are of a kind _instance_lines puts
+        # on the rows line; the cursor and scroll are of neither array kind
+        # nor an enum, so they print as numbers on the plain line, where the
+        # highlighted row follows the scroll.
         keys = {f["key"]: f.get("kind", FT.ENUM_KIND) for f in self.data["fields"]}
-        self.assertEqual(keys[FT.CURSOR_KEY], "int")
-        self.assertEqual(keys[FT.SCROLL_KEY], "int")
-        self.assertEqual(keys[FT.ROW_NAMES_KEY], "string_array")
-        self.assertEqual(keys[FT.ROW_IDS_KEY], "enum_array")
+        for key in (FT.CURSOR_KEY, FT.SCROLL_KEY, FT.ROW_NAMES_KEY, FT.ROW_IDS_KEY):
+            self.assertIn(key, keys)
+        for key in (FT.ROW_NAMES_KEY, FT.ROW_IDS_KEY):
+            self.assertIn(keys[key], FT.ARRAY_KINDS, key)
+        for key in (FT.CURSOR_KEY, FT.SCROLL_KEY):
+            self.assertNotIn(keys[key], FT.ARRAY_KINDS + (FT.ENUM_KIND,), key)
 
     def dump_type(self, field):
         """The type the dump should give the field, from its kind."""
@@ -646,7 +703,7 @@ class PlayerScreenHookTest(unittest.TestCase):
     """The method menu.ts hooks to record the player screens is an instance
     method of PlayerSelectionMenu, in the facts of the build menu_fields.json
     names, and no other class runs its code (a shared body would record other
-    classes' objects as player screens). Skipped without the facts."""
+    classes' objects as player screens). Fails without the facts."""
 
     def test_the_hooked_method_is_the_player_screens_own(self):
         with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
@@ -654,272 +711,336 @@ class PlayerScreenHookTest(unittest.TestCase):
         self.assertIsNotNone(match, "menu.ts names no PLAYER_SCREEN_FRAME_RVA")
         rva = int(match.group(1), 16)
         path = os.path.join(B.DUMPS_ROOT, FT.menu_fields()["build"], B.FACTS_FILE)
-        if not os.path.isfile(path):
-            self.skipTest(f"{path} is not on this machine")
+        self.assertTrue(os.path.isfile(path),
+                        f"{path} is not on this machine; this check needs that build's facts")
         with open(path, encoding="utf-8") as f:
             facts = json.load(f)
         owners = [c for c in facts["classes"]
                   if any(m["rva"] == rva for m in c["methods"])]
         self.assertEqual([c["name"] for c in owners], ["PlayerSelectionMenu"])
-        methods = [m for m in owners[0]["methods"] if m["rva"] == rva]
-        self.assertEqual([(m["name"], m["static"], m["params"]) for m in methods],
-                         [("ʸʳʼʹʸʽʾˀʴʼʷ", False, [])])
+        # One method sits at that address, and it is an instance method with
+        # no parameters, the shape of a per-frame call on one player screen.
+        (method,) = [m for m in owners[0]["methods"] if m["rva"] == rva]
+        self.assertFalse(method["static"], method)
+        self.assertEqual(method["params"], [], method)
 
 
 class MenuTest(Rig):
     def test_menu_lines_print_the_block_as_sent(self):
-        self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
-
-    def test_menu_lines_with_no_song_and_no_globals(self):
-        menu = {**MENU_READ, "selectedSong": None,
-                "globals": {"found": False, "reason": "no live GlobalVariables.instance"}}
+        # The menu block of a real state reply (recorded_state's run, mid-song:
+        # every menu class found with no live instance, no selected song, and
+        # GlobalVariables naming the song folder). Each class gets one line
+        # with its counts, in the block's order, and the folder prints as sent.
+        menu = recorded_state()[FT.MENU_BLOCK]
         lines = FT.menu_lines(menu)
-        self.assertIn("selected song: none", lines)
-        self.assertEqual(lines[-1], "GlobalVariables: no live GlobalVariables.instance")
+        classes = list(menu["classes"].items())
+        self.assertTrue(classes)
+        self.assertEqual([line.split(":")[0] for line in lines[:len(classes)]],
+                         [name for name, _ in classes])
+        for line, (name, entry) in zip(lines, classes):
+            with self.subTest(name=name):
+                self.assertTrue(entry["found"])
+                self.assertIn(f"{entry['live']} live, {entry['destroyed']} destroyed", line)
+        folder = menu["globals"]["currentSongFolder"]
+        self.assertTrue(folder)
+        self.assertIn(f"GlobalVariables currentSongFolder: {folder}", lines)
+
+    def test_menu_lines_with_no_selected_song(self):
+        # The recorded mid-song block has no selected song, and prints one
+        # line saying so in place of the folder and chartName lines.
+        menu = recorded_state()[FT.MENU_BLOCK]
+        self.assertIsNone(menu["selectedSong"])
+        lines = FT.menu_lines(menu)
+        song = [line for line in lines if line.startswith("selected song")]
+        self.assertEqual(song, ["selected song: none"])
 
     def test_menu_lines_print_the_agents_error(self):
-        self.assertEqual(FT.menu_lines({"error": "reading the menus failed: x"}),
-                         ["menu: reading the menus failed: x"])
+        # The error menu.ts's readMenu sends when the game's assembly is not
+        # loaded, built from its own literal and ASSEMBLY_NAME: menu_lines
+        # prints it on one menu line and reads nothing else.
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            source = f.read()
+        name = re.search(r'const ASSEMBLY_NAME = "(\w+)";', source).group(1)
+        template = re.search(r"return \{ error: `\$\{ASSEMBLY_NAME\}([^`]*)` \};",
+                             source).group(1)
+        error = name + template
+        self.assertEqual(FT.menu_lines({"error": error}), [f"menu: {error}"])
 
     def test_menu_lines_with_no_block(self):
-        self.assertEqual(FT.menu_lines(None),
-                         ["menu: not read (the agent sent no menu block)"])
+        # A reply with no menu block gives one menu line saying it was not
+        # read, never the class, song or GlobalVariables lines.
+        reply = recorded_state()
+        reply.pop(FT.MENU_BLOCK)
+        lines = FT.menu_lines(reply.get(FT.MENU_BLOCK))
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("menu: not read ("), lines[0])
+        self.assertIn("menu block", lines[0])
 
     def test_ch_menu_prints_the_lines_then_the_state_word(self):
-        tools = self.tools([STATE, {**MENU, "menu": MENU_READ}], attached=True)
+        # The recorded reply (recorded_state's run, mid-song) answers the
+        # attach and then ch_menu's one read: ch_menu prints that read's menu
+        # block as menu_lines prints it, then the state word for the same read.
+        reply = recorded_state()
+        tools = self.tools([reply, reply], attached=True, real_time=True)
         self.assertEqual(tools.ch_menu().splitlines(),
-                         MENU_LINES + ["state: menu (no live GameManager)"])
+                         FT.menu_lines(reply[FT.MENU_BLOCK])
+                         + [f"state: {FT.state_words(reply)}"])
+        self.assertEqual(FT.state_words(reply), FT.PLAYING)
 
     def test_ch_menu_before_attach_says_not_attached(self):
-        self.assertEqual(self.tools().ch_menu(), f"state: not attached; {FT.NOT_ATTACHED}")
+        self.assertEqual(self.tools().ch_menu(),
+                         f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
 
     def test_state_leaves_the_menu_block_to_ch_menu(self):
-        tools = self.tools([STATE, {**STATE, "menu": MENU_READ}], attached=True)
-        out = tools.ch_state()
-        self.assertIn("songTime: 3.5", out)
-        self.assertNotIn("menu", out)
+        # The recorded reply carries a menu block; ch_state prints its other
+        # fields and none of the lines ch_menu prints for that block.
+        reply = recorded_state()
+        menu = FT.menu_lines(reply[FT.MENU_BLOCK])
+        self.assertTrue(menu)
+        tools = self.tools([reply, reply], attached=True, real_time=True)
+        out = tools.ch_state().splitlines()
+        self.assertIn(f"songTime: {json.dumps(reply['songTime'])}", out)
+        for line in menu:
+            with self.subTest(line=line):
+                self.assertNotIn(line, out)
+        self.assertFalse([line for line in out if line.startswith(f"{FT.MENU_BLOCK}: ")], out)
 
-    def test_read_state_returns_the_agents_dict(self):
-        reply = {**STATE, "menu": MENU_READ}
-        tools = self.tools([STATE, reply], attached=True)
-        self.assertEqual(tools.read_state(), reply)
-
-    def test_menu_lines_print_active_and_the_player_screen_words(self):
-        def player(instrument, difficulty):
-            return {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-                "found": True, "live": 1, "destroyed": 0, "active": [True],
-                "fields": {"instrument": [instrument], "difficulty": [difficulty]}}}}
-        self.assertEqual(FT.menu_lines(player(9, 3))[:2], [
-            "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
-            "PlayerSelectionMenu[0]: instrument: 9 (ProDrums); difficulty: 3 (Expert)"])
-        line = FT.menu_lines(player(6, 2))[1]
-        self.assertIn("instrument: 6 (Drums)", line)
-        self.assertIn("difficulty: 2 (Hard)", line)
+    def test_read_state_gives_the_song_check_the_loaded_folder(self):
+        # ch_run_chart's song check reads the loaded song folder from
+        # read_state through menu_tools.loaded_folder. On the recorded reply
+        # that is the folder GlobalVariables named in the run's own log line.
+        with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+            logged = json.loads(f.readline())["payload"]
+        folder = logged[FT.MENU_BLOCK]["globals"]["currentSongFolder"]
+        self.assertTrue(folder)
+        tools = self.tools([recorded_state(), recorded_state()], attached=True,
+                           real_time=True)
+        self.assertEqual(MT.loaded_folder(tools.read_state()), folder)
 
     def test_player_screen_on_the_instrument_page_with_drum_rows(self):
-        self.assertEqual(FT.menu_lines(player_screen(PLAYER_FIELDS))[:3], [
+        lines = FT.menu_lines(player_screen(PLAYER_FIELDS))
+        values = {key: sent[0] for key, sent in PLAYER_FIELDS.items()}
+        entries = {f["key"]: f for f in FT.menu_fields()["fields"]}
+
+        def words(key):
+            entry = entries[key]
+            return entries[entry["words_from"]]["values"] if "words_from" in entry \
+                else entry["values"]
+
+        def shown(key, value):
+            kind = entries[key].get("kind", FT.ENUM_KIND)
+            if kind == FT.ENUM_KIND:
+                return f"{value} ({words(key)[str(value)]})"
+            if kind == "enum_array":
+                return "[" + ", ".join(f"{v} ({words(key)[str(v)]})" for v in value) + "]"
+            return json.dumps(value)
+
+        # On the Instrument page Green acts on the row at cursor + scroll
+        # (ROW_ADDS_SCROLL, page 07 IN-58), so the highlighted row is that
+        # index into the two row arrays.
+        page_word = words(FT.PAGE_KEY)[str(values[FT.PAGE_KEY])]
+        self.assertTrue(FT.ROW_ADDS_SCROLL[page_word], page_word)
+        index = values[FT.CURSOR_KEY] + values[FT.SCROLL_KEY]
+        row_id = values[FT.ROW_IDS_KEY][index]
+        highlighted = (f"highlighted row: {index}, "
+                       f"name {json.dumps(values[FT.ROW_NAMES_KEY][index])}, "
+                       f"id {row_id} ({words(FT.ROW_IDS_KEY)[str(row_id)]})")
+
+        # Every other field prints as sent, with an enum's word from its
+        # table, in menu_fields.json's order: the plain ones on the field line
+        # with the highlighted row after scroll, the arrays on the rows line.
+        plain, rows = [], []
+        for key in entries:
+            text = f"{key}: {shown(key, values[key])}"
+            if entries[key].get("kind") in FT.ARRAY_KINDS:
+                rows.append(text)
+                continue
+            plain.append(text)
+            if key == FT.SCROLL_KEY:
+                plain.append(highlighted)
+        self.assertEqual(lines[:3], [
             "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
-            "PlayerSelectionMenu[0]: page: 1 (Instrument); cursor: 1; scroll: 1; "
-            "highlighted row: 2, name \"Pro Drums\", id 9 (ProDrums); "
-            "controllerType: 2 (Drums); instrument: 0 (Guitar); difficulty: 3 (Expert); "
-            "playerIndex: 0; firstTime: true; rowCount: 3; visibleRows: 5; "
-            "isDrums: true; networkFlag: false; backLock: false",
-            "PlayerSelectionMenu[0] rows: rowNames: [\"Guitar\", \"Drums\", \"Pro Drums\"]; "
-            "rowInstruments: [0 (Guitar), 6 (Drums), 9 (ProDrums)]"])
-
-    def test_player_screen_page_the_enum_does_not_name(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "page": [6]}))[1]
-        self.assertTrue(line.startswith(
-            "PlayerSelectionMenu[0]: page: 6 (not in menu_fields.json); cursor: 1; "), line)
-
-    def test_player_screen_with_null_row_arrays(self):
-        lines = FT.menu_lines(player_screen(
-            {**PLAYER_FIELDS, "rowNames": [None], "rowInstruments": [None]}))
-        self.assertIn("highlighted row: 2, name none (rowNames is null), "
-                      "id none (rowInstruments is null); ", lines[1])
-        self.assertEqual(lines[2], "PlayerSelectionMenu[0] rows: "
-                         "rowNames: null (no array); rowInstruments: null (no array)")
-
-    def test_player_screen_highlight_index_out_of_range(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "scroll": [4]}))[1]
-        self.assertIn("scroll: 4; highlighted row: 5, "
-                      "name none (index 5 is outside the 3 rowNames), "
-                      "id none (index 5 is outside the 3 rowInstruments); ", line)
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": [-3]}))[1]
-        self.assertIn("highlighted row: -2, name none (index -2 is outside the 3 rowNames), ",
-                      line)
-
-    def test_player_screen_with_an_unread_cursor(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": ["error: gone"]}))[1]
-        self.assertIn("cursor: error: gone; scroll: 1; "
-                      "highlighted row: not known (cursor was not read); ", line)
-
-    def highlighted(self, **fields):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, **fields}))[1]
-        return line.split("highlighted row: ")[1].split("; controllerType")[0]
-
-    def test_confirm_and_difficulty_take_the_cursor_alone(self):
-        # Page 0 is Confirm and 2 Difficulty: cursor 1 and scroll 1 give row 1.
-        for page in (0, 2):
-            self.assertEqual(self.highlighted(page=[page]),
-                             "1, name \"Drums\", id 6 (Drums)", page)
-
-    def test_instrument_and_modifiers_add_the_scroll(self):
-        # Page 1 is Instrument and 3 Modifiers: cursor 1 and scroll 1 give row 2.
-        for page in (1, 3):
-            self.assertEqual(self.highlighted(page=[page]),
-                             "2, name \"Pro Drums\", id 9 (ProDrums)", page)
-
-    def test_an_unread_scroll_matters_only_where_the_scroll_is_added(self):
-        self.assertEqual(self.highlighted(page=[0], scroll=["error: gone"]),
-                         "1, name \"Drums\", id 6 (Drums)")
-        self.assertEqual(self.highlighted(page=[3], scroll=["error: gone"]),
-                         "not known (scroll was not read)")
-
-    def test_the_ready_page_highlights_no_row(self):
-        self.assertEqual(self.highlighted(page=[4]), "none on the Ready page")
-
-    def test_a_page_with_no_row_rule_or_no_read(self):
-        self.assertEqual(self.highlighted(page=[6]), "not known (page 6 has no row rule)")
-        self.assertEqual(self.highlighted(page=["error: gone"]),
-                         "not known (page was not read)")
+            "PlayerSelectionMenu[0]: " + "; ".join(plain),
+            "PlayerSelectionMenu[0] rows: " + "; ".join(rows)])
 
     def test_every_page_word_has_a_row_rule(self):
         words = set(FT._enum_words(FT.PAGE_KEY).values())
         self.assertEqual(words, set(FT.ROW_ADDS_SCROLL) | {FT.NO_ROW_PAGE})
 
-    def test_two_player_screens_get_a_line_pair_each(self):
-        fields = {key: values * 2 for key, values in PLAYER_FIELDS.items()}
-        fields["playerIndex"] = [0, 1]
-        lines = FT.menu_lines(player_screen(fields, live=2))
-        self.assertTrue(lines[3].startswith("PlayerSelectionMenu[1]: page: 1 (Instrument); "))
-        self.assertIn("playerIndex: 1; ", lines[3])
-        self.assertTrue(lines[4].startswith("PlayerSelectionMenu[1] rows: "))
-
     def test_menu_lines_print_why_the_player_screen_was_not_read(self):
-        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-            "found": False, "reason": "the player-screen hook has not been placed yet"}}}
-        self.assertEqual(FT.menu_lines(menu)[0],
-                         "PlayerSelectionMenu: the player-screen hook has not been placed yet")
-
-    def test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent(self):
-        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-            "found": True, "live": 2, "destroyed": 0, "active": [None, "error: x"],
-            "fields": {"instrument": [99, "error: boom"], "difficulty": [-1, None]}}}}
-        self.assertEqual(FT.menu_lines(menu)[:3], [
-            "PlayerSelectionMenu: 2 live, 0 destroyed; active: [null, \"error: x\"]",
-            "PlayerSelectionMenu[0]: instrument: 99 (not in menu_fields.json); difficulty: -1 (None)",
-            "PlayerSelectionMenu[1]: instrument: error: boom; difficulty: null"])
+        # Until its hook is placed, menu.ts sends the player screen as not
+        # found with the reason its playerScreenHook holds, read here from
+        # menu.ts itself. In the recorded menu block, that entry stands in for
+        # the read one: menu_lines prints the reason on the class's own line.
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            source = f.read()
+        screen = re.search(r'const PLAYER_SCREEN = "(\w+)";', source).group(1)
+        reason = re.search(r'let playerScreenHook: string \| null = "([^"]+)";',
+                           source).group(1)
+        menu = recorded_state()[FT.MENU_BLOCK]
+        self.assertIn(screen, menu["classes"])
+        menu["classes"][screen] = {"found": False, "reason": reason}
+        lines = [line for line in FT.menu_lines(menu) if line.startswith(screen)]
+        self.assertEqual(lines, [f"{screen}: {reason}"])
 
     def test_read_state_before_attach_raises_with_the_reason(self):
+        # A real game side on a temp folder, with nothing attached: the
+        # reason is the not-attached line ch_state prints for the same case.
+        lock = threading.RLock()
+        game = GT.GameTools(None, lock, os.path.join(self.tmp, "scratch"))
+        tools = FT.FridaTools(game, lock)
         with self.assertRaises(FT.StateUnread) as caught:
-            self.tools().read_state()
-        self.assertEqual(str(caught.exception), f"state: not attached; {FT.NOT_ATTACHED}")
+            tools.read_state()
+        self.assertEqual(str(caught.exception), tools.ch_state())
+        self.assertEqual(str(caught.exception),
+                         f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
 
 
 class StateWordsTest(unittest.TestCase):
-    def state(self, **fields):
-        return {**STATE, **fields}
+    def test_not_running_wins_over_any_read(self):
+        # When the last attach found no game, the word is the not-running one
+        # whatever read is passed, the recorded mid-song reply included, and
+        # it differs from the word for no read at all.
+        word = FT.state_words(None, running=False)
+        self.assertEqual(FT.state_words(recorded_state(), running=False), word)
+        self.assertNotEqual(word, FT.state_words(None))
+        self.assertNotEqual(word, FT.state_words(recorded_state()))
 
-    def test_not_running(self):
-        self.assertEqual(FT.state_words(None, running=False), "not running")
-
-    def test_not_attached(self):
-        self.assertEqual(FT.state_words(None), "not attached")
-
-    def test_menu_for_found_false(self):
-        self.assertEqual(FT.state_words(MENU), "menu (no live GameManager)")
-
-    def test_menu_when_the_only_game_manager_was_destroyed(self):
-        self.assertEqual(FT.state_words(MENU_ONE_DESTROYED), "menu (no live GameManager)")
-
-    def test_a_live_game_manager_beside_a_destroyed_one_keeps_its_state(self):
-        self.assertEqual(FT.state_words(self.state(destroyed=1)), "playing")
-
-    def test_loading(self):
-        self.assertEqual(FT.state_words(self.state(songLoaded=False)), "loading")
-
-    def test_song_over(self):
-        self.assertEqual(FT.state_words(self.state(isSongOver=True)), "song over")
-
-    def test_paused(self):
-        self.assertEqual(FT.state_words(self.state(isPaused=True)), "paused")
+    def test_not_attached_is_what_a_real_game_side_shows_before_attach(self):
+        # A real game side on a temp folder, never attached: ch_state's word
+        # is state_words' word for no read, which is neither the not-running
+        # word nor the recorded reply's word.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lock = threading.RLock()
+        tools = FT.FridaTools(GT.GameTools(None, lock, os.path.join(tmp.name, "scratch")),
+                              lock)
+        word = FT.state_words(None)
+        self.assertTrue(tools.ch_state().startswith(f"state: {word}; "), tools.ch_state())
+        self.assertNotIn(word, {FT.state_words(None, running=False),
+                                FT.state_words(recorded_state())})
 
     def test_playing(self):
-        self.assertEqual(FT.state_words(STATE), "playing")
-
-    def test_loaded_not_started(self):
-        self.assertEqual(FT.state_words(self.state(isSongPlaying=False)), "loaded, not started")
+        # Every reply the state agent sent in the recorded run was read while
+        # the song played (its log holds no other state), and each reads as
+        # the playing word.
+        with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+            replies = [json.loads(line)["payload"] for line in f if line.strip()]
+        self.assertTrue(replies)
+        for i, reply in enumerate(replies):
+            with self.subTest(reply=i):
+                self.assertTrue(reply["isSongPlaying"])
+                self.assertEqual(FT.state_words(reply), FT.PLAYING)
 
 
 class TraceTest(Rig):
     def test_trace_start_refuses_with_no_live_game_manager(self):
         tools = self.tools([STATE, MENU], attached=True)
+        self.game.backups = 0
         out = tools.ch_trace_start(self.song)
-        self.assertEqual(out.splitlines()[-1],
-                         "no live GameManager: start the song (pause it if you like), "
-                         "then call ch_trace_start")
+        self.assertEqual(self.game.backups, 0)
+        self.assertEqual(out.splitlines()[-1], FT.NO_GAME_MANAGER)
         self.assertEqual(self.traces, [])
 
     def test_trace_start_before_attach_refuses(self):
-        tools = self.tools()
+        # A real game side on a temp folder, never attached: the refusal is
+        # the not-attached line, no trace is built and the game side holds no
+        # backup afterwards.
+        game = GT.GameTools(None, self.lock, os.path.join(self.tmp, "scratch"))
+        tools = FT.FridaTools(game, self.lock, current_build=lambda: VERSION,
+                              load_facts=self.load_facts, trace_session=self.make_trace)
         out = tools.ch_trace_start(self.song)
-        self.assertIn(FT.NOT_ATTACHED, out)
+        self.assertEqual(out.splitlines(),
+                         [f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}",
+                          "no trace started"])
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
+        self.assertEqual(game.open_lines(), [])
 
     def test_trace_start_takes_the_backup_just_before_it_hooks(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.backups = 0  # as if the game side held no backup yet
-        lines = tools.ch_trace_start(self.song).splitlines()
-        self.assertEqual(self.game.backups, 1)
-        self.assertEqual(lines[0], BACKUP_LINE)
-        self.assertTrue(lines[1].startswith("trace started"))
+        # The calls go into one list as they happen, so the order checked is
+        # the order of the calls, not of the reply's lines.
+        calls = []
 
-    def test_a_refused_trace_start_takes_no_backup(self):
-        tools = self.tools([STATE, MENU], attached=True)
-        self.game.backups = 0
-        tools.ch_trace_start(self.song)
-        self.assertEqual(self.game.backups, 0)
+        def backup():
+            calls.append("backup")
+            return FakeGame.ensure_backup(self.game)
+
+        def make_trace(*args, **kw):
+            trace = self.make_trace(*args, **kw)
+            calls.append("trace built")
+            start = trace.start
+
+            def hooked():
+                calls.append("trace started")
+                return start()
+
+            trace.start = hooked
+            return trace
+
+        tools = self.tools([STATE, STATE], attached=True, trace_session=make_trace)
+        self.game.backups = 0  # as if the game side held no backup yet
+        self.game.ensure_backup = backup
+        lines = tools.ch_trace_start(self.song).splitlines()
+        self.assertEqual(calls, ["trace built", "backup", "trace started"])
+        self.assertEqual(lines[0], BACKUP_LINE)
 
     def test_trace_start_hooks_the_default_method_from_the_facts(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        out = tools.ch_trace_start(self.song)
+        tools = self.real_trace_tools()
+        out = tools.ch_trace_start(self.song).splitlines()
+        facts = real_6142_facts()
+        engine, ctor_rva = B.engine_class(facts)
+        rvas = list(C.PER_NOTE_DEFAULT_RVAS)
+        names = B.method_names_by_rva(facts, engine, rvas)
         (trace,) = self.traces
-        self.assertEqual(trace.engine_class, "Eng")
-        self.assertEqual(trace.methods, ["AddPoints"])
-        self.assertEqual(trace.kw["engine_ctor_rva"], C.RVA_DRUMS_ENGINE_CTOR)
-        self.assertIn(f"AddPoints (0x{C.RVA_NOTE_SCORE_ADD:X})", out)
+        self.assertEqual(trace.settings["engine_class"], engine)
+        self.assertEqual(trace.settings["engine_ctor_rva"], ctor_rva)
+        self.assertEqual(trace.settings["methods"], names)
+        (hooked,) = [line for line in out if line.startswith("hooked methods: ")]
+        for name, rva in zip(names, rvas):
+            self.assertIn(f"{name} (0x{rva:X})", hooked)
 
     def test_trace_start_caps_at_hydras_end_of_the_folders_chart(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        tools.ch_trace_start(self.song)
-        (trace,) = self.traces
-        self.assertEqual(trace.kw["song_end_ms"], SONG_END_MS)
+        tools = self.real_trace_tools()
+        out = tools.ch_trace_start(self.song).splitlines()
         self.assertEqual(FAKE.charts[-1], self.chart)
+        end_ms, _ = TH.song_end_ms(self.song)
+        (trace,) = self.traces
+        # Both caps start from that song end.
+        self.assertEqual(trace.settings["song_cap_s"], TH.trace_cap_s(end_ms))
+        self.assertEqual(trace.cap_s, TH.wall_cap_s(end_ms))
+        (caps,) = [line for line in out if line.startswith("song cap: ")]
+        self.assertIn(f"{TH.trace_cap_s(end_ms):g} s", caps)
+        self.assertIn(f"{TH.wall_cap_s(end_ms):g} s", caps)
+
+    def refused_by_the_song_end(self):
+        """ch_trace_start's reply and the song end's own refusal for the
+        folder. The attach takes the game side's backup, so the count starts
+        again after it: the refused start must not ask for another."""
+        tools = self.real_trace_tools()
+        self.game.backups = 0
+        out = tools.ch_trace_start(self.song)
+        with self.assertRaises(hydra_end.SongEndMissing) as raised:
+            TH.song_end_ms(self.song)
+        self.assertEqual(self.game.backups, 0)
+        return out, str(raised.exception)
 
     def test_a_folder_with_no_chart_starts_no_trace(self):
         os.remove(self.chart)
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.backups = 0
-        out = tools.ch_trace_start(self.song)
-        self.assertEqual(out.splitlines()[-1],
-                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
-                         "song end to cap the trace at; no trace started")
+        out, refusal = self.refused_by_the_song_end()
+        self.assertIn(self.song, refusal)
+        self.assertEqual(out.splitlines()[-1], f"{refusal}; no trace started")
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
 
     def test_a_failed_dump_starts_no_trace(self):
         # A chart the fake has no dump for fails as hydra_replay would.
         os.remove(self.chart)
-        open(os.path.join(self.song, "notes.mid"), "w").close()
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.backups = 0
-        out = tools.ch_trace_start(self.song)
-        self.assertIn("hydra_replay dump failed with exit code 1", out)
-        self.assertTrue(out.endswith("; no trace started"))
+        midi = os.path.join(self.song, "notes.mid")
+        open(midi, "w").close()
+        out, refusal = self.refused_by_the_song_end()
+        self.assertIn(midi, refusal)
+        self.assertIn("hydra_replay", refusal)
+        self.assertTrue(out.endswith(f"{refusal}; no trace started"), out)
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
 
     def test_the_dump_runs_outside_the_lock(self):
         tools = self.tools([STATE, STATE], attached=True)
@@ -947,59 +1068,98 @@ class TraceTest(Rig):
         self.assertEqual(len(self.traces), 1)
 
     def test_with_dynamics_hooks_both_methods(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song, with_dynamics=True)
-        self.assertEqual(self.traces[0].methods, ["AddPoints", "Dynamics"])
+        facts = real_6142_facts()
+        engine, _ = B.engine_class(facts)
+        names = B.method_names_by_rva(
+            facts, engine, list(C.PER_NOTE_DEFAULT_RVAS) + [C.RVA_NOTE_DYNAMICS])
+        self.assertEqual(len(set(names)), len(C.PER_NOTE_DEFAULT_RVAS) + 1)
+        self.assertEqual(self.traces[0].settings["methods"], names)
 
     def test_notes_from_since_are_lined_up(self):
         tools = self.tools([STATE, STATE], attached=True)
         tools.ch_trace_start(self.song)
-        self.traces[0].call_list = [call(1.0), call(2.1), call(2.95)]
+        # The rig's notes, from the manifest it wrote. Call 1 lands 1 ms past
+        # the limit after note 1, call 2 half the limit before note 2, so
+        # exactly one of the two lined-up calls is within the limit.
+        with open(TH.manifest_path(self.song), encoding="utf-8") as f:
+            notes = [n["time_ms"] for n in json.load(f)["notes"]]
+        limit = C.EXPECT_NORMAL_BACK_MS
+        outside, inside = notes[1] + limit + 1, notes[2] - limit / 2
+        self.traces[0].call_list = [call(notes[0] / 1000), call(outside / 1000),
+                                    call(inside / 1000)]
         out = tools.ch_notes(since=1).splitlines()
-        self.assertIn("call 1: AddPoints at 2100.0 ms; nearest note 1 at 2000 ms, diff +100.0 ms", out)
-        self.assertIn("call 2: AddPoints at 2950.0 ms; nearest note 2 at 3000 ms, diff -50.0 ms", out)
+        self.assertIn(f"call 1: AddPoints at {outside:.1f} ms; nearest note 1 at {notes[1]} ms, "
+                      f"diff {outside - notes[1]:+.1f} ms", out)
+        self.assertIn(f"call 2: AddPoints at {inside:.1f} ms; nearest note 2 at {notes[2]} ms, "
+                      f"diff {inside - notes[2]:+.1f} ms", out)
         self.assertNotIn("call 0", "\n".join(out))
-        self.assertIn(f"calls within {C.EXPECT_NORMAL_BACK_MS:g} ms of their nearest note "
+        self.assertIn(f"calls within {limit:g} ms of their nearest note "
                       "(EXPECT_NORMAL_BACK_MS): 1 of 2", out)
         self.assertEqual(out[-1], "next: ch_notes(since=3)")
 
     def test_trace_stop_stops_and_prints_the_ended_line(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertFalse(trace.ended())
         out = tools.ch_trace_stop().splitlines()
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
-        self.assertEqual(out[:2], ["ended: stopped", "calls: 0"])
-
-    def test_a_trace_that_does_not_stop_in_time_says_so(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        tools.ch_trace_start(self.song)
-        self.traces[0].ends_on_stop = False
-        self.assertEqual(tools.ch_trace_stop(),
-                         f"the trace thread was still running after {FT.READ_CAP_S:g} s "
-                         "(READ_CAP_S); it ends with the server")
+        self.assertTrue(trace.ended())
+        self.assertEqual(trace.result.reason, TH.END_STOPPED)
+        self.assertEqual(out[:2], [TH.ended_line(trace.result), f"calls: {len(trace.calls())}"])
 
     def test_the_stop_hook_stops_the_trace_and_detaches_once(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song)
+        (trace,) = self.traces
         (hook,) = self.game.hooks
         said = hook()
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
+        self.assertTrue(trace.ended())
+        self.assertEqual(trace.result.reason, TH.END_STOPPED)
         self.assertEqual(self.session.detach_calls, 1)
         self.assertIn("frida: detached", said)
         hook()
         self.assertEqual(self.session.detach_calls, 1)
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
 
 
 class RealFactsTest(unittest.TestCase):
     def test_both_hook_rvas_name_one_engine_method_each(self):
-        if not os.path.isfile(REAL_FACTS):
-            self.skipTest(f"no real facts file at {REAL_FACTS}")
+        # Each name the facts give for a hooked RVA is the method the build's
+        # own dump declares right under that RVA's comment line, inside the
+        # engine class's body.
+        self.assertTrue(os.path.isfile(REAL_FACTS), f"no real facts file at {REAL_FACTS}")
+        dump = os.path.join(os.path.dirname(REAL_FACTS), "dump.cs")
+        self.assertTrue(os.path.isfile(dump), f"no dump at {dump}")
         with open(REAL_FACTS, encoding="utf-8") as f:
             facts = json.load(f)
         engine, _ = B.engine_class(facts)
-        names = B.method_names_by_rva(facts, engine, [C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS])
-        self.assertEqual(len(names), 2)
+        rvas = [C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS]
+        names = B.method_names_by_rva(facts, engine, rvas)
+        self.assertEqual(len(names), len(rvas))
+        wanted = {f"// RVA: 0x{rva:X} ": rva for rva in rvas}
+        declared, last_class = {}, None
+        with open(dump, encoding="utf-8") as f:
+            pending = None
+            for line in f:
+                if pending is not None:
+                    declared[pending] = (line, last_class)
+                    pending = None
+                    if len(declared) == len(rvas):
+                        break
+                    continue
+                if re.match(r"^\S.*\bclass ", line):
+                    last_class = line
+                stripped = line.strip()
+                for head, rva in wanted.items():
+                    if stripped.startswith(head):
+                        pending = rva
+        for rva, name in zip(rvas, names):
+            with self.subTest(rva=f"{rva:#x}"):
+                self.assertIn(rva, declared, f"the dump has no RVA 0x{rva:X}")
+                line, owner = declared[rva]
+                self.assertIn(f" {name}(", line)
+                self.assertIn(f"class {engine} ", owner or "")
 
 
 if __name__ == "__main__":

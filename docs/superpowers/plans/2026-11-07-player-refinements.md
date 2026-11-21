@@ -230,7 +230,7 @@ A chord of both kinds presses the activating gem first, then the rest by multipl
 | The library-chart rule is a question, and the page is amended if (a) | Q1 | T4 | the page's line 31 after the merge |
 | Nothing builds or runs before the user's yes | the plain version | all | this plan's first line; agent rule 3 |
 | No whole-library run; each tool takes one folder | the live steps | all | the folders named in each `Calls:` line |
-| The plan leaves the repo in the merge that finishes it | CLAUDE.md doc review | T4 | the docs check at that merge |
+| The plan leaves the repo in the merge that finishes it | CLAUDE.md doc review | T4 | `git grep` for the plan path finds nothing at that merge |
 
 ## Premise map
 

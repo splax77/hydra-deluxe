@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -53,11 +55,36 @@ TEST_CASE("pb state: a newly opened chart has its empty path") {
     REQUIRE(c->empty_path.has_value());
     const hydra::Path& empty = *c->empty_path;
     CHECK(empty.walk_activations().empty());
-    // From one run.
-    CHECK(empty.totalscore() == 313635);
-    CHECK(empty.trailing_skipped_fill_ticks ==
-          std::vector<int64_t>{36480, 44160, 51840, 59520, 67200, 74880, 83040, 90240, 98400,
-                               109440, 117120, 147840, 156000, 167040, 174720});
+
+    // No activation is the floor: every stored path scores at least as much.
+    REQUIRE_FALSE(c->record.paths.empty());
+    for (const hydra::Path& p : c->record.paths) CHECK(p.totalscore() >= empty.totalscore());
+
+    // Each fill the empty path lists is a fill chord of the opened song, in
+    // chart order with no repeats.
+    const std::vector<int64_t>& listed = empty.trailing_skipped_fill_ticks;
+    REQUIRE_FALSE(listed.empty());
+    CHECK(std::adjacent_find(listed.begin(), listed.end(),
+                             [](int64_t a, int64_t b) { return a >= b; }) == listed.end());
+    std::vector<int64_t> fill_chords;
+    for (const hydra::SongTimestamp& ts : c->song.sequence)
+        if (ts.has_activation()) fill_chords.push_back(ts.timecode.ticks());
+    CHECK(std::includes(fill_chords.begin(), fill_chords.end(), listed.begin(), listed.end()));
+
+    // Until a path's first activation it plays as the empty path does, so the
+    // fills it passed before then, and the fill it took, are fills the empty
+    // path passed over too.
+    for (const hydra::Path& p : c->record.paths) {
+        if (p.activations.empty()) continue;
+        const hydra::Activation& first = p.activations.front();
+        for (int64_t t : first.skipped_fill_ticks) {
+            CAPTURE(t);
+            CHECK(std::binary_search(listed.begin(), listed.end(), t));
+        }
+        const int64_t taken = first.timecode.ticks();
+        CAPTURE(taken);
+        CHECK(std::binary_search(listed.begin(), listed.end(), taken));
+    }
     CHECK_FALSE(s.history().current().path.has_value());
 }
 

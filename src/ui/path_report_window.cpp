@@ -12,7 +12,7 @@
 
 #include "app/analysis.h"        // kBatchPreparingText
 #include "app/display_format.h"  // kFactSeparator
-#include "app/html_page.h"       // search_hint
+#include "app/html_page.h"       // path_report_search_hint
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
 #include "imgui.h"
@@ -153,10 +153,8 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     report_frame::tiles(w.tiles);
     draw_coverage(w, *input.result);
 
-    // What path_search_text folds for each row (app/path_report_view.cpp).
-    static const std::string search_hint =
-        app::html::search_hint({"song", "artist", "charter", "path notation"});
-    if (report_frame::search_box(w.memory, search_hint.c_str())) apply_filters(w);
+    if (report_frame::search_box(w.memory, app::html::path_report_search_hint().c_str()))
+        apply_filters(w);
     if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
     ImGui::SameLine();
     if (ImGui::Checkbox("Optimal paths only", &w.best_only)) apply_filters(w);
@@ -194,14 +192,15 @@ void draw_path_report_window(bool* open, const PathReportInput& input, PathWindo
     report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
     frame.heading = "Path Index";
-    frame.building_subtitle = "Building the report from your library...";
+    frame.building_subtitle = app::kPathReportBuilding;
     if (input.batch) {
         // The batch the build waits on: the strip's words while it prepares,
         // then its own count over a bar it fills (D249
         // item 8). Both numbers are the snapshot's, as the strip shows them.
         const PathReportInput::WaitedBatch& b = *input.batch;
         frame.building_lines = {b.preparing ? std::string(app::kBatchPreparingText)
-                                            : "Analyzing " + group_thousands(b.completed) +
+                                            : app::kPathReportAnalyzing +
+                                                  group_thousands(b.completed) +
                                                   " of " + counted(b.total, "chart", "charts")};
         frame.progress = std::make_pair(b.completed, b.total);
     } else {

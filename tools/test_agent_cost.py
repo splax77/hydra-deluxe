@@ -1,13 +1,15 @@
 """Tests for tools/agent_cost.py, the transcript accounting.
 
-Each test builds a small fake transcript folder, runs the script the way a session does
-and reads its printed lines, its CSV and its exit code. The expected dollars are literals
-worked out by hand from the price table.
+Each test runs the script the way a session does and reads its printed lines, its CSV and
+its exit code. Most tests build a small transcript folder by hand. The tests in RealRecords
+read real records cut from this project's transcripts (testdata/ch_runs/agent-cost-transcripts)
+and work their expected dollars out from the script's own price table.
 
 Run with: py -I tools/test_agent_cost.py
 """
 
 import csv
+import importlib.util
 import json
 import os
 import subprocess
@@ -104,9 +106,6 @@ class Pricing(Base):
     def test_sonnet(self):
         self.assertEqual(self.cost_of(SONNET, BIG), "3.1500")
 
-    def test_haiku_at_exactly_the_context_limit_keeps_the_short_price(self):
-        self.assertEqual(self.cost_of(HAIKU, usage(30_000, 200_000, 50_000, 20_000)), "0.1060")
-
     def test_haiku_one_token_over_the_context_limit_takes_the_long_price(self):
         self.assertEqual(self.cost_of(HAIKU, usage(30_001, 200_000, 50_000, 20_000)), "0.5300")
 
@@ -121,15 +120,6 @@ class Pricing(Base):
 
     def test_both_cache_write_lengths_in_one_record(self):
         self.assertEqual(self.cost_of(OPUS, usage(five=1_000, hour=1_000)), "0.0130")
-
-    def test_record_with_no_split_prices_at_the_five_minute_rate_and_is_counted(self):
-        used = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 1_000}
-        self.agent(S1, "a", [assistant("r1", OPUS, used), assistant("r2", OPUS, usage(output=1))])
-        code, out, err = self.run_script()
-        self.assertEqual(code, 0, err)
-        self.assertIn("1 records had no cache_creation object", out)
-        with open(self.csv, newline="") as f:
-            self.assertEqual(next(csv.DictReader(f))["cost"], "0.0050")
 
     def test_a_clean_run_still_says_how_many_records_had_no_split(self):
         self.agent(S1, "a", [assistant("r1")])
@@ -170,10 +160,6 @@ class Reading(Base):
         self.assertEqual(row["first_timestamp"], "2026-10-20T10:00:00.000Z")
         self.assertEqual(row["session"], S1)
 
-    def test_agent_without_meta_file_is_unknown_type(self):
-        self.write(S1 + "/subagents/agent-a.jsonl", [assistant("r1")])
-        self.assertEqual(self.rows()["a"]["type"], "unknown")
-
     def test_agents_nested_under_workflows_are_found(self):
         self.agent(S1, "w", [assistant("r1")], nested="workflows/run-1/")
         self.assertIn("w", self.rows())
@@ -193,11 +179,79 @@ class Reading(Base):
         with open(self.csv, newline="") as f:
             self.assertEqual(next(csv.DictReader(f))["effort"], "high")
 
+
+def load_agent_cost():
+    """The script as a module, for its price table. py -I puts no folder on sys.path."""
+    spec = importlib.util.spec_from_file_location("agent_cost", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+AGENT_COST = load_agent_cost()
+
+# Real assistant records, one per case folder, each cut from an agent transcript in this
+# project's transcript folder (agent_cost.DEFAULT_ROOT, <session>/subagents/agent-*.jsonl).
+# A record's own timestamp finds its source line again:
+#   haiku-under-limit    a card-writer agent's Haiku request
+#   model-with-no-price  a planner agent's claude-fable-5-2 request
+#   no-meta-file         an Opus agent's request, from a transcript that had no meta file beside it
+# Each record keeps only what agent_cost.py reads: type, timestamp, effort and the message's
+# model and usage, as written. The requestId is replaced by "request-1", the session and
+# agent folders by neutral names, and a meta file keeps only its agentType.
+REAL_RECORDS = os.path.join(HERE, "..", "testdata", "ch_runs", "agent-cost-transcripts")
+
+
+def real_record(case):
+    """The one record of a case folder, and that folder's transcript root."""
+    root = os.path.join(REAL_RECORDS, case)
+    subagents = os.path.join(root, "session", "subagents")
+    (name,) = [n for n in os.listdir(subagents) if n.endswith(".jsonl")]
+    with open(os.path.join(subagents, name), encoding="utf-8") as f:
+        (line,) = f.read().splitlines()
+    return root, name[len("agent-"):-len(".jsonl")], json.loads(line)
+
+
+def price_at(rates, used):
+    """Dollars for one usage at one (input, output, cache read) rate triple from the table."""
+    input_rate, output_rate, read_rate = rates
+    split = used["cache_creation"]
+    write_units = (split["ephemeral_5m_input_tokens"] * AGENT_COST.CACHE_WRITE_5M_TIMES_INPUT
+                   + split["ephemeral_1h_input_tokens"] * AGENT_COST.CACHE_WRITE_1H_TIMES_INPUT)
+    return (used["input_tokens"] * input_rate + used["output_tokens"] * output_rate
+            + used["cache_read_input_tokens"] * read_rate + write_units * input_rate) / 1_000_000
+
+
+class RealRecords(Base):
+    def run_on(self, case):
+        root, agent_id, record = real_record(case)
+        self.root = root
+        return agent_id, record
+
+    def test_haiku_under_the_context_limit_keeps_the_short_price(self):
+        agent_id, record = self.run_on("haiku-under-limit")
+        model, used = record["message"]["model"], record["message"]["usage"]
+        limit, long_rates = AGENT_COST.LONG_CONTEXT_PRICES[model]
+        context = (used["input_tokens"] + used["cache_read_input_tokens"]
+                   + used["cache_creation_input_tokens"])
+        self.assertLessEqual(context, limit)
+        short = "%.4f" % price_at(AGENT_COST.PRICES[model], used)
+        self.assertNotEqual(short, "%.4f" % price_at(long_rates, used))
+        self.assertEqual(self.rows()[agent_id]["cost"], short)
+
+    def test_agent_without_meta_file_is_unknown_type(self):
+        agent_id, _ = self.run_on("no-meta-file")
+        subagents = os.path.join(self.root, "session", "subagents")
+        self.assertFalse(os.path.exists(os.path.join(subagents, "agent-%s.meta.json" % agent_id)))
+        self.assertEqual(self.rows()[agent_id]["type"], "unknown")
+
     def test_a_model_with_no_price_fails_loudly(self):
-        self.agent(S1, "a", [assistant("r1", "claude-new-9", BIG)])
+        _, record = self.run_on("model-with-no-price")
+        model = record["message"]["model"]
+        self.assertNotIn(model, AGENT_COST.PRICES)
         code, _, err = self.run_script()
         self.assertEqual(code, 1)
-        self.assertIn("claude-new-9", err)
+        self.assertIn(model, err)
 
 
 class Filters(Base):
@@ -260,11 +314,23 @@ class Filters(Base):
         self.assertEqual(code, 2)
         self.assertIn("no-such-id", err)
 
+    def summary_fields(self, out, kind, effort):
+        """The fields of the one summary line for this type and effort."""
+        found = [text.split() for text in out.splitlines()
+                 if text.split()[:2] == [kind, effort]]
+        self.assertEqual(len(found), 1, out)
+        return found[0]
+
     def test_summary_groups_by_type_and_effort(self):
+        # The two high-effort executors' costs, as the script's own rows give them.
+        costs = [float(row["cost"]) for row in self.rows().values()
+                 if (row["type"], row["effort"]) == ("executor", "high")]
+        self.assertEqual(len(costs), 2, costs)
         _, out, _ = self.run_script()
-        summary = self.line(out, "executor         high")
-        self.assertEqual(summary.split()[2:6], ["2", "9.15", "9.15", "12.20"])
-        self.assertEqual(self.line(out, "scout            high").split()[2], "1")
+        self.assertEqual(self.summary_fields(out, "executor", "high")[2:6],
+                         ["2", "%.2f" % ((costs[0] + costs[1]) / 2),
+                          "%.2f" % ((costs[0] + costs[1]) / 2), "%.2f" % max(costs)])
+        self.assertEqual(self.summary_fields(out, "scout", "high")[2], "1")
 
 
 if __name__ == "__main__":

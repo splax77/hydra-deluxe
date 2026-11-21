@@ -15,12 +15,12 @@
 #include "temp_util.h"
 
 using hydra::app::command_line;
-using hydra::app::quote_argument;
 
 namespace {
 
 // The arguments the started program reads back from `cmd`, through the split
-// every Hydra exe reads its own command line with.
+// every Hydra exe reads its own command line with: Windows' own
+// CommandLineToArgvW, which split_command_line_utf8 calls.
 std::vector<std::string> read_back(const std::wstring& cmd) {
     return hydra::split_command_line_utf8(cmd);
 }
@@ -41,13 +41,9 @@ TEST_CASE("launch: a path with spaces is one quoted argument") {
 
 TEST_CASE("launch: quotes and backslashes inside an argument come back whole") {
     // A quote inside, backslashes before a quote, and backslashes at the end:
-    // the three places the split treats a backslash specially.
-    CHECK(quote_argument(L"say \"hi\"") == L"\"say \\\"hi\\\"\"");
-    CHECK(quote_argument(L"a\\\"b") == L"\"a\\\\\\\"b\"");
-    CHECK(quote_argument(L"C:\\Songs\\") == L"\"C:\\Songs\\\\\"");
-    CHECK(quote_argument(L"a\\b") == L"\"a\\b\"");
-    CHECK(quote_argument(L"") == L"\"\"");
-
+    // the three places the split treats a backslash specially. Each one, and
+    // a plain backslash, an empty argument and a non-ASCII one, comes back
+    // from Windows' split as it went in.
     const std::vector<std::wstring> args = {L"say \"hi\"", L"a\\\"b", L"C:\\Songs\\", L"a\\b",
                                             L"", L"Zo\u00eb"};
     const std::vector<std::string> got = read_back(command_line(L"C:\\x.exe", args));
@@ -95,7 +91,19 @@ TEST_CASE("installer: the builder has a Start Menu shortcut") {
     const size_t line_start = section.rfind('\n', at) + 1;
     const size_t line_end = section.find('\n', at);
     const std::string line = section.substr(line_start, line_end - line_start);
-    // The user's answer of 2026-10-29: the builder's taskbar button is its own.
+    // The shortcut goes in the Start Menu ({autoprograms}) under the app's
+    // own name, which the installer takes from HYDRA_APP_NAME.
+    CHECK(line.find("Name: \"{autoprograms}\\{#HYDRA_APP_NAME}") == 0);
+    // The builder's taskbar button is its own: neither its shortcut nor its
+    // own process sets an AppUserModelID, so Windows does not group it with
+    // Hydra's.
     CHECK(line.find("AppUserModelID") == std::string::npos);
-    CHECK(line.find("Name: \"{autoprograms}\\{#HYDRA_APP_NAME} Path Builder\"") == 0);
+    for (const std::filesystem::directory_entry& e :
+         std::filesystem::directory_iterator(sourcetree::root() / "src" / "pathbuilder")) {
+        if (!e.is_regular_file()) continue;
+        const std::string file = e.path().u8string();
+        CAPTURE(file);
+        CHECK(hydra::read_file_text(file).find("SetCurrentProcessExplicitAppUserModelID") ==
+              std::string::npos);
+    }
 }

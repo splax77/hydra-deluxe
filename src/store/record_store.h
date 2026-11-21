@@ -401,6 +401,9 @@ inline constexpr int kSaveGroupSize = 16;
 // The WAL checkpoint threshold, in pages, while a batch runs (D86 item 3).
 // RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
 inline constexpr int kBatchWalAutocheckpointPages = 10000;
+// SQLite's own default for that threshold (SQLITE_DEFAULT_WAL_AUTOCHECKPOINT
+// in sqlite3.c), which BatchWrites puts back when the batch ends.
+inline constexpr int kSqliteWalAutocheckpointPages = 1000;
 // The most bytes the WAL file keeps after a checkpoint resets it, set on every
 // open (D93): about SQLite's default 1,000-page checkpoint, so the log
 // never sits at its high-water size. Firefox ships the same default for the
@@ -696,6 +699,17 @@ public:
     // test stores an old-build record this way (it reads Stale for another
     // build).
     void save_under_build_for_test(const PreparedRecord& prepared, const std::string& build);
+    // Test seam: every save calls `fn` on the saving thread after each of its
+    // steps that makes sqlite calls, the last one after its COMMIT or
+    // RELEASE, so a test can check the store's lock at each. Empty to stop.
+    void set_after_save_step_for_test(std::function<void()> fn) {
+        after_save_step_for_test_ = std::move(fn);
+    }
+    // For the tests: tries the writer's lock (StoreConnection::mutex) and
+    // lets it go again; true when another thread holds it. The lock is
+    // recursive, so the thread that holds it always gets it: call this from
+    // a thread other than the one being checked.
+    bool writer_lock_held_by_other_thread_for_test();
 
     // A save group (D86 items 1 and 2): one transaction around several
     // save calls, which the batch's writer opens so it commits once per group
@@ -775,13 +789,6 @@ public:
     void set_between_lookup_reads_for_test(std::function<void()> fn) {
         between_lookup_reads_for_test_ = std::move(fn);
     }
-    // Every chart lookup calls Ready under `want`.
-    std::unordered_set<std::string> ready_song_ids(const Profile& want);
-    // Every Ready record under `want`, paths included, best score first (a
-    // record with no paths last, equal scores by song id). Names come from
-    // chart_index(), not from here.
-    std::vector<RecordRow> ready_records(const Profile& want);
-
     // How many real records the file holds, under any profile. A failure
     // record is not counted.
     int64_t record_count() override;
@@ -795,8 +802,9 @@ public:
     // reads no chart.
 
     // The rows the fill replays under `profile`: every Ready path row with
-    // no saved figure and at least one squeeze-in, whose chart the library
-    // lists. In chart, profile row and rank order. A profile the store holds
+    // no saved figure whose own columns say engine_hardest_ms gives its path
+    // one, and whose chart the library lists. In chart, profile row and rank
+    // order. A profile the store holds
     // no Ready row for has none.
     std::vector<MissingHardestRow> rows_missing_hardest(const Profile& profile);
     // Writes `figures` onto chart `song_id`'s path rows under profile row
@@ -892,6 +900,9 @@ private:
     std::atomic<bool> fail_next_reader_open_for_test_{false};
     // What set_between_lookup_reads_for_test set.
     std::function<void()> between_lookup_reads_for_test_;
+    // What set_after_save_step_for_test set, and the save's call of it.
+    std::function<void()> after_save_step_for_test_;
+    void after_save_step();
     // The fingerprint of the rules this process runs under. A row stamped
     // with anything but `fixed` reads Stale. Computed once, when the store
     // opens.

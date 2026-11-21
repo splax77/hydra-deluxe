@@ -1,5 +1,6 @@
 #include "core/scoring.h"
 
+#include <utility>
 #include <vector>
 
 #include "core/timing.h"  // to_multiplier, multiplier_step, kStarPowerMultiplier
@@ -108,6 +109,23 @@ int solo_note_count(const Chord& chord, bool flag_solo) {
 
 int solo_bonus(const Chord& chord, bool flag_solo) {
     return kSoloBonusPerNote * solo_note_count(chord, flag_solo);
+}
+
+std::vector<SoloFigures> solo_figures(const Song& song) {
+    std::vector<SoloFigures> out;
+    out.reserve(song.solo_sections.size());
+    for (const SoloSection& s : song.solo_sections) {
+        SoloFigures f;
+        f.steps.reserve(s.last - s.first + 1);
+        for (size_t i = s.first; i <= s.last; ++i) {
+            const SongTimestamp& ts = song.sequence[i];
+            f.notes += solo_note_count(ts.chord, ts.flag_solo);
+            f.bonus += solo_bonus(ts.chord, ts.flag_solo);
+            f.steps.push_back({i, f.notes, f.bonus});
+        }
+        out.push_back(std::move(f));
+    }
+    return out;
 }
 
 ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,

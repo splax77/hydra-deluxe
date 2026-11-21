@@ -1,0 +1,300 @@
+> click ###analysissettings
+> wait 0.2
+> window //$FOCUSED
+> check **/##legacyfills
+> key Escape
+> wait 0.2
+> window //Hydra
+> click Scan library
+> wait-idle
+A dialog is open: "Scanning charts" (buttons: Continue). Close it first.
+> click //Scanning charts/Continue
+> timeout 300
+> open Laments Of An Icarus
+> wait-idle
+> click **/##DetailsTabs/Paths
+> wait 0.5
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Laments Of An Icarus } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Laments Of An Icarus
+common\IB24\T5 | TEXTURES
+Silhouettes | |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Laments Of An Icarus
+TEXTURES · charted by Benimaru
+528,610
+(No activations.)
+Optimal path · 6 stars · 202 2x kicks (21%)
+/ Paths \
+Optimal
+> 528,610 1 path
+    (No activations.)
+Activations
+None.
+Multiplier squeeze  · none
+> Score breakdown
+Average Multiplier:  3.979x
+
+Notes:               122,715
+Combo Bonus:         395,745
+Star Power:          0
+Solo Bonus:          0
+Accent Notes:        600
+Ghost Notes:         9,550
+
+Total Score:         528,610
+[ Copy path ]
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/##DetailsTabs/Preview
+> wait 1
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Laments Of An Icarus } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Laments Of An Icarus
+common\IB24\T5 | TEXTURES
+Silhouettes | |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Laments Of An Icarus
+TEXTURES · charted by Benimaru
+528,610
+(No activations.)
+Optimal path · 6 stars · 202 2x kicks (21%)
+/ Paths \ / Preview \
+Showing { (No activations.)  (optimal) }
+[ < Act ] [ Act > ] [ -5s ] [ < 10 ms ] [ Play ] [ 10 ms > ] [ +5s ] Vol { 40% }
+{ 0:00.000 / 4:14.065 }
+[ ] Activation ← → 5 seconds , . 10 ms Space Play/pause / Dynamics \ / Stars \
+> dump Hydra
+window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)
+  "" id=0x0FA12F2B rect=(8,8 1264x41)
+  "Manage folders... (1)" id=0xBB7C1C01 rect=(8,58 134x24)
+  "Scan library" id=0xA6E9877D rect=(150,58 81x24)
+  "Analyze shown (1)..." id=0x536EB5E7 rect=(239,58 137x24)
+  "Compare with dmleaderboards..." id=0xB37C47B2 rect=(384,58 206x24) disabled
+  "Analysis settings: 1.0 fills · Score range 2 scores###analysissettings" id=0xB7DC11A6 rect=(619,58 310x24)
+  "Open path report" id=0x59929B2B rect=(1131,58 141x24)
+  "" id=0x06E76512 rect=(8,86 444x706)
+  "" id=0xBBB91B00 rect=(452,86 820x706)
+window "Hydra/##versionbar_0FA12F2B" id=0xBE23EB4A pos=(8,8) size=(1264,41) child
+window "Hydra/##library_06E76512" id=0x483CC508 pos=(8,86) size=(444,706) child
+  "##search" id=0xD6AD61FD rect=(8,108 419x24) inputable
+  "X##clearsearch" id=0x1D607FBF rect=(435,108 17x24)
+  "Search tips##searchtips" id=0x2D40C9E4 rect=(225,136 69x18)
+  "All (1)##chipall" id=0x963C6181 rect=(8,158 43x24)
+  "Not analyzed (0)##chipnew" id=0xC3CCBB89 rect=(59,158 108x24) disabled
+  "Stale (0)##chipstale" id=0x7C8B88F8 rect=(175,158 60x24) disabled
+  "Analyzed (1)##chipdone" id=0x161A424F rect=(243,158 82x24)
+  "Can't analyze (0)##chipcant" id=0xE6B440CF rect=(333,158 111x24) disabled
+  "" id=0x6ACAF71F rect=(8,190 444x602)
+window "Hydra/##library_06E76512/##librarytable_6ACAF71F" id=0x30271400 pos=(8,190) size=(444,602) child
+    "" id=0x6ACAF720 rect=(147,190 8x602)
+    "" id=0x6ACAF721 rect=(237,190 8x602)
+    "" id=0x6ACAF725 rect=(452,190 8x602)
+      "Title" id=0x0D873EC7 rect=(8,190 143x22)
+      "Artist" id=0xCA490EC6 rect=(151,190 90x22)
+      "Best path" id=0x66A9CE33 rect=(241,190 211x22)
+      "Laments Of An Icarus" id=0xB4EFB03E rect=(8,212 444x44)
+window "Hydra/##songpanel_BBB91B00" id=0x2769971E pos=(452,86) size=(820,706) child
+  "Open in Path Builder" id=0x9DBD35B3 rect=(941,94 135x24) disabled
+  "Hide library" id=0x01FEC3A9 rect=(1084,94 84x24)
+  "<##prevsong" id=0xA2866AE1 rect=(1176,94 24x24) disabled
+  ">##nextsong" id=0xF0F267E7 rect=(1208,94 24x24) disabled
+  "X##closepanel" id=0xA484F109 rect=(1240,94 24x24)
+    "" id=0xFE2FE979 rect=(460,220 45x24)
+    "" id=0xBC90BD58 rect=(509,220 57x24)
+      "" id=0x81074FF2 rect=(521,248 302x24)
+      "< Act##prevact" id=0x6C3CA438 rect=(460,276 40x24) disabled
+      "Act >##nextact" id=0x141E2141 rect=(508,276 40x24) disabled
+      "-5s" id=0x9BCFF14A rect=(564,276 27x24)
+      "< 10 ms" id=0xE9043F97 rect=(599,276 54x24)
+      "Play" id=0x86C6B49E rect=(661,276 47x24)
+      "10 ms >" id=0x938593B3 rect=(716,276 54x24)
+      "+5s" id=0x4A7E075D rect=(778,276 30x24)
+      "##volume" id=0x3CD2B186 rect=(852,276 110x24) inputable
+      "##scrub" id=0xCDF4482F rect=(460,304 613x24) inputable
+      "##highway_image" id=0x2AB79E06 rect=(460,332 804x424)
+      "##time_box" id=0xCDEDBCA3 rect=(460,332 188x58)
+      "##score_box" id=0x90413CC3 rect=(460,396 148x109)
+      "##sp_gauge" id=0x59E74E77 rect=(1240,360 14x369)
+      "##drain_box" id=0xCD492C19 rect=(1030,342 204x76)
+    "" id=0x67BA62F8 rect=(570,220 69x24)
+    "" id=0x37B63AC2 rect=(643,220 42x24)
+> open Trippin' on a Hole in a Paper Heart
+> wait-idle
+> click **/##DetailsTabs/Paths
+> wait 0.5
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Trippin' on a Hole in a Paper Heart } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Trippin' on a Hole in a Paper Heart
+common\IB24\T2 | | 379,655  0 0 E2 E0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Trippin' on a Hole in a Paper Heart
+Stone Temple Pilots · charted by Advanst
+379,655
+0 0 E2 E0
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 379,655 1 path
+    0 0 E2 E0 35.4 ms
+Within 2 scores
+> 377,735 1 path
+    2 1 0
+> 377,535 1 path
+    2 2 0
+Best all-0 path
+377,415 · 0 0 E1 0
+2,240 below optimal
+Activations 4 · no SP left over [ Expand all ]
+m1 m81
+1 0 m15.1.0 2 bars
+2 0 m31.1.0 2 bars
+3 E2 m55.1.0 3 bars early fill 35.2 ms
+4 E0 m75.1.0 2 bars early fill 35.4 ms
+Multiplier squeeze  · none
+> Score breakdown
+Average Multiplier:  5.164x
+
+Notes:               71,370
+Combo Bonus:         217,455
+Star Power:          88,680
+Solo Bonus:          0
+Accent Notes:        450
+Ghost Notes:         1,700
+
+Total Score:         379,655
+[ Copy path ]
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/##DetailsTabs/Preview
+> wait 1
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Trippin' on a Hole in a Paper Heart } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Trippin' on a Hole in a Paper Heart
+common\IB24\T2 | | 379,655  0 0 E2 E0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Trippin' on a Hole in a Paper Heart
+Stone Temple Pilots · charted by Advanst
+379,655
+0 0 E2 E0
+Optimal path · 7 stars
+/ Paths \ / Preview \
+Showing { 0 0 E2 E0  (optimal) }
+[ < Act ] [ Act > ] [ -5s ] [ < 10 ms ] [ Play ] [ 10 ms > ] [ +5s ] Vol { 40% }
+{ 0:00.000 / 3:00.744 }
+[ ] Activation ← → 5 seconds , . 10 ms Space Play/pause / Dynamics \ / Stars \
+> open Grow
+> wait-idle
+> click **/##DetailsTabs/Paths
+> wait 0.5
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (2)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 2 of 98 charts
+{ Grow } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (2) ] [ Not analyzed (1) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Book (feat. Matt Garstka)
+common\IB24\T3 | CHON
+Grow | Not analyzed |
+| Grow | Victoria | 671,195  7- 1 4 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Grow
+Victoria · charted by Bounty
+671,195
+7- 1 4
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 671,195 1 path
+    7- 1 4 0.0 ms
+Within 2 scores
+> 670,995 1 path
+    7- 1 2 0.0 ms
+> 670,975 1 path
+    7- 1 1+ 0.0 ms
+Best all-0 path
+646,915 · 0 0 0 0
+24,280 below optimal
+Activations 3 · no SP left over [ Expand all ]
+m1 m126
+1 7- m50.1.0 4 bars squeeze out 0.0 ms
+2 1 m82.1.0 2 bars
+3 4 m114.1.0 3 bars
+> Multiplier squeeze  · +80
+4x   (+80 pts):   [Kick - Yellow cymbal (Ghost)]
+Hit [Kick] first.
+> Score breakdown
+Average Multiplier:  4.766x
+
+Notes:               100,520
+Combo Bonus:         419,135
+Star Power:          111,240
+Solo Bonus:          0
+Accent Notes:        11,650
+Ghost Notes:         28,650
+
+Total Score:         671,195
+[ Copy path ]
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/##DetailsTabs/Preview
+> wait 1
+> text
+Hydra Deluxe 3.1.2 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (2)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 1.0 fills · Score range 2 scores ] [ Open path report ]
+Library 2 of 98 charts
+{ Grow } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (2) ] [ Not analyzed (1) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Book (feat. Matt Garstka)
+common\IB24\T3 | CHON
+Grow | Not analyzed |
+| Grow | Victoria | 671,195  7- 1 4 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Grow
+Victoria · charted by Bounty
+671,195
+7- 1 4
+Optimal path · 7 stars
+/ Paths \ / Preview \
+Showing { 7- 1 4  (optimal) }
+[ < Act ] [ Act > ] [ -5s ] [ < 10 ms ] [ Play ] [ 10 ms > ] [ +5s ] Vol { 40% }
+{ 0:00.000 / 3:20.538 }
+[ ] Activation ← → 5 seconds , . 10 ms Space Play/pause / Dynamics \ / Stars \
+> type **/##search |
+> wait 0.5
+> text | Laments
+| Laments Of An Icarus | TEXTURES
+> text | Paper Heart
+| Trippin' on a Hole in a Paper Heart | | 379,655  0 0 E2 E0 |
+> text | Victoria
+| Grow | Victoria | 671,195  7- 1 4 |
+Victoria · charted by Bounty
+[PASS] hydra/script

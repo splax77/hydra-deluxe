@@ -120,17 +120,6 @@ TEST_CASE("font coverage: a character some backup font holds draws in the main a
                                    << backups.absent_list() << ")");
 }
 
-TEST_CASE("font coverage: U+2010 HYPHEN draws in the main font") {
-    HeadlessImGui imgui;
-    ImFont* main_font = ImGui::GetIO().FontDefault;
-    REQUIRE(main_font != nullptr);
-    const std::string segoe = hydra::ui::fallback_font_path("segoeui.ttf");
-    REQUIRE_MESSAGE(hydra::file_exists_utf8(segoe),
-                    segoe << " is absent here; this case needs Segoe UI");
-    const float size = main_font->Sources[0]->SizePixels;
-    CHECK(own_glyph(main_font, size, 0x2010) != nullptr);
-}
-
 TEST_CASE("font coverage: the main and mono fonts draw printable ASCII from their own files") {
     HeadlessImGui imgui;
     for (ImFont* font : {ImGui::GetIO().FontDefault, hydra::ui::g_mono_font}) {

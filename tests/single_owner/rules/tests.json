@@ -333,11 +333,6 @@
           "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
         },
         {
-          "file": "tests/test_song_input.cpp",
-          "line_text": "Song s = parse(song + \"[Song]\\n{\\n  Resolution = 480\\n}\\n\" + sync +",
-          "why": "\"malformed lines keep their handling\" repeats the [Song] section to pin that the later one replaces it, which chart_text cannot write"
-        },
-        {
           "file": "tests/test_app_click.cpp",
           "line_text": "{ std::ofstream f(chart); f << \"[Song]\\n\"; }",
           "why": "a placeholder .chart that only has to exist on disk; no case parses it"
@@ -1029,6 +1024,18 @@
       ],
       "scope": [
         "tests"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/test_song_parse.cpp",
+          "line_text": "const uint64_t plain = digest::song_digest(chart(std::nullopt));",
+          "why": "\"the marker pitch table is the one list the parser reads\" compares songs it loads from bytes in memory, and chart_parse_hash only loads a file path; both digests come from one run, so they cannot drift apart"
+        },
+        {
+          "file": "tests/test_song_parse.cpp",
+          "line_text": "const bool read = digest::song_digest(chart(pitch)) != plain;",
+          "why": "the same marker pitch test: the song with the marker, loaded from bytes, against the song without it"
+        }
       ],
       "note": "A test that hashes a chart's parse calls chart_parse_hash, so the tests cannot drift from each other when the digest gains a part. tools/bench.cpp keeps its own loop to time the parts apart, and is outside this row's scope."
     },

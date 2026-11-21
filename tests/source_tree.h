@@ -1,14 +1,14 @@
 // The repo's own source tree, as the tests that read it see it. This is the
 // one place a test reads HYDRA_SOURCE_DIR (the repo root CMakeLists.txt passes
-// in) and the one place a test lists the repo's files: the code under the
-// walked folders (source_files) and the markdown files (markdown_files).
-// The scans in tests/single_owner/ and the docs check in
-// tests/test_docs_match_code.cpp both come here, so a third test that reads
-// the tree calls these instead of growing its own walker.
+// in) and the one place a test lists the repo's code under the walked folders
+// (source_files). The scans in tests/single_owner/ come here, so another test
+// that reads the tree calls these instead of growing its own walker.
 //
-// Both lists come from git (git_listed), not from the disk. A folder git
+// The list comes from git (git_listed), not from the disk. A folder git
 // ignores, such as a node_modules an npm install put under tools/, holds
-// vendored code the repo never ships, so the scans must not read it.
+// vendored code the repo never ships, so no test reads it. The list holds
+// committed and new files, so the single-owner and clone scans catch a copied
+// rule in a file before its first commit.
 #pragma once
 
 #include <algorithm>
@@ -43,19 +43,18 @@ inline bool walk_visits(const std::string& rel) {
     return false;
 }
 
-// The repo-relative paths (forward slashes) that git tracks or would add and
-// that match the git pathspec `pathspec`. A new file nobody has added yet is
-// in the list, so a scan sees it before its commit; a file git ignores never
-// is. In byte order, each once. Throws std::runtime_error naming `root` when
-// git fails there.
+// The repo-relative paths (forward slashes) that match the git pathspec
+// `pathspec`: the files git tracks (committed or staged) and the new files it
+// would add. A file git ignores is not listed. In byte order, each once.
+// Throws std::runtime_error naming `root` when git fails there.
 inline std::vector<std::string> git_listed(const std::filesystem::path& root, const std::string& pathspec) {
     const std::string where = root.u8string();
     std::vector<std::string> lines;
     try {
         // -z: names end in a NUL and come unquoted, so a space, a quote or a
         // non-ASCII byte in a name arrives as written.
-        lines = precheck::run_git(
-            where, {"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec});
+        lines = precheck::run_git(where, {"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--",
+                                          pathspec});
     } catch (const precheck::GitError& e) {
         throw std::runtime_error("the source walk could not ask git for the files in " + where + ": " +
                                  e.what());
@@ -78,17 +77,7 @@ inline std::vector<std::string> git_listed(const std::filesystem::path& root, co
     return out;
 }
 
-// Every markdown file in the repo git_listed lists, in byte order. Throws
-// std::runtime_error naming `root` when git fails there or lists nothing, so
-// a scan can never pass by reading no files.
-inline std::vector<std::string> markdown_files(const std::filesystem::path& root) {
-    std::vector<std::string> out = git_listed(root, "*.md");
-    if (out.empty())
-        throw std::runtime_error("the source walk found no markdown files git knows in " + root.u8string());
-    return out;
-}
-
-// The paths git_listed lists under the walked folders. Folder by folder in
+// The paths git lists under the walked folders. Folder by folder in
 // kWalkedFolders order, each in byte order. Throws std::runtime_error naming
 // `root` when git fails there or lists nothing, so a scan can never pass by
 // reading no files.

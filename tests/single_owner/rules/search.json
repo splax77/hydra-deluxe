@@ -26,6 +26,18 @@
       "must_not_match": [
         "CHECK(st.plusmeasure(act.timecode, 16).ticks() == 21840);"
       ],
+      "owner_lines": [
+        {
+          "file": "tests/test_sp_end.cpp",
+          "line_text": "return song.timing().plusmeasure(song.timecode(from_tick), sp_bars_to_measures(bars)).ticks();",
+          "why": "the expected side of the SP-end tests: the end a hand-built song's own measure count gives, compared with the history the engine stored; add_act_edge and add_deact_edge are private to ScoreGraph, so a test cannot call them"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "return song.timing().plusmeasure(from, sp_bars_to_measures(bars)).ms() - from.ms();",
+          "why": "engine_sp_ms, the expected side of the drain-box tests: the SP length the graph's rule gives from a tick, compared with the box's text; add_act_edge and add_deact_edge are private to ScoreGraph, so a test cannot call them"
+        }
+      ],
       "scope": [
         "src",
         "tools",
@@ -71,7 +83,7 @@
         "options.target_act_ticks = ticks;"
       ],
       "must_not_match": [
-        "const std::vector<Path> kept = search_target(song, cfg, want);"
+        "const std::vector<Path> kept = search_target(song, cfg, activation_pins(want)).paths;"
       ],
       "owner_lines": [
         {
@@ -86,7 +98,7 @@
         },
         {
           "file": "tests/test_sp_end.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{act_tick, second_fill};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
@@ -95,33 +107,28 @@
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
-          "file": "tests/test_sp_end.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "file": "tests/test_fills_and_skips.cpp",
+          "line_text": "target.target_act_ticks = std::vector<int64_t>{last_fill};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "target.target_act_ticks = std::vector<int64_t>{7680};",
+          "line_text": "a_then_late.target_act_ticks = std::vector<int64_t>{first_fill, last_fill};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{act_tick};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
-          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
-        },
-        {
-          "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{19200};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{kEfFillC};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_preview_scene.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{fill_chords[2]};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
@@ -133,6 +140,11 @@
           "file": "tests/test_replay.cpp",
           "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search_target.cpp",
+          "line_text": "options.target_act_ticks = ticks;",
+          "why": "unfiltered_target: the engine's answer before search_target filters it, the oracle search_target's filter is checked against; search_target does not return it"
         }
       ],
       "scope": [
@@ -476,7 +488,7 @@
     },
     {
       "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
-      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
+      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::difficulty in src/core/model.cpp (the zero test: empty when nothing needs timing)",
       "owner_file": "src/search/pather.cpp",
       "owner_symbol": "allzero_options",
       "date": "2026-10-04",

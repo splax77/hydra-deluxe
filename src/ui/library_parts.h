@@ -48,6 +48,11 @@ std::string legacy_fills_help_text();
 // The early-fill window's name, as the panel row, the settings button's
 // phrase and the batch confirm's line all print it.
 inline constexpr const char* kEarlyFillWindowName = "Early fill window";
+// The three chart-mode switches' names, as the settings button's phrase and
+// the batch confirm's difficulty line both print them.
+inline constexpr const char* kProDrumsName = "Pro Drums";
+inline constexpr const char* kBass2xName = "2x Bass";
+inline constexpr const char* kNoteShuffleName = "Note Shuffle";
 // The help text beside the "Early fill window" box. Its top edge is the hit
 // window, as report::hit_window_text prints it.
 std::string early_fill_window_help_text();
@@ -56,6 +61,8 @@ std::string early_fill_window_help_text();
 // Called every frame inside the "##library" child, even when the library is
 // empty: it also runs AppState::tick_library.
 void render_library(AppState& app);
+// The short line under the search box, before the Search tips link.
+inline constexpr const char* kSearchLineText = "Type any words, or narrow it down.";
 
 // library_dialogs.cpp
 void render_folder_manager(AppState& app);
@@ -66,6 +73,10 @@ void render_dm_picker_modal(AppState& app);
 // rescan cache reused.
 std::string scan_folders_found_text(int64_t folders_seen);
 std::string scan_reused_text(int64_t charts_cached);
+
+// The running batch strip's lead word and "N of M" count, the start of its
+// first line: the strip and the GUI tests.
+std::string batch_strip_progress(bool stopping, bool paused, int64_t completed, int64_t total);
 
 // The settings lines the batch confirm lists, in the confirm's order.
 struct BatchSettingsSummary {

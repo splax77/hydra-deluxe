@@ -11,31 +11,51 @@ build	typedef_index	class	member	name	what
 4045		DrumsPlayer	ʿʷʲʻʸʸʹʿˁʶʲ	UnusedFillCheckTwin	A never-called method shaped like the deadline check, with other literals; read from the note fill_deadline.md (full decompile lines 275 to 289, not copied into fill_deadline.cs).
 4045		GameManager	ʲʻʺʹʺʲʷʾʻʺʹ	songTime	The song clock, in seconds; read from fill_deadline.cs line 11.
 4045		ʳʼʽʼˀʴʽʵʵʳʵ	ˀʵʲʲʻʸʸʽʹʽˁ	PlayerSkipTest	A static extension method returning bool, called on the same BasePlayer field that line 36 tests isRemotePlayer through; when it is true the meter gain skips the player, as it does for a remote player; what it tests was not found; read from fill_deadline.cs line 36.
-4045		ʶˀʵˁʹʿˀʶʿʲʾ		TrackBuilder	The static class that builds a drum track's play data and its fills; read from fill_generator.cs lines 6 to 141.
-4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʹʹʾʴʳʶʼʵʳʼʼ	BuildPlayData	Builds a drum track's play data and chooses generated or written fills; read from fill_generator.cs lines 6 to 27.
-4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʸˀʽʸʽʳʳʸʼʾʿ	GenerateFills	Generates fills from the measure lines when the track has no written fills; read from fill_generator.cs lines 30 to 77.
-4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʳʷˁʸʵʾʼʷˀʲˁ	PlaceWrittenFills	Places the fills the chart file names; read from fill_generator.cs lines 80 to 113.
-4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʶʸʲʷʵʸʻʻʸʹʸ	PickActivationNote	Picks the note of a chord that carries the fill's activation; read from fill_generator.cs lines 117 to 141.
-4045		ˀʺʷʺʵʾʼʿʹʼʸ		TrackData	The per-track data the builder reads; read from fill_generator.cs lines 6 to 27.
-4045		ˀʺʷʺʵʾʼʿʹʼʸ	ʸʶʳʸʸʲʶʺʼʽʳ	WrittenFills	The fills the chart file names for this track (a property, so facts.json does not list it); read from fill_generator.cs lines 20 and 83 to 86.
-4045		ʼˀˀʸʸʶʳʼʳʸʶ		Chord	One chord of a drum track's chord list; read from fill_generator.cs lines 117 to 141.
-4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʵʹʴʸʽʷʺʳʵʿʳ	LaneMask	The chord's lane bits (pads in the low 7, kicks in 0x180; a property, so facts.json does not list it); read from fill_generator.cs line 119.
-4045		ʲʺʲʴʶʴʶʻʺʷʴ		DrumFill	A fill: start time, length in seconds, start tick, length in ticks and a still-on flag; read from fill_generator.cs lines 58 to 74.
-4045		ʳʹʺˁʲʵʳˀʸʿʶ		WrittenFill	A fill the chart file names: start tick and length in ticks; read from fill_generator.cs lines 86 to 94.
-4045		ʷʽʻʻʿʵˀˁʽʳʶ		Chart	The parsed chart; read from fill_generator.cs lines 80 to 113.
-4045		ʾʹʷˀʼʼˁʽʼʽʾ		Coda	The object made from a chart event named "coda"; read from fill_generator.cs line 88.
-4045		ʵʷʽʴʹʽʳʹʷʴʷ	ˀˀʽʵʶʸʸʿʷʾʲ	standardResolution	The static resolution 192 that tick lengths are scaled from; read from fill_generator.cs lines 39 and 84 to 85.
-4045		ʵʹˁˀʷʽʾʲˁʲʶ		BeatGrid	The list of measure and beat lines built from the time signatures; read from fill_generator.cs lines 196 to 255.
-4045		ʵʹˁˀʷʽʾʲˁʲʶ	ˁʹʾʲʸʿʲʷʻˁʽ	measureLines	The times in seconds of the measure lines, which the generator walks; read from fill_generator.cs lines 40 and 196 to 255.
-4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʴˀʲʸʷʶˁˀʺʶʲ	BuildLines	Walks the chart beat by beat and stores each beat as MEASURE, BEAT_STRONG or BEAT_WEAK; read from fill_generator.cs lines 196 to 255.
-4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʼʺʾʼˁʼʹˁˁʷʻ	AddLine	Adds one line to the grid, and a MEASURE also to the measure-line list; its body is in the full decompile, not in fill_generator.cs; called from fill_generator.cs lines 196 to 255.
-4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʶʶˁʿʷʾʹʸʴʷʲ	numerator	The time signature's numerator, read from how the beat step uses it; read from fill_generator.cs lines 209 to 221.
-4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʲʲˀʵʼʿʳʸʾʾʴ	denominator	The time signature's denominator, read from how the beat step uses it; read from fill_generator.cs lines 208 and 251.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ		ChordListSearch	The static helper class that searches a chord list by tick; read from fill_generator.cs lines 143 to 193.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, a tie going to the later chord; read from fill_generator.cs lines 144 to 166.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʼʿˀʹʵˁˁʹʽʸʹ<T>	FirstAfter	Returns the index of the first chord strictly after a tick, or 0; read from fill_generator.cs lines 170 to 180.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʴʶʾˀˁʾʵʼʾʺʽ<T>	LastAtOrBefore	Returns the index of the last chord before a tick, or -1; a true flag argument counts a chord at the tick too; read from fill_generator.cs lines 184 to 193.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick between a low and a high tick, or nothing; called at fill_generator.cs line 93.
-4045		ʵʼʴʿʼʷʷˀʶˁʷ		BitMath	A static class of bit helpers; read from fill_generator.cs lines 125 and 129.
-4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʷʹʾˁʳʸʲʾʴʾʿ	HighestSetBit	Returns the highest set bit of a value; called at fill_generator.cs line 125.
-4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʴʽʸʿʼʸˁʷʿʹʸ	LowestSetBit	Returns the lowest set bit of a value, x & ~(x - 1); called at fill_generator.cs line 129.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ		TrackBuilder	The static class that builds a drum track's play data and its fills; read from fill_generator.cs lines 8 to 143.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʹʹʾʴʳʶʼʵʳʼʼ	BuildPlayData	Builds a drum track's play data and chooses generated or written fills; read from fill_generator.cs lines 8 to 29.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʸˀʽʸʽʳʳʸʼʾʿ	GenerateFills	Generates fills from the measure lines when the track has no written fills; read from fill_generator.cs lines 32 to 79.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʳʷˁʸʵʾʼʷˀʲˁ	PlaceWrittenFills	Places the fills the chart file names; read from fill_generator.cs lines 82 to 115.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʶʸʲʷʵʸʻʻʸʹʸ	PickActivationNote	Picks the note of a chord that carries the fill's activation; read from fill_generator.cs lines 119 to 143.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ		TrackData	The per-track data the builder reads; read from fill_generator.cs lines 8 to 29.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ	ʸʶʳʸʸʲʶʺʼʽʳ	WrittenFills	The fills the chart file names for this track (a property, so facts.json does not list it); read from fill_generator.cs lines 22 and 85 to 88.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ		Chord	One chord of a drum track's chord list; read from fill_generator.cs lines 119 to 143.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʵʹʴʸʽʷʺʳʵʿʳ	LaneMask	The chord's lane bits (pads in the low 7, kicks in 0x180; a property, so facts.json does not list it); read from fill_generator.cs line 121.
+4045		ʲʺʲʴʶʴʶʻʺʷʴ		DrumFill	A fill: start time, length in seconds, start tick, length in ticks and a still-on flag; read from fill_generator.cs lines 60 to 76.
+4045		ʳʹʺˁʲʵʳˀʸʿʶ		WrittenFill	A fill the chart file names: start tick and length in ticks; read from fill_generator.cs lines 88 to 96.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ		Chart	The parsed chart; read from fill_generator.cs lines 82 to 115.
+4045		ʾʹʷˀʼʼˁʽʼʽʾ		Coda	The object made from a chart event named "coda"; read from fill_generator.cs line 90.
+4045		ʵʷʽʴʹʽʳʹʷʴʷ	ˀˀʽʵʶʸʸʿʷʾʲ	standardResolution	The static resolution 192 that tick lengths are scaled from; read from fill_generator.cs lines 41 and 86 to 87.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ		BeatGrid	The list of measure and beat lines built from the time signatures; read from fill_generator.cs lines 198 to 257.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ˁʹʾʲʸʿʲʷʻˁʽ	measureLines	The times in seconds of the measure lines, which the generator walks; read from fill_generator.cs lines 42 and 198 to 257.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʴˀʲʸʷʶˁˀʺʶʲ	BuildLines	Walks the chart beat by beat and stores each beat as MEASURE, BEAT_STRONG or BEAT_WEAK; read from fill_generator.cs lines 198 to 257.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʼʺʾʼˁʼʹˁˁʷʻ	AddLine	Adds one line to the grid, and a MEASURE also to the measure-line list; its body is in the full decompile, not in fill_generator.cs; called from fill_generator.cs lines 198 to 257.
+4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʶʶˁʿʷʾʹʸʴʷʲ	numerator	The time signature's numerator, read from how the beat step uses it; read from fill_generator.cs lines 211 to 223.
+4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʲʲˀʵʼʿʳʸʾʾʴ	denominator	The time signature's denominator, read from how the beat step uses it; read from fill_generator.cs lines 210 and 253.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ		ChordListSearch	The static helper class that searches a chord list by tick; read from fill_generator.cs lines 145 to 195.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, a tie going to the later chord; read from fill_generator.cs lines 146 to 168.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʼʿˀʹʵˁˁʹʽʸʹ<T>	FirstAfter	Returns the index of the first chord strictly after a tick, or 0; read from fill_generator.cs lines 172 to 182.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʴʶʾˀˁʾʵʼʾʺʽ<T>	LastAtOrBefore	Returns the index of the last chord before a tick, or -1; a true flag argument counts a chord at the tick too; read from fill_generator.cs lines 186 to 195.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick between a low and a high tick, or nothing; called at fill_generator.cs line 95.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ		BitMath	A static class of bit helpers; read from fill_generator.cs lines 127 and 131.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʷʹʾˁʳʸʲʾʴʾʿ	HighestSetBit	Returns the highest set bit of a value; called at fill_generator.cs line 127.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʴʽʸʿʼʸˁʷʿʹʸ	LowestSetBit	Returns the lowest set bit of a value, x & ~(x - 1); called at fill_generator.cs line 131.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʿʹʽʽʵʻʺʸʻʵʳ	ActivationNoteFor	Calls PickActivationNote when its first flag is false; read from fill_generator.cs F6.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʺʷʸˀʷʴʿʲʵʼʾ	LaneBitsFor	Gives a note's lane bits by instrument; read from fill_generator.cs F8.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʴʺʵʽʻʷʴˀʸʹʺ	DrumLaneBit	Maps a drum note's kind to its lane bit; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʾʺʸʻʼʲˀˀʽʵʽ	DrumLanes	The drum lane bit enum, toms 0x1 to 0x8, cymbals 0x10 to 0x40, kicks 0x80 and 0x100; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʿˀʸʻʺʸʳʺʴʻʿ	lane	A note's lane bits (ushort); read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʲʸʺʺʼʷʵʵʶʵˁ	time	The chord's time in seconds (float), copied from its note; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʵʿʵʲʽʽʽʵʸˀʾ	tick	The chord's tick (uint); read from fill_generator.cs F8.
+4045		ʷʹʿʴʿʿˁʳʳʸʳ	ʸʴʶʳʻˁʶˀʻʸˀ	MidDrumNoteKind	Maps a .mid drum note number to a note kind, yellow, blue and green as cymbals; read from fill_generator.cs F8.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʻʺʷʾʿʿʻʼʲʿ	timingResolution	The resolution times the song speed, used by the clock; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʳˁʻʵʺʻʳˁʸʽ	resolution	The chart's own resolution, used for the 64th note and the beat step; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʹʴʶʸʾʲʶˀʼʺʷ	TickToSeconds	A tick's second, float, no rounding; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʽˀˀʻʹʶˁʽˁˁʽ	TicksToSecondsAtTempo	Seconds for a tick span at one tempo; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʸʳʾʸʼʹʽʾʿʸʵ	SecondsBetween	Seconds between two ticks, 0 when equal; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʵʲˁˀʲʳʼʶʾˀʺ	SecondsToTick	A second's tick, rounded half to even; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʽʹʷʺˁʵʹˁʻʲ	SecondsToTicksAtTempo	Ticks for a span of seconds at one tempo, Math.Round; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʿʼʿʿʵʵʲʿʷˁʻ	LastTick	The last note end over all tracks plus one beat; read from fill_generator.cs F10.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ	ʿʼʿʿʵʵʲʿʷˁʻ	LastTick	A track's last note tick plus sustain; read from fill_generator.cs F10.
+4045		ʼʹʵˁʸʳʾʺˁʳʽ		Tempo	A tempo change: milli-BPM and its start second; read from fill_generator.cs F9.
+4045		ʼʺˀʲʺˀʼˁʽʸʸ		ChartObject	The base class of chart objects: tick and its second; read from fill_generator.cs F9.
+4045		ʿʺʶʹʲʳʶʺʶʸʶ	ʶʷʽʺʿʹʻʼʴʶʽ<T, TList>	LastAtOrBeforeTick	Binary search for the last item at or before a tick; read from fill_generator.cs F9.

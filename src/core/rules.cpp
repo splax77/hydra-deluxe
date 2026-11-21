@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 namespace hydra::core {
 
@@ -30,9 +31,23 @@ namespace {
 // rules_fields() order. The text is frozen: changing it makes every stored
 // result Stale (docs/adr/0014). A whole number is written in the same %.17g
 // form as a fraction.
+//
+// The text keeps a fill_cooldown_measures line, before
+// fill_max_distance_beats, holding the fixed four measure lines both games
+// step after a generated fill (kLinesAfterFill in core/song.cpp). No Rules
+// field sets it. The line stays because the stored fingerprint is what marks a
+// result Stale: a library analysed at the old default of 4 keeps results this
+// engine would reproduce, so its fingerprint must stay equal and it must not
+// be re-analysed for nothing, while a library written under another value
+// differs from this text and goes Stale, as it should. Dropping the line
+// would stale every library.
+constexpr const char* kFixedFillCooldownLine = "fill_cooldown_measures=4\n";
+
 std::string fixed_cap_text(const Rules& r) {
     std::string text;
     for (const RulesField& f : rules_fields()) {
+        if (std::string_view(f.name) == "fill_max_distance_beats")
+            text += kFixedFillCooldownLine;
         if (auto real = std::get_if<double Rules::*>(&f.member)) {
             add_line(text, f.name, r.**real);
         } else if (auto whole = std::get_if<int Rules::*>(&f.member)) {
@@ -76,7 +91,6 @@ const std::vector<RulesField>& rules_fields() {
         {"backend_leeway_ms", &Rules::backend_leeway_ms, 0.0},
         {"sqout_rule", &Rules::sqout_rule},
         {"max_tied_paths", &Rules::max_tied_paths, 1.0},
-        {"fill_cooldown_measures", &Rules::fill_cooldown_measures, 1.0},
         {"fill_max_distance_beats", &Rules::fill_max_distance_beats, 0.0},
         {"fill_land_slop_beats", &Rules::fill_land_slop_beats, 0.0},
     };

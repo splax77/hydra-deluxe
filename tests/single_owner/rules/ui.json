@@ -982,6 +982,11 @@
           "file": "src/ui/activation_row_layout.h",
           "line_text": "inline constexpr float kRowMinBarsX = 200.0f;   // the bars never start before this",
           "why": "kRowMinBarsX, the owner"
+        },
+        {
+          "file": "tests/test_list_scroll.cpp",
+          "line_text": "ImGui::BeginChild(\"##rows\", ImVec2(0.0f, 200.0f));",
+          "why": "the height of the test's own scrolling list of Selectables, not an activation row"
         }
       ],
       "scope": [
@@ -1029,44 +1034,47 @@
     },
     {
       "question": "How big is each Preview overlay box at a scale?",
-      "owner": "overlay_box_sizes and line_height in src/ui/preview_panel.cpp",
+      "owner": "overlay_box_sizes and line_height in src/ui/preview_panel.cpp, with their factors in src/ui/preview_panel_layout.h",
       "owner_file": "src/ui/preview_panel.cpp",
       "owner_symbol": "overlay_box_sizes",
       "date": "2026-10-05",
       "decision": "audit finding R7.18; phase 6 task J3-5 (D53, D54)",
       "added_by": "J3-5",
-      "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f",
-      "anchor": "* 1.",
+      "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f|\\b(kOverlayLineHeight|kBigTypeScale|kBigTypeLineHeight)\\s*=(?!=)",
       "must_match": [
         "const float line_h = size * 1.25f;",
-        "const float score_size = score.available ? size * 1.8f : size;"
+        "const float score_size = score.available ? size * 1.8f : size;",
+        "constexpr float kBigTypeScale = 1.8f;"
       ],
       "must_not_match": [
         "const float line_h = line_height(size);",
-        "s.pad = px(8.0f) * scale;"
+        "s.pad = px(8.0f) * scale;",
+        "float line_height(float size) { return size * kOverlayLineHeight; }",
+        "s.big_size = s.size * kBigTypeScale;"
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "float line_height(float size) { return size * 1.25f; }",
-          "why": "line_height, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kOverlayLineHeight = 1.25f;",
+          "why": "the line height line_height steps by, the owner's factor"
         },
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "s.big_size = s.size * 1.8f;",
-          "why": "overlay_box_sizes, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kBigTypeScale = 1.8f;",
+          "why": "the large type's size overlay_box_sizes sets, the owner's factor"
         },
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "auto big_line = [](float sz) { return sz * 1.2f; };",
-          "why": "overlay_box_sizes, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kBigTypeLineHeight = 1.2f;",
+          "why": "the large type's line height overlay_box_sizes sets, the owner's factor"
         }
       ],
       "scope": [
         "src/ui/preview_panel.cpp",
+        "src/ui/preview_panel_layout.h",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel and tab are scanned."
+      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel, its layout header and the tab are scanned. The row flags a factor typed in again and a second definition of one of the header's names. It has no anchor, because a definition need not hold the typed factor's text; the scope is three files, so the regex on every line costs nothing."
     },
     {
       "question": "When a Preview scene lands or is dropped, what moves with it?",
@@ -1374,19 +1382,12 @@
         "h.app->settings.depth_value = 999999;",
         ": \"00000000000000000000000000000000\";"
       ],
-      "owner_lines": [
-        {
-          "file": "tests/ui/uitest_library.cpp",
-          "line_text": "IM_CHECK_STR_EQ(widest.c_str(), \"000000\");",
-          "why": "the pin of one measured run of widest_digits(6) (D42)"
-        }
-      ],
       "scope": [
         "src",
         "tools",
         "tests"
       ],
-      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test's pin is the one measured answer (D42)."
+      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test reads widest_digits itself and holds no run of its own."
     },
     {
       "question": "How wide is the library with the song panel open?",
@@ -1476,12 +1477,12 @@
       "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself."
     },
     {
-      "question": "How long does a job have left, from the rate over its recent work?",
+      "question": "How long does a job have left, from the rate of its work?",
       "owner": "app::TimeLeftClock in src/app/time_left.h",
       "owner_file": "src/app/time_left.h",
       "owner_symbol": "TimeLeftClock",
       "date": "2026-10-31",
-      "decision": "D283",
+      "decision": "D283, D352",
       "added_by": "aoa-t4-build",
       "pattern": "\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)\\w*\\)?.*/|/.*\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)",
       "anchor": "total",
@@ -1493,12 +1494,12 @@
       "must_not_match": [
         "const int64_t n = std::min(kBlockFrames, total - done);",
         "return static_cast<float>(std::clamp(done / total, 0.0, 1.0));",
-        "if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);"
+        "if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.completed, s.total);"
       ],
       "owner_lines": [
         {
           "file": "src/app/time_left.h",
-          "line_text": "answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done_) / rate)",
+          "line_text": "answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done) / rate)",
           "why": "TimeLeftClock::read, the owner: the batch strip (BatchJob::snapshot) and the Preview loader (ByteRateClock) read it"
         }
       ],
@@ -1506,7 +1507,7 @@
         "src",
         "tools"
       ],
-      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
+      "note": "Time left is the work still to go over the job's own rate: the charts done over the batch time so far for the batch strip (D352), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",

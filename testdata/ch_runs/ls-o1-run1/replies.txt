@@ -1,0 +1,6 @@
+ch_snapshot:
+songTime in ms: 1149.4 (GameManager's clock)
+flags word: 0x2 (OFF_FLAGS)
+bit 0x10: clear
+dynamics threshold: 100 (OFF_DYN_THRESHOLD, +0x2c0)
+ghost axis value: 0.889763779527559 (kit_tools.pad_axis)

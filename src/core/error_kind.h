@@ -147,6 +147,12 @@ private:
     std::optional<NetService> service_;
 };
 
+// The raw detail of a file that could not be opened, naming `path`. Every
+// opener that throws for it reads this, whatever kind it throws with.
+inline std::string cannot_open_file_text(const std::string& path) {
+    return "cannot open file: " + path;
+}
+
 // The one error a step throws when it was asked to stop. Every layer that
 // stops on request throws this or a type derived from it, so the kind and the
 // raw text are built here once. Layers that catch their own stop by type

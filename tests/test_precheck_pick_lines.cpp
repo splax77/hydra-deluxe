@@ -82,17 +82,17 @@ TEST_CASE("precheck pick: a hunk that deletes and adds records both sides") {
 }
 
 TEST_CASE("precheck pick: body lines that look like file headers stay body lines") {
-    // A deleted "-- x" shows as "--- x" and an added "++ y" as "+++ y".
-    const std::vector<std::string> diff = {
-        "diff --git a/src/q.cpp b/src/q.cpp",
-        "--- a/src/q.cpp",
-        "+++ b/src/q.cpp",
-        "@@ -7,2 +7 @@ int f() {",
-        "--- x",
-        "-int gone;",
-        "+++ y",
-    };
-    const ChangedLines c = ChangedLines::parse_diff(diff);
+    TempRepo fx("precheck_pick_header_like");
+    commit_texts(fx.dir, {{"src/q.cpp", "int f() {\nl2\nl3\nl4\nl5\nl6\n-- x\nint gone;\nl9\n"}}, "base");
+    // The tip deletes base lines 7-8 ("-- x" and "int gone;") and adds "++ y"
+    // as its line 7, so git's diff shows a deleted "--- x" and an added
+    // "+++ y" inside the hunk.
+    write_fixture_file(fx.dir, "src/q.cpp", "int f() {\nl2\nl3\nl4\nl5\nl6\n++ y\nl9\n");
+    commit_all(fx.dir, "tip");
+
+    Repo repo(fx.dir);
+    const Range r = resolve_range(repo, "main", false, "");
+    const ChangedLines c = ChangedLines::from_diff(repo, r.base, r.tip);
     CHECK(c.added.files() == std::vector<std::string>{"src/q.cpp"});
     CHECK(c.added.lines("src/q.cpp", 100) == std::vector<int>{7});
     CHECK(c.deleted.size() == 1);

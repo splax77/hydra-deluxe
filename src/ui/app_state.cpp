@@ -273,7 +273,8 @@ void AppState::tick_library(double now) {
                 batch_refreshed_at_ = now;
                 // The open song's panel shows the engine's own result, which
                 // a batch under the same settings finds again, so only the
-                // rows take the answers (D87 item 1).
+                // rows take the answers. No filed decision says whether the
+                // panel should follow a batch instead.
                 library.set_summaries_for(saved.answers);
                 // A lookup the batch could not make reads as any failed store
                 // read does (read_store).
@@ -1103,18 +1104,7 @@ void AppState::apply_settings() {
 
 namespace {
 
-// The version bar's fixed sentences (D259 and D260 in
-// docs/audit/2026-10-03-fix-decisions.md). The ones that name a version are
-// built with core::named_version.
-constexpr const char* kUpdateVerifyingText = "Checking the download...";
-constexpr const char* kUpdateLaunchingText = "Starting the installer...";
-constexpr const char* kUpdateDeclinedText = "The installer didn't start, so Hydra wasn't updated.";
-constexpr const char* kOnlyInstalledChecksText =
-    "Only the installed copy of " HYDRA_APP_NAME " checks for updates.";
-constexpr const char* kCheckingForUpdatesText = "Checking for updates...";
-constexpr const char* kCouldNotCheckText = "Hydra couldn't check for updates when it started.";
-constexpr const char* kUpToDateText = "Up to date";
-constexpr const char* kSkippedText = "Skipped.";
+// The version bar's fixed sentences are in ui/update_job.h.
 
 // "Hydra Deluxe 9.9.9 is available.": the offer's sentence and the resting
 // bar's after Later or Skip this version.
@@ -1122,10 +1112,9 @@ std::string available_text(const core::AppVersion& version) {
     return core::named_version(version) + " is available.";
 }
 
-// Inno Setup's log, beside the download.
-std::string installer_log_path() { return join_folder(update_folder(), "setup.log"); }
-
 }  // namespace
+
+std::string installer_log_path() { return join_folder(update_folder(), "setup.log"); }
 
 void AppState::start_updates() {
     // The first start after any version change says so once. An empty value

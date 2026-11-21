@@ -63,6 +63,12 @@ function New-Pass([string]$Session, [int]$Holder = $PID) {
 
 function Get-CMakeLines { @(Get-Content -LiteralPath $cmakeLog) }
 
+# What one logged cmake call was, read from its own arguments: a configure
+# names a preset and does not build; the real build builds the target
+# Invoke-Build asks for.
+function Test-ConfigureLine([string]$Line) { $Line -match '^--preset \S+ \|' }
+function Test-TargetBuildLine([string]$Line) { $Line -match '^--build .*--target hydra_tests( |$)' }
+
 # A process that stays alive, which the build is not a child of.
 function Start-Bystander { Start-Process pwsh -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 60' -PassThru -WindowStyle Hidden }
 
@@ -124,10 +130,28 @@ exit 0
     Check ($first -and $r.Code -eq 1 -and $r.Text -match 'this session already holds one') "second pass for one session: expected a refusal, got exit $($r.Code):`n$($r.Text)"
     Check ((New-Pass 'session-b') -ne '') 'a second session could not get a pass beside the first'
 
+    # The limit the reply names is the one written on the lock: the lock's
+    # expires= time, less the seconds the reply gives, falls between the
+    # moments just before and just after the pass was asked for. The number
+    # itself is build_slot.ps1's to choose.
     New-Case
+    $asked = [DateTime]::UtcNow
     $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
-    Check ($r.Text -match 'runs out if nothing claims it in 120 s') "the reply does not give the 120 s limit:`n$($r.Text)"
-    Check ($r.Lines[2] -ceq "`$env:HYDRA_BUILD_PASS='$($r.Lines[0] -replace '^pass: ', '')'; .\build_cpp.ps1 -Target hydra_tests") "the reply's command is wrong:`n$($r.Text)"
+    $answered = [DateTime]::UtcNow
+    $token = $r.Lines[0] -replace '^pass: ', ''
+    $named = if ($r.Text -match 'build slot (\d+) of \d+ and runs out if nothing claims it in (\d+) s') { [pscustomobject]@{ Slot = $Matches[1]; Seconds = [int]$Matches[2] } }
+    Check ($r.Code -eq 0 -and $named) "the reply does not name its slot and limit:`n$($r.Text)"
+    if ($named) {
+        $lockLines = @(Get-Content -LiteralPath (Join-Path $script:slots "slot$($named.Slot).lock"))
+        $expiresLine = @($lockLines | Where-Object { $_ -like 'expires=*' })
+        Check ($expiresLine.Count -eq 1) "the pass's lock has no single expires= line:`n$($lockLines -join "`n")"
+        if ($expiresLine.Count -eq 1) {
+            $expires = [DateTime]::Parse(($expiresLine[0] -replace '^expires=', ''), [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+            $writtenAt = $expires.AddSeconds(-$named.Seconds)
+            Check ($writtenAt -ge $asked -and $writtenAt -le $answered) "the reply's $($named.Seconds) s is not the lock's limit: the lock expires $($expires.ToString('o')), the pass was asked for between $($asked.ToString('o')) and $($answered.ToString('o'))"
+        }
+    }
+    Check ($token -and $r.Lines[2].Contains($token)) "the reply's command does not hold the pass '$token':`n$($r.Text)"
 
     New-Case
     foreach ($bad in @(), @('-Session', ''), @('-Session', 'two words')) {
@@ -239,7 +263,7 @@ exit 0
         Remove-Item -LiteralPath $script:slots
         $r = Invoke-Build
         $said = Get-CMakeLines
-        Check ($r.Code -eq 0 -and $said.Count -ge 2) "CLAUDECODE '$value': expected a build, got exit $($r.Code):`n$($r.Text)"
+        Check ($r.Code -eq 0 -and @($said | Where-Object { Test-ConfigureLine $_ }).Count -eq 1 -and @($said | Where-Object { Test-TargetBuildLine $_ }).Count -eq 1) "CLAUDECODE '$value': expected a configure and a build of hydra_tests, got exit $($r.Code):`n$($r.Text)`n$($said -join "`n")"
         Check (-not ($said -match 'lowPriority')) "CLAUDECODE '$value': the build ran at low priority:`n$($said -join "`n")"
         Check (-not (Test-Path -LiteralPath $script:slots)) "CLAUDECODE '$value': the slot folder was touched"
         New-Item -ItemType Directory -Path $script:slots | Out-Null
@@ -254,7 +278,8 @@ exit 0
     $said = Get-CMakeLines
     Check ($r.Code -eq 0) "with a pass: exit $($r.Code):`n$($r.Text)"
     Check ($said.Count -eq 3 -and @($said | Where-Object { $_ -notmatch 'locks=1 claimed=1 ' }).Count -eq 0) "with a pass: every cmake step should run inside one claimed lock:`n$($said -join "`n")"
-    Check ($said.Count -eq 3 -and $said[2] -match '^--build --preset default --config Release --parallel --target hydra_tests -- -lowPriority \|') "with a pass: the build line is wrong:`n$($said -join "`n")"
+    Check ($said.Count -eq 3 -and (Test-TargetBuildLine $said[2]) -and $said[2] -match ' -lowPriority \|') "with a pass: the third step should be the build of hydra_tests at low priority:`n$($said -join "`n")"
+    Check ((Test-ConfigureLine $said[0]) -and $said[0] -notmatch 'lowPriority') "with a pass: the first step should be the configure, not at low priority:`n$($said -join "`n")"
     Check ($said.Count -eq 3 -and $said[1] -match 'ZERO_CHECK' -and $said[1] -notmatch 'lowPriority') "with a pass: the ZERO_CHECK line is wrong:`n$($said -join "`n")"
     Check ((Get-Locks).Count -eq 0) 'with a pass: the slot was not given back'
     $r = Invoke-Build
@@ -266,7 +291,7 @@ exit 0
     $env:CLAUDECODE = '1'
     $r = Invoke-Build @('-Preset', 'asan-ninja', '-Target', 'hydra_tests')
     $said = Get-CMakeLines
-    Check ($r.Code -eq 0 -and $said.Count -ge 1 -and -not ($said -match 'lowPriority')) "Ninja preset: exit $($r.Code), lines:`n$($said -join "`n")`n$($r.Text)"
+    Check ($r.Code -eq 0 -and @($said | Where-Object { Test-TargetBuildLine $_ }).Count -eq 1 -and -not ($said -match 'lowPriority')) "Ninja preset: expected one build of hydra_tests, not at low priority; exit $($r.Code), lines:`n$($said -join "`n")`n$($r.Text)"
     Check ((Get-Locks).Count -eq 0) 'Ninja preset: the slot was not given back'
 
     # A failed build gives the slot back too.

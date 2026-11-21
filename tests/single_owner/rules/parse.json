@@ -293,28 +293,18 @@
       ],
       "owner_lines": [
         {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(four.subtitle, \"SP cap 4 bars\"));",
-          "why": "checks a report subtitle's tail, not a file format"
+          "file": "tests/test_model.cpp",
+          "line_text": "CHECK(ends_with(n, syms));",
+          "why": "checks that an activation's notation ends with its squeeze symbols, not a file format"
         },
         {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, \"SP cap 1 bar\"));",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,",
-          "why": "checks a report subtitle's tail, not a file format"
+          "file": "tests/test_model.cpp",
+          "line_text": "CHECK(ends_with(n.substr(0, n.size() - syms.size()), std::to_string(a.skips())));",
+          "why": "checks that an activation's notation ends with its skip count before the squeeze symbols, not a file format"
         },
         {
           "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(ch10.subtitle, \"SP cap 4 bars — Clone Hero 1.0 fills\"));",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
@@ -323,9 +313,129 @@
           "why": "checks the counts phrase's last clause, not a file format"
         },
         {
-          "file": "tests/test_config.cpp",
-          "line_text": "CHECK(hydra::ends_with(dir, tail));",
-          "why": "checks the resource folder's name, not a file format"
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "if (box.position != want || !ends_with(box.tempo, want_sig)) {",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK_MESSAGE(ends_with(box.tempo, want_sig), box.tempo << \" lacks \" << want_sig);",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(box.tempo, sig_text({3, 4})));",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(build_time_box(scene, line.ms, len).tempo, \"6/8\"));",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(build_time_box(scene, scene.beats[j].ms, len).position, \".2.0\"));",
+          "why": "checks the time box's position text ends on the beat, not a file format"
+        },
+        {
+          "file": "tests/test_model.cpp",
+          "line_text": "REQUIRE(ends_with(n, tail));",
+          "why": "checks that an activation's notation ends with its skip count and squeeze symbols, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));",
+          "why": "checks that the comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(ch10.subtitle,",
+          "why": "checks that a report subtitle ends with the fill rule's long name, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(one.subtitle, dmr::clone_hero_cap_phrase()));",
+          "why": "checks that the one-score comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));",
+          "why": "the second test's check that the comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(four.subtitle, \"SP cap \" + bars_text(4)));",
+          "why": "checks that a report subtitle ends with its SP cap in bars, not a file format"
+        },
+        {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(cap)).subtitle,",
+          "why": "checks that a report subtitle ends with its SP cap in bars, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(dmr::compare_tooltip(), phrase + \".\"));",
+          "why": "checks that the Compare button's tooltip ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_pick.cpp",
+          "line_text": "if (hydra::ends_with(f, \".md\")) files.push_back(f);",
+          "why": "picks the repo root's .md pages as real files the merge-test picker must not count as shared code, not a chart format"
+        },
+        {
+          "file": "tests/test_layering.cpp",
+          "line_text": "if (arg.size() > open.size() + close.size() && arg.rfind(open, 0) == 0 && hydra::ends_with(arg, close)) {",
+          "why": "reads a CMake $<TARGET_PROPERTY:...,INTERFACE_INCLUDE_DIRECTORIES> argument, not a chart format"
+        },
+        {
+          "file": "tests/test_layering.cpp",
+          "line_text": "if (k.rfind(\"third_party/\", 0) == 0 && hydra::ends_with(k, tail)) return k;",
+          "why": "finds the vendored file an include path names, not a chart format"
+        },
+        {
+          "file": "tests/ui/uitest_preview.cpp",
+          "line_text": "IM_CHECK(hydra::ends_with(readout, cap_tail));",
+          "why": "checks that the SP gauge's readout ends with the meter cap's tail, not a file format"
+        },
+        {
+          "file": "tests/test_dynamics_breakdown.cpp",
+          "line_text": "CHECK(ends_with(off.tail, dynamics_kick2x_status(false)));",
+          "why": "checks that the Dynamics tab's Kicks line tail ends with the 2x kick status words, not a file format"
+        },
+        {
+          "file": "tests/test_dynamics_breakdown.cpp",
+          "line_text": "CHECK(ends_with(whole, line.tail));",
+          "why": "checks that a two-part line read whole ends with its tail, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(r.out, summary + \"\\n\"));",
+          "why": "checks that hydra_precheck's output ends with its summary line, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(summary, \" \" + short_tip));",
+          "why": "checks that hydra_precheck's summary line ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(r.out, \" \" + short_tip + \"\\n\"));",
+          "why": "checks that hydra_precheck's output for a range ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(whole.out, \" \" + short_tip + \"\\n\"));",
+          "why": "checks that hydra_precheck's output for the whole tree ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_pick_exe.cpp",
+          "line_text": "const auto names_file = [&](const PickedTest& t) { return hydra::ends_with(t.file, one_name); };",
+          "why": "checks that a picked test file's path ends with the file name a tests-line pattern gives, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_check24.cpp",
+          "line_text": "if (text.size() <= tail.size() || !hydra::ends_with(text, tail)) return \"\";",
+          "why": "checks that a precheck item's text ends with the code line it prints, not a file format"
         }
       ],
       "scope": [

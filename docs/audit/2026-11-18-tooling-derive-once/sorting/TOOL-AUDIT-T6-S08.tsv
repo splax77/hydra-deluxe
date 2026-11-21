@@ -1,0 +1,54 @@
+id	verdict	category	theme	sides	why
+L-F22-01	CONFIRMED	P		none	Kind K1 with Splits none: the interval and form agree across homes, so the fix only points copies at progress.py.
+L-F22-02	CONFIRMED	Q	commit hash length and case	gates\ref_judge.py:195 accepts 40 or 64 lowercase; gates\review_dispatch.py:19 finds 40 hex only; waiver phrases in review_rules.py:26-28 take {7,40} or {7,64}	Several code places decide what a valid hash is differently (64 vs 40, case, 40 vs 64 waiver).
+L-F22-03	CONFIRMED	P		none	Splits: None; the same file name sits in two constants and only needs a pointer.
+L-F22-04	CONFIRMED	P		none	Splits: None named; the one-place comment is about the PowerShell reader and nothing disagrees today.
+L-F22-05	CONFIRMED	P		none	Splits: None; hand-built output shapes agree with common.py:21-32 today.
+L-F22-06	CONFIRMED-CHANGED	P		none	Splits: None; the number five agrees across stall.py:34, model-postures and the preamble.
+L-F22-07	CONFIRMED-CHANGED	P		none	W12: three record shapes with no field list, but each reader reads only its own kind, so no disagreement exists.
+L-F22-08	CONFIRMED	Q	ruling line tail	gates\ruling_rules.py:105 accepts only (session <id>); tools\session_cards\common.py:96-98 RULING_NOTE accepts any one-level parenthesised note	Two code places decide what may follow a quote differently.
+L-F22-09	CONFIRMED	P		none	Splits: None; the unchecked tag count and 0-to-8 lines are brief guidance and the hand-typed D115 list is a copy of what check.py derives.
+L-F22-10	CONFIRMED	P		none	Splits: None; the brief's prose has no list and the regex has five shapes.
+L-F22-11	CONFIRMED	Q	card content rules	writer-brief.md:16-21 cites a 2026-10-31 user ruling on four content kinds; no Confirmed line in docs\agents\rulings holds it and check.py checks only the local value	W12: the money, security and game-audio rules have no check and no Confirmed home, so the rule has no home.
+L-F22-12	CONFIRMED	A		writer-brief.md:75 forbids parentheses in the note; tools\session_cards\common.py:96-98 RULING_NOTE accepts one inner level	Brief says no ( or ) while the checker accepts one inner level.
+L-F22-13	CONFIRMED	Q	who decides gated code paths	Hydra .derive-once-gate names Test-DeriveOnceGatedPath in hooks\lib that does not exist; gates\review_rules.py:21-22 BUILTIN_CODE is the finder's unconfirmed reading of the decider	The marker cites a missing function and the real decider is unconfirmed, so the current place is not clear.
+L-F22-14	CONFIRMED	B		memory every-brief-carries-status-rule.md line 3 says the dispatch gate denies briefs without the sentence; line 15 of the same note says no gate checks a brief	The only split is a memory note against itself and the code (no gate found).
+L-F22-15	CONFIRMED	P		none	W12 confirmed the eight fields and callers agree; the two 300s answer different questions so nothing disagrees.
+L-F22-16	CONFIRMED-CHANGED	A		gates\README.md:75 says REVIEW_KINDS is the one place review record fields are checked; gates\agent_stop.py:211-214 writes an extra path field that common.py:11-12 does not list	README claim against the code that writes and reads an unlisted path field.
+L-F22-17	CONFIRMED	P		none	W12: no split; no file lists the agent record fields and the fix is a pointer.
+L-F22-18	CONFIRMED	P		none	W12: same three fields read in stall.py:38 and agent_cost.py:63-65, no disagreement today.
+L-F22-19	CONFIRMED	P		none	W12: all four finished tests are the same expression and agree.
+L-F22-20	CONFIRMED-CHANGED	P		none	W12: the 30,000 appears only in the preamble and no gate disagrees; the rest are agreeing copies.
+L-F22-21	CONFIRMED-CHANGED	P		none	W12: more pages carry the numbers than the test covers but all agree with progress.py today.
+L-F22-22	CONFIRMED-CHANGED	Q	status helper id check	gates\status_append.ps1:27-37 accepts any existing agent record; gates\progress.py:46-49 ties the id to the caller only for subagent calls	Hook gap whose fix is a choice of where the id tie lives.
+L-F22-23	CONFIRMED-CHANGED	P		none	W12: the two-separators vs three-parts wording is the same rule, no split.
+L-F22-24	CONFIRMED-CHANGED	Q	does a brief name the status helper	model-postures.md:11 says a brief names no status file or id; memory note and writer-brief.md:100 say it names the helper; progress.py:60-62 gives the id at first call	Docs, a memory note and a hook disagree, so it is more than one of A, B or C.
+L-F23-01	CONFIRMED	P		none	Splits: None; the docs/sessions path agrees and the copies only need pointers.
+L-F23-02	CONFIRMED-CHANGED	P		none	Splits: None; heading and status literals agree across files.
+L-F23-03	CONFIRMED	P		none	Splits: None; the write-back prefix and tag agree in check.py, brief and CLAUDE.md.
+L-F23-04	CONFIRMED	P		none	Splits: None; check.py:153 and ruling_rules.py:290 split on the same fragments.
+L-F23-05	CONFIRMED	P		none	Splits: None; card_name and CARD_FILE agree.
+L-F23-06	CONFIRMED	A		writer-brief.md:63 and :29 say memory names come from MEMORY.md; writer-brief.md:87 and link_memory.py:70-71 follow the folder listing	Brief lines say MEMORY.md while the code and another brief line use the folder.
+L-F23-07	CONFIRMED	A		writer-brief.md:79 forbids every 7-to-40 hex string; check.py:176-180 flags only strings with a digit and a letter that are not session-id pieces	Brief is wider than what the check enforces.
+L-F23-08	CONFIRMED	Q	what counts as user typing	gates\review_rules.py:89-113 decides by turnOrigin human; tools\session_cards\common.py:372-459 decides by origin.kind plus command args and queued prompts	Two code places decide did the user type this from different fields.
+L-F23-09	CONFIRMED-CHANGED	Q	decision number ceiling	number_rulings.py:62-64 drops D-numbers of 1000 and above; session_cards\check.py:170 takes any D plus 1-4 digits and demands a log entry	W12: two code places treat D1000+ differently.
+L-F23-10	CONFIRMED-CHANGED	B		tools\session_cards\batch.py:26 BATCHES_PER_WAVE = 10; memory lean-agent-fanout.md:21 says 3-4 agents per round	Weak split of a memory note against code; V23 says the note is about a different job.
+L-F23-11	CONFIRMED-CHANGED	P		none	Splits: None; the hook message and brief restate rules owned elsewhere and agree.
+L-F23-12	CONFIRMED	P		none	Splits: None; IGNORED_LINES is a dead value and the fix is deleting it.
+L-F23-13	CONFIRMED-CHANGED	A		writer-brief.md:74-75 forbids quoting the unsent list; check.py:155-157 forbids only text found in no message; session_cards_start.ps1:44-48 hand-copies 30 minus 5	W12: brief rule against what the check enforces, plus a hand copy of the timeout.
+L-F23-14	REFUTED	R		none	W12 refuted it: percall.py:138 routes card-writer calls through progress.check.
+L-F24-01	CONFIRMED-CHANGED	Q	what counts as the user's words	derive-once-review.md:52 and doc-review.md:63 vs premise-map.md:45 and test-rubric.md:76 and audit-method.md:126 list different places the words may sit	Docs disagree with docs and no code is behind either side.
+L-F24-02	CONFIRMED-CHANGED	Q	what counts as the user's words	CLAUDE.md:25 and writer-brief.md:67 say a card quote is not a filed ruling; doc-review.md:63 and derive-once-review.md:52 accept a card's quoted words	Docs disagree with docs and no code is behind either side.
+L-F24-03	CONFIRMED	P		none	Splits: None; scout.md lists two of four status words as a partial copy.
+L-F24-04	CONFIRMED	P		none	Splits: None; the Kind words agree between premise-map.md and the docs test.
+L-F24-05	CONFIRMED	P		none	W12: the four labels agree word for word.
+L-F24-06	CONFIRMED	P		none	W12: two rules each stated at its home with at most one restatement, no split.
+L-F24-07	CONFIRMED	P		none	Splits: None; the sign-off wording agrees with agent_stop.py:102-109.
+L-F24-08	CONFIRMED	Q	sign-off line with added text	gates\agent_stop.py:102-109 records CLEAN when SIGN-OFF: BLOCKED has any text after it; docs only say write nothing with it	Hook gap whose fix is a choice of behaviour.
+L-F24-09	CONFIRMED-CHANGED	Q	combined review report sections	derive-once-review.md:126-151 eight sections vs doc-review.md:104-125 six sections; doc-review.md:123 says one line signs both	Docs disagree with docs on which list applies when one reviewer does both.
+L-F24-10	CONFIRMED-CHANGED	Q	handoff checker rules	check_handoff.py:28 table mode takes exactly 40 hex; doc_tokens.py:39 scrape mode takes 7-40; handoff.md:51-57 names five statuses but the code prints unknown	Mix of two code places differing and doc against code.
+L-F24-11	CONFIRMED	Q	what a finder reports	audit-method.md:50 asks inputs-and-answers tables with value edges; T5-finder.md:33-41 asks what each home tells its reader with situation edges	Two docs disagree with no code behind either.
+L-F24-12	CONFIRMED-CHANGED	Q	what a brief carries	brief-preamble.md:3 vs audit-method.md:120 vs the every-brief memory note give three different lists	Docs and a memory note disagree with no code behind them.
+L-F24-13	CONFIRMED	P		none	W12: the preamble default is overridden by briefs by its own words, no split.
+L-F24-14	CONFIRMED	P		none	Splits: None; the 2-second wait agrees in README:9 and common.py:18.
+L-F24-15	CONFIRMED-CHANGED	A		gates\README.md:93 says every Python hook uses common.run; gates\wake.py:90-110 and ref_judge.py:492-538 do not	README sentence wider than the code.

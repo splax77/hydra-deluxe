@@ -243,13 +243,6 @@ private:
 // How many times `s` appears in visible_text(h).
 size_t count_on_screen(Harness& h, const std::string& s);
 
-// The dmleaderboards API's canned answers, which reset_app serves and the
-// tests that serve their own variant build from: the one user (alice), one
-// score row, and the scores reply that wraps a list of rows.
-std::string canned_dm_users();
-std::string canned_dm_score(const std::string& identifier, int points);
-std::string canned_dm_scores(const std::vector<std::string>& score_rows);
-
 // The key AppState fields, one per line, each ending in a newline. The
 // state verb's text (EngineHooks::state_text).
 std::string state_text(Harness& h);
@@ -280,16 +273,12 @@ void open_paths_folds(ImGuiTestContext* ctx);
 void scan_library(ImGuiTestContext* ctx);
 // Point the ref at the song panel child (//Hydra/##songpanel).
 void set_panel_ref(ImGuiTestContext* ctx);
-// Wait until the song panel's tab bar can't move under a click. The headline
-// above it (render_headline in details_panel.cpp) grows when the click's
-// record lands and pushes the tabs down, so a tab click whose mouse is still
-// on its way hovers empty space. Holds once the click has settled, or while a
-// closed ViewGate keeps it from landing.
-void wait_tabs_placed(ImGuiTestContext* ctx);
 // The longest the open helpers wait for the tabs to settle, in seconds.
 constexpr double kSettleWaitSeconds = 300;
 // Click row `index` of the library view, wait for the song panel, point the
-// ref at it, and land on its Paths tab. Waits for wait_tabs_placed first, so
+// ref at it, and land on its Paths tab. Waits for the tab bar to stop moving
+// first (the headline above it grows when the click's record lands and pushes
+// the tabs down; a closed ViewGate holds it), so
 // without a ViewGate the click's analysis has settled when it returns.
 void open_details(ImGuiTestContext* ctx, size_t index);
 // open_details with its own wait cap. False when the tabs had not settled
@@ -310,7 +299,10 @@ std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
 // song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
 // lands the panel on its Paths tab.
 void wait_song_analyzed(ImGuiTestContext* ctx);
-// Fresh app, scan, open chart 0's Preview and wait for the load. False on error.
+// Fresh app, scan, open chart 0's details, click Preview and wait up to 10 s
+// for the Preview to start; it may still be loading. Check ctx->IsError() after.
+void start_preview(ImGuiTestContext* ctx);
+// start_preview, then wait for the load and check it has no error. False on error.
 bool open_preview(ImGuiTestContext* ctx);
 
 // ---- the Analysis settings panel (settings_bar.cpp) ------------------------

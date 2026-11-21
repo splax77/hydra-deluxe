@@ -39,6 +39,12 @@ inline bool toggle_on_after(Toggle t) {
 // per beat and 300 BPM one tick is only 0.417 ms.)
 constexpr double kSpanEndTicks = 0.5;
 
+// A span's drawn [start, end] in seconds, the edges build_track_state gives
+// every SP phrase, solo, drum lane and fill. Its end edge is worked out in
+// track_state.cpp from kSpanEndTicks and scene.timing. Throws
+// std::invalid_argument when the scene carries no timing.
+std::pair<double, double> span_interval(const app::PreviewScene& scene, const app::PreviewSpan& s);
+
 // The four pads, left to right. Kick is separate (TrackGem::kick).
 enum class Pad { Red = 0, Yellow = 1, Blue = 2, Green = 3 };
 
@@ -127,6 +133,22 @@ public:
 private:
     std::vector<double> starts_, ends_, zeros_;  // well-formed intervals only
     std::vector<double> all_starts_, all_ends_;  // every interval's edges
+};
+
+// The sp_active field's state at time t, from the path's SP windows (each
+// activation's sp_window, in seconds). It keeps no rule of its own: each
+// window is asked app::sp_running_in at t and at the double just before t.
+// Those answers say whether t is inside a window, starts one or ends one,
+// and SpanSweep's Toggle order turns the three into the state.
+class SpRunSweep {
+public:
+    SpRunSweep() = default;  // no windows: Empty everywhere
+    explicit SpRunSweep(std::vector<std::pair<double, double>> windows)
+        : windows_(std::move(windows)) {}
+    Toggle at(double t) const;
+
+private:
+    std::vector<std::pair<double, double>> windows_;
 };
 
 // The instants one frame draws, near < t < far, as a view into the track
@@ -227,7 +249,8 @@ private:
     // sweep_span_fields. The one answer to "the state of a span at t":
     // set_span_fields reads it for the instants and for synthesize.
     struct FieldSweep {
-        SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, sp_active, fill_lane;
+        SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, fill_lane;
+        SpRunSweep sp_active;  // asks the one SP-running rule, app::sp_running_in
         std::array<SpanSweep, kPads.size()> drum_lane;  // indexed by Pad
         LaneSweep lane_pad;
         LaneSweep fill_pick, fill_taken_pick;  // over fill_ and fill_taken_

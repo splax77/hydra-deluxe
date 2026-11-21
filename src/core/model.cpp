@@ -105,6 +105,17 @@ bool lane_flag(const ChordNote& note) {
     return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
 }
 
+uint32_t lane_bit(const ChordNote& note) {
+    switch (note.colortype) {
+        case NoteColor::Kick: return 0x1u;
+        case NoteColor::Red: return 0x2u;
+        case NoteColor::Yellow: return note.is_cymbal() ? 0x20u : 0x04u;
+        case NoteColor::Blue: return note.is_cymbal() ? 0x40u : 0x08u;
+        case NoteColor::Green: return note.is_cymbal() ? 0x80u : 0x10u;
+    }
+    throw std::logic_error("lane_bit: a note with no lane");
+}
+
 std::string Chord::code() const {
     std::string out(kLanes, '.');
     for (size_t i = 0; i < kLanes; ++i) {
@@ -306,14 +317,23 @@ void Chord::apply_accent(NoteColor color) {
     add_dynamic_mark(*at(color), NoteDynamicType::Accent);
 }
 
+// The note Clone Hero flags as the chord's activation note: the pad with the
+// highest lane_bit, and the kick only when the chord has no pad. Clone Hero
+// 1.0 (4045) keeps the highest set bit of the pads masked with 0x7F
+// (docs/clone-hero/code/4045/fill_generator.cs, section F3); 1.1 (6142) keeps
+// the highest set bit of all (FL-09 on docs/clone-hero/04-fills.md). Both
+// rank the pads the way lane_bit does, a cymbal above every tom, so one order
+// serves both.
 const ChordNote& Chord::activation_note() const {
-    const NoteColor order[kLanes] = {NoteColor::Green, NoteColor::Blue,
-                                NoteColor::Yellow, NoteColor::Red,
-                                NoteColor::Kick};
-    for (NoteColor c : order) {
-        const std::optional<ChordNote>& slot = at(c);
-        if (slot.has_value()) return *slot;
+    const ChordNote* best_pad = nullptr;
+    const ChordNote* kick = nullptr;
+    for (const std::optional<ChordNote>& slot : notemap_) {
+        if (!slot.has_value()) continue;
+        if (slot->colortype == NoteColor::Kick) kick = &*slot;
+        else if (!best_pad || lane_bit(*slot) > lane_bit(*best_pad)) best_pad = &*slot;
     }
+    if (best_pad) return *best_pad;
+    if (kick) return *kick;
     throw std::runtime_error("activation_note on empty chord");
 }
 
@@ -524,11 +544,6 @@ std::optional<double> Activation::difficulty() const {
     return h->ms;
 }
 
-// D51 call 4 and D302: hardest() only names a timing that needs hitting, and
-// difficulty() leaves out an optional early fill. So this is false with nothing
-// to time, and false too when an optional early fill is all hardest() names.
-bool Activation::needs_timing() const { return difficulty().has_value(); }
-
 bool Activation::within_ms_limit(double limit_ms) const {
     for (const SPSqueeze& sq : sqinouts)
         if (!sq.within_limit(limit_ms)) return false;
@@ -573,9 +588,7 @@ bool Path::has_activations() const { return !walk_activations().empty(); }
 
 std::vector<int64_t> Path::bank_arrivals(size_t i) const {
     const ActivationWalk acts = walk_activations();
-    std::vector<int64_t> out = i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
-    if (!out.empty() && i > 0 && acts[i - 1].sqout_tick) out.front() = *acts[i - 1].sqout_tick;
-    return out;
+    return i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
 }
 
 int64_t Path::totalscore() const {
@@ -681,13 +694,6 @@ std::optional<double> Path::difficulty() const {
     return best;
 }
 
-// The same activations difficulty() walks (D51 call 4).
-bool Path::needs_timing() const {
-    for (const Activation& act : walk_activations())
-        if (act.needs_timing()) return true;
-    return false;
-}
-
 bool Path::within_ms_limit(double limit_ms) const {
     for (const Activation& act : walk_activations())
         if (!act.within_ms_limit(limit_ms)) return false;
@@ -699,11 +705,15 @@ bool Path::is_difficult() const {
     return d && past_difficult_floor(*d);
 }
 
-std::optional<int64_t> Activation::sp_ready_tick() const {
+std::optional<int64_t> sp_ready_tick(const std::vector<int64_t>& bank_ticks) {
     const size_t ready = static_cast<size_t>(kSpActivationBars);
-    if (bank_rise_ticks.size() < ready) return std::nullopt;
-    return bank_rise_ticks[ready - 1];
+    if (bank_ticks.size() < ready) return std::nullopt;
+    return bank_ticks[ready - 1];
 }
+
+std::optional<int64_t> Activation::sp_ready_tick() const { return hydra::sp_ready_tick(bank_rise_ticks); }
+
+std::optional<int64_t> Path::trailing_sp_ready_tick() const { return hydra::sp_ready_tick(trailing_bank_ticks); }
 
 // ---- the SP-end history's readers -----------------------------------------
 // Each one reads the history from sp_end_steps and no other field. An empty
@@ -718,6 +728,24 @@ std::optional<int64_t> Activation::window_end_tick() const {
     const std::optional<int64_t> d = deact_tick();
     if (d && sqout_tick && !core::after_sp_end(*sqout_tick, *d)) return sqout_tick;
     return d;
+}
+
+std::optional<double> Activation::meter_bars_at(int64_t tick, const SongTiming& timing,
+                                                bool just_before) const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    // The steps are in time order, so the one in force is the last one reached.
+    size_t step = 0;
+    for (size_t k = 1; k < sp_end_steps.size(); ++k) {
+        const int64_t at = sp_end_steps[k].tick;
+        if (just_before ? at >= tick : at > tick) break;
+        step = k;
+    }
+    const int64_t end_tick = sp_end_steps[step].end_tick;
+    // Never below empty: between an end in force and a late phrase's chord
+    // past it, the tick is past that end.
+    const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -
+                            timing.measures_at_tick_f(static_cast<double>(tick));
+    return std::max(0.0, measures / static_cast<double>(kMeasuresPerSpBar));
 }
 
 namespace {

@@ -41,7 +41,7 @@ struct DmUser {
     std::string username;
     std::optional<int> elo;     // unset for users with no ranked play
     int total_scores = 0;       // stats.total_scores, for the picker's row hint
-    int64_t total_score = 0;    // stats.total_score, so the picker can sort by it
+    int64_t total_score = 0;    // stats.total_score
 };
 
 // One score a user has posted, from GET /api/user/{id}/scores. The endpoint

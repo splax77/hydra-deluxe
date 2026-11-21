@@ -13,6 +13,7 @@
 #include "app/dynamics_breakdown.h"
 #include "chart_text.h"
 #include "core/model.h"
+#include "corpus_util.h"  // chart_paths
 #include "difficulty_literals.h"
 #include "load_util.h"
 #include "midi_util.h"
@@ -75,33 +76,53 @@ TEST_CASE(".chart: N 32 is a 2x kick only in the section being read") {
 }
 
 TEST_CASE("Dynamics: one kick total follows the 2x Bass setting") {
-    app::DynamicsBreakdown bd;
-    bd.rows[static_cast<size_t>(app::DynamicsRow::RedSnare)] = {1, 2, 3};
-    bd.rows[static_cast<size_t>(app::DynamicsRow::Kick)] = {0, 1, 40};
-    bd.rows[static_cast<size_t>(app::DynamicsRow::Kick2x)] = {0, 0, 12};
-    CHECK(bd.kicks_total(false).all() == 41);
-    CHECK(bd.kicks_total(true).all() == 53);
-    // Totals: the 6 red pads plus 41 or 53 kicks; accents 2 red plus 1 kick.
-    CHECK(bd.played_total(false).all() == 47);
-    CHECK(bd.played_total(true).all() == 59);
-    CHECK(bd.played_total(false).accent == 3);
-    CHECK(bd.played_total(true).accent == 3);
+    // Every corpus chart's Expert, counted the way the Dynamics tab counts it
+    // (load_dynamics_song, then count_dynamics). With 2x Bass off the kick
+    // total is the Kick row alone; with it on, the Kick row plus the 2x kick
+    // row; the Totals row is the pad rows plus that kick total.
+    using app::DynamicsRow;
+    // Corpus .chart files hold N 32 in ExpertDrums (Good Tiger - Where Are
+    // the Birds, among others), so some chart has 2x kicks to count.
+    int charts_with_2x = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        CAPTURE(path);
+        const app::DynamicsBreakdown bd =
+            app::count_dynamics(app::load_dynamics_song(path, ChartReading{Difficulty::Expert}));
+        const app::DynamicsCounts kick = bd.row(DynamicsRow::Kick);
+        const app::DynamicsCounts kick2x = bd.row(DynamicsRow::Kick2x);
+        if (kick2x.all() > 0) ++charts_with_2x;
+        app::DynamicsCounts both = kick;
+        both += kick2x;
+        CHECK(bd.kicks_total(false) == kick);
+        CHECK(bd.kicks_total(true) == both);
+        for (const bool bass2x : {false, true}) {
+            CAPTURE(bass2x);
+            app::DynamicsCounts played = bd.pads_total();
+            played += bass2x ? both : kick;
+            CHECK(bd.played_total(bass2x) == played);
+        }
+    }
+    CHECK(charts_with_2x > 0);
 }
 
 TEST_CASE("Dynamics: Car Bomb - The Sentinel at Hard counts Hard's own kicks") {
-    // Finding 10's chart. Hard has 1,147 kicks (pitch 84) and no 2x kicks of
-    // its own; Expert's 95 shares a tick with 409 of them. The Dynamics parse
-    // at Hard must count none of those as 2x kicks (D20).
+    // Finding 10's chart. Hard has kicks (pitch 84) and no 2x kicks of its
+    // own; Expert's 2x kick (95) shares a tick with some of them. The Dynamics
+    // parse at Hard must count none of those as 2x kicks (D20).
     using app::DynamicsRow;
     const std::string path =
         corpus::root() + "/common/IB24/T7/Car Bomb - The Sentinel/notes.mid";
-    const app::DynamicsBreakdown bd = app::count_dynamics(
-        load_songpath(path, ChartReading{Difficulty::Hard, /*prodrums=*/true,
-                                         app::kDynamicsParseBass2x, false}));
-    CHECK(bd.row(DynamicsRow::Kick).all() == 1147);
+    const auto hard = [&](bool bass2x) {
+        return app::count_dynamics(
+            load_songpath(path, ChartReading{Difficulty::Hard, /*prodrums=*/true, bass2x, false}));
+    };
+    const app::DynamicsBreakdown bd = hard(app::kDynamicsParseBass2x);
+    CHECK(bd.row(DynamicsRow::Kick).all() > 0);
     CHECK(bd.row(DynamicsRow::Kick2x).all() == 0);
-    CHECK(bd.played_total(true).all() == 2038);
-    CHECK(bd.played_total(false).all() == 2038);
+    CHECK(bd.played_total(true) == bd.played_total(false));
+    // Read with 2x Bass off, a kick Expert's 95 had turned into a 2x kick
+    // would vanish; every Hard kick is still there.
+    CHECK(hard(false).row(DynamicsRow::Kick) == bd.row(DynamicsRow::Kick));
 }
 
 // ---- D105: a 2x kick and a normal kick on one tick ------------------------

@@ -79,6 +79,22 @@ struct VersionBarStatus {
     bool update_button = false;
 };
 
+// The version bar's fixed sentences (D259 and D260 in
+// docs/audit/2026-10-03-fix-decisions.md). AppState puts them in UpdateState
+// and VersionBarStatus; tests read them here. The ones that name a version
+// are built with core::named_version.
+inline constexpr const char* kUpdateVerifyingText = "Checking the download...";
+inline constexpr const char* kUpdateLaunchingText = "Starting the installer...";
+inline constexpr const char* kUpdateDeclinedText =
+    "The installer didn't start, so Hydra wasn't updated.";
+inline constexpr const char* kOnlyInstalledChecksText =
+    "Only the installed copy of " HYDRA_APP_NAME " checks for updates.";
+inline constexpr const char* kCheckingForUpdatesText = "Checking for updates...";
+inline constexpr const char* kCouldNotCheckText =
+    "Hydra couldn't check for updates when it started.";
+inline constexpr const char* kUpToDateText = "Up to date";
+inline constexpr const char* kSkippedText = "Skipped.";
+
 // GETs kLatestReleaseUrl and reads it with app::parse_latest_release_json.
 // Whether the release is newer, or skipped, is AppState's to say.
 class UpdateCheckJob : public ResultJobBase {
@@ -130,11 +146,12 @@ private:
 // The installer's file name for a release, "HydraDeluxe-2.11.0-setup.exe".
 std::string update_installer_name(const app::UpdateRelease& release);
 
-// The folder downloads go to: <temp>\HydraDeluxe-update, or the test override.
+// The folder downloads go to: <temp>\HydraDeluxe-update.
 std::string update_folder();
-// Test seam: a non-empty folder replaces update_folder's answer; empty puts
-// the temp folder back.
-void set_update_folder_for_test(std::string folder);
+
+// Where Inno Setup writes its log: a file beside the download, in
+// update_folder. Defined in app_state.cpp, which hands it to the installer.
+std::string installer_log_path();
 
 // Starts the installer at `installer`, writing Inno Setup's log to `log`, and
 // returns a check that says whether its process has ended. Throws when the

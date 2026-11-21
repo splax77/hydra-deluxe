@@ -34,6 +34,12 @@ std::string exe_dir();
 // copy of the exe elsewhere never does.
 bool installed_by_setup();
 
+// Hydra's installer AppId, without its braces. installed_by_setup opens the
+// uninstall key Inno Setup names after it. installer/hydra.iss types the same
+// ID as its AppId, and tests/test_installer_app_id.cpp fails when the two
+// differ.
+extern const wchar_t kInstallerAppId[];
+
 // Test seam: true or false makes installed_by_setup answer that; empty puts
 // the registry check back. Tests set it through ScopedHook.
 void set_installed_for_test(std::optional<bool> installed);
@@ -353,7 +359,8 @@ struct AnalysisField {
 // sets, in the panel's order. Settings::with_analysis_defaults and
 // Settings::analysis_changes read it, and the Reset test in
 // tests/test_config.cpp walks it, so a new analysis setting is a new row here
-// (concept audit M13). Nothing can notice a field left out of it.
+// (concept audit M13). The second half of that test catches a keyed setting
+// left out of it.
 inline const std::array<AnalysisField, 11> kAnalysisFields{{
     {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
     {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},

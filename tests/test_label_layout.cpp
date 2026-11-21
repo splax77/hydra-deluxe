@@ -47,21 +47,47 @@ TEST_CASE("label layout: 39 crowded numbers never overlap, first and last show")
         marks.push_back(x);
         widths.push_back(i < 10 ? 6.0f : 12.0f);
     }
-    const auto out = spaced_labels(marks, widths, 0, 480, 3);
-    check_spaced(out, widths, 0, 480, 3);
+    const float right = 480;
+    const float gap = 3;
+    const auto out = spaced_labels(marks, widths, 0, right, gap);
+    check_spaced(out, widths, 0, right, gap);
     CHECK(out.front().has_value());
     CHECK(out.back().has_value());
-    int shown = 0;
-    for (const auto& o : out) shown += o ? 1 : 0;
-    CHECK(shown == 16);  // pinned from one run
+
+    // No label left out would have fit between its drawn neighbours. Every
+    // mark here ends well inside the strip, so a label would start at its
+    // mark.
+    REQUIRE(marks.back() + widths.back() <= right);
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (out[i]) continue;
+        CAPTURE(i);
+        std::optional<float> prev_end, next_start;
+        for (size_t j = i; j-- > 0;)
+            if (out[j]) {
+                prev_end = *out[j] + widths[j];
+                break;
+            }
+        for (size_t k = i + 1; k < out.size(); ++k)
+            if (out[k]) {
+                next_start = *out[k];
+                break;
+            }
+        const bool clear_before = !prev_end || marks[i] >= *prev_end + gap;
+        const bool clear_after = !next_start || marks[i] + widths[i] + gap <= *next_start;
+        CHECK_FALSE((clear_before && clear_after));
+    }
 }
 
 TEST_CASE("label layout: labels at the ends stay on the strip") {
-    const std::vector<float> marks{0, 300};
+    const float left = 0;
+    const float right = 300;
+    const std::vector<float> marks{left, right};
     const std::vector<float> widths{12, 12};
-    const auto out = spaced_labels(marks, widths, 0, 300, 3);
-    CHECK(*out[0] == doctest::Approx(0));
-    CHECK(*out[1] == doctest::Approx(288));
+    const auto out = spaced_labels(marks, widths, left, right, 3);
+    // The first starts at its mark on the left edge; the last, whose mark is
+    // the right edge, moves left so it ends there.
+    CHECK(*out[0] == doctest::Approx(left));
+    CHECK(*out[1] == doctest::Approx(right - widths[1]));
 }
 
 TEST_CASE("label layout: the last label drops the ones it would cover, never the first") {

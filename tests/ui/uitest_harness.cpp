@@ -196,17 +196,21 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
     h.app.reset();
 
     hydra::audio::set_headless(true);
-    // The dmleaderboards API, canned: one user whose only score is the first
-    // chart of the scanned library (so the join has something to match).
-    hydra::net::set_fetcher([&h](const std::string& url, const std::atomic<bool>*) {
-        if (url.find("/all-users") != std::string::npos) return canned_dm_users();
-        std::string md5 = (h.app && h.app->library_shown_count() > 0)
-                              ? h.app->library_row_at(0).entry.md5
-                              : "00000000000000000000000000000000";
-        return canned_dm_scores({canned_dm_score(md5, 100000)});
-    });
-    // No test downloads from the network. The update tests install their own
-    // downloader over this one (uitest_library.cpp, UpdateSeams).
+    // The real window (Hydra.exe attached) keeps the app's own fetcher, so
+    // the dmleaderboards picker talks to the real server and shows its real
+    // errors. Headless, the GUI tests have no network: a fake server's reply
+    // says nothing about real data, so any fetch fails loudly instead. The
+    // update tests clear this fetcher for their length, so GitHubReplay's
+    // address map answers (uitest_library.cpp, UpdateSeams).
+    if (!h.attached) {
+        hydra::net::set_fetcher([](const std::string& url, const std::atomic<bool>*) -> std::string {
+            throw std::runtime_error("hydra_uitest has no network: the GUI tests never fetch " +
+                                     url);
+        });
+    }
+    // No test downloads from the network. The update tests clear this
+    // downloader for their length, so the address map answers
+    // (uitest_library.cpp, UpdateSeams).
     hydra::net::set_downloader([](const std::string& url, const std::string&, uint64_t,
                                   std::atomic<uint64_t>*, const std::atomic<bool>*) {
         throw std::runtime_error("hydra_uitest has no canned download for " + url);
@@ -431,27 +435,27 @@ size_t count_on_screen(Harness& h, const std::string& s) {
     return n;
 }
 
-std::string canned_dm_users() {
-    return R"([{"id":"111","username":"alice","elo":1500,
-                "stats":{"total_scores":1,"total_score":100000}}])";
-}
-
-std::string canned_dm_score(const std::string& identifier, int points) {
-    return R"({"identifier":")" + identifier +
-           R"(","song_name":"x","artist":"y","charter_refs":["z"],"score":)" +
-           std::to_string(points) +
-           R"(,"is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"})";
-}
-
-std::string canned_dm_scores(const std::vector<std::string>& score_rows) {
-    std::string rows;
-    for (const std::string& row : score_rows) rows += (rows.empty() ? "" : ",") + row;
-    return R"({"scores":[)" + rows + R"(],"unknown_scores":[]})";
-}
-
 namespace {
 
 const char* yes_no(bool b) { return b ? "yes" : "no"; }
+
+// The open song's state as the state verb prints it, one case per
+// ViewedSong::State value by name, so the words cannot drift from the enum's
+// order. A value with no case here prints as its number, never as another
+// value's word.
+std::string view_state_word(hydra::ui::ViewedSong::State s) {
+    using State = hydra::ui::ViewedSong::State;
+    switch (s) {
+        case State::None: return "none";
+        case State::Analyzing: return "analyzing";
+        case State::Ready: return "ready";
+        case State::Cancelled: return "cancelled";
+        case State::Failed: return "failed";
+        case State::FileMissing: return "file-missing";
+        case State::AnalysisOff: return "analysis-off";
+    }
+    return "state-" + std::to_string(static_cast<int>(s));
+}
 
 }  // namespace
 
@@ -481,11 +485,7 @@ std::string state_text(Harness& h) {
                 a.settings.chartmode_key().c_str(), yes_no(a.settings.view_prodrums),
                 yes_no(a.settings.view_bass2x), a.settings.depth_value,
                 yes_no(a.settings.auto_open_report));
-    static const char* const kViewStates[] = {"none",      "analyzing",    "ready",
-                                               "cancelled", "failed",       "file-missing",
-                                               "rules-broken"};
-    out.appendf("  viewed=%s view_job=%s view_pending=%s\n",
-                kViewStates[static_cast<int>(a.viewed.state)],
+    out.appendf("  viewed=%s view_job=%s view_pending=%s\n", view_state_word(a.viewed.state).c_str(),
                 a.view_job ? (a.view_job->finished() ? "finished" : "running") : "-",
                 yes_no(a.view_pending));
     out.appendf("  jobs: scan=%s batch=%s report=%s dm_fetch=%s dm_report=%s\n",
@@ -538,8 +538,8 @@ void open_details(ImGuiTestContext* ctx, size_t index) {
 }
 
 namespace {
-// Whether the tab bar can no longer move within `seconds`; the one wait
-// wait_tabs_placed and open_details_within share.
+// Whether the tab bar can no longer move within `seconds`; the wait
+// open_details_within makes before it clicks a tab.
 bool tabs_placed_within(ImGuiTestContext* ctx, double seconds) {
     Harness& h = harness(ctx);
     return wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
@@ -563,10 +563,6 @@ bool open_details_within(ImGuiTestContext* ctx, size_t index, double settle_seco
     if (!tabs_placed_within(ctx, settle_seconds)) return false;
     ctx->ItemClick("##DetailsTabs/Paths");
     return true;
-}
-
-void wait_tabs_placed(ImGuiTestContext* ctx) {
-    IM_CHECK(tabs_placed_within(ctx, kSettleWaitSeconds));
 }
 
 // Narrow the library with `search` typed into the search box, then open the
@@ -620,16 +616,22 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
 }
 
-// Shared: open chart 0's Preview and wait for the load. Returns false on error.
-bool open_preview(ImGuiTestContext* ctx) {
+void start_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
-    if (ctx->IsError()) return false;
+    if (ctx->IsError()) return;
     open_details(ctx, 0);
-    if (ctx->IsError()) return false;
+    if (ctx->IsError()) return;
     ctx->ItemClick("**/Preview");
-    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10), false);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+}
+
+// Shared: open chart 0's Preview and wait for the load. Returns false on error.
+bool open_preview(ImGuiTestContext* ctx) {
+    start_preview(ctx);
+    if (ctx->IsError()) return false;
+    Harness& h = harness(ctx);
     IM_CHECK_RETV(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120), false);
     IM_CHECK_RETV(h.app->preview->error().empty(), false);
     return true;

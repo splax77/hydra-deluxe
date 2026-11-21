@@ -24,21 +24,33 @@ using namespace hydra;
 
 namespace {
 
-// Runs `visit(song, record)` on every corpus chart that has notes, at `cfg`,
-// and checks at least one chart ran.
+// Runs `visit(song, record)` on every corpus chart that has notes, at `cfg`.
+// A chart with no notes at cfg's difficulty has no path to finish: it is
+// named, and the analysis must refuse it with NoNotesError, so a chart lost
+// any other way fails. Every chart is either visited or refused that way.
 template <typename Visit>
 void on_every_corpus_chart(const app::AnalysisSettings& cfg, Visit&& visit) {
-    int charts = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        ++charts;
+    const std::vector<std::string>& all = corpus::chart_paths();
+    size_t visited = 0;
+    size_t refused = 0;
+    for (const std::string& chart : all) {
         CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) {
+            const std::string msg = "no notes at this difficulty, so no best finish: " + chart;
+            MESSAGE(msg);
+            CHECK_THROWS_AS((void)corpus::analyzed(chart, cfg), NoNotesError);
+            ++refused;
+            continue;
+        }
+        ++visited;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         REQUIRE_FALSE(rec.paths.empty());
         visit(song, rec);
     }
-    CHECK(charts > 0);
+    CHECK(visited + refused == all.size());
+    // With no chart visited, neither identity below was checked at all.
+    REQUIRE_MESSAGE(visited > 0, "no corpus chart has notes at the default difficulty");
 }
 
 }  // namespace
@@ -87,9 +99,9 @@ TEST_CASE("best finish: every window of a corpus best path pinned in full, with 
     });
 }
 
-// Mutemath "Allies": its best path's first window fits the default 10 ms
-// Path limit, so pinning it in full leaves the best total where it was:
-// BF(1) == BF(0). The total is pinned from one run.
+// Mutemath "Allies": its best path's first window fits the default Path
+// limit (the REQUIRE below checks it), so pinning it in full leaves the best
+// total where it was: BF(1) == BF(0).
 TEST_CASE("best finish: pinning the best path's first window keeps the best total") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::string chart = corpus::chart_named("Mutemath - Allies");
@@ -108,7 +120,6 @@ TEST_CASE("best finish: pinning the best path's first window keeps the best tota
     REQUIRE_FALSE(bf0.paths.empty());
     REQUIRE_FALSE(bf1.paths.empty());
     CHECK(bf1.paths.front().totalscore() == bf0.paths.front().totalscore());
-    CHECK(bf0.paths.front().totalscore() == 451830);
 }
 
 // A pin one tick after the best path's first activation is no fill node, so
