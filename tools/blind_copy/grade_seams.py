@@ -7,8 +7,9 @@ is one or more `<path>:<first>-<last>` joined by commas, with paths as the
 facts cite them, with or without the leading `code/`. The forms searched for
 are in seam_patterns.txt.
 
-A test owns a hit on its own lines, and a hit inside any helper in the slice
-its body names, directly or through another helper. It also owns the hits in
+A test is a TEST_CASE, a UI test (see ui_registrations), or a top-level unit
+nothing else in its file names. A test owns a hit on its own lines, and a hit
+inside any helper in the slice its body names, directly or through another helper. It also owns the hits in
 a helper, type or macro outside the slice that the test or one of those slice
 helpers names, when it is defined in a slice file, in a file the slice files
 include from tests/, or in the .cpp of such a header; those are read one step
@@ -34,6 +35,11 @@ NAMESPACE_HEAD = re.compile(r'^\s*(?:inline\s+)?(?:namespace\b|extern\s+"C")')
 TYPE_HEAD = re.compile(r"^\s*(?:template\s*<[^>]*>\s*)?(?:struct|class|union|enum(?:\s+class)?)\s+([A-Za-z_]\w*)")
 CALL_HEAD = re.compile(r"([A-Za-z_]\w*)\s*\(")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
+UI_TEST_HEAD = re.compile(r"\(\s*ImGuiTestContext\s*\*\s*\w*\s*\)")
+# Matched on a unit's code, where comments are gone and a string literal is
+# cut out, so a test's name is the empty gap before the comma.
+REG_ENTRY = re.compile(r"\{\s*,\s*&?([A-Za-z_]\w*)\s*\}")
+REG_CALL = re.compile(r"\bregister_test\s*\(\s*\w+\s*,\s*,\s*&?([A-Za-z_]\w*)\s*\)")
 
 
 class Pattern:
@@ -293,6 +299,27 @@ def names(text, name):
     return re.search(r"(?<![\w])" + re.escape(name) + r"(?![\w])", text) is not None
 
 
+def ui_registrations(units):
+    """The UI tests among `units`, and the tables that register them.
+
+    A UI test is a function the Dear ImGui test engine runs: its head takes an
+    `ImGuiTestContext*`, and a table in the same file lists it by name in a
+    `{"<name>", <function>}` entry or a `register_test(<engine>, "<name>",
+    <function>)` call, read from code with comments and strings cut out. Such a function is a test although the
+    table names it, and the table is not a test. Returns two sets of unit ids."""
+    runnable = {u.name: u for u in units
+                if u.name and UI_TEST_HEAD.search(u.text.split("{", 1)[0])}
+    registered, tables = set(), set()
+    for u in units:
+        listed = [runnable[n]
+                  for n in REG_ENTRY.findall(u.code) + REG_CALL.findall(u.code)
+                  if n in runnable and n != u.name]
+        if listed:
+            registered.update(id(t) for t in listed)
+            tables.add(id(u))
+    return registered, tables
+
+
 def grade(copy, ranges, facts, patterns=None):
     """A dict with the slice files' line counts, the tests, and every
     (test, hit) pair with whether the facts cite it."""
@@ -326,6 +353,10 @@ def grade(copy, ranges, facts, patterns=None):
             labels = [p.label for p in patterns if p.regex.search(line)]
             if labels:
                 hits.append((path, n, labels))
+    registered, tables = ui_registrations(slice_units)
+    for u in slice_units:
+        if id(u) in registered:
+            u.is_test_case = True
     named = [u for u in slice_units if u.name and not u.is_test_case]
     helpers = set()
     for h in named:
@@ -333,7 +364,7 @@ def grade(copy, ranges, facts, patterns=None):
             if u is not h and names(u.code, h.name):
                 helpers.add(id(h))
                 break
-    tests = [u for u in slice_units if id(u) not in helpers]
+    tests = [u for u in slice_units if id(u) not in helpers and id(u) not in tables]
 
     # Helpers, types and macros outside the slice: in the slice files' own
     # other lines, in the files they include, and in each header's .cpp.

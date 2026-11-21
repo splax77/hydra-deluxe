@@ -12,7 +12,8 @@ folder and suffix as skipped, so none is left out silently.
 
 It writes three files to <folder>:
   seams.tsv       one row per test and hit grade() gives, with the hit's kind.
-                  test_case is grade()'s own flag: "yes" for a TEST_CASE, "no"
+                  test_case is grade()'s own flag: "yes" for a TEST_CASE or a
+                  UI test (grade_seams.ui_registrations), "no"
                   for a header struct or harness function grade() lists as a
                   test because nothing else in its file names it, and "" for a
                   hit with no test
