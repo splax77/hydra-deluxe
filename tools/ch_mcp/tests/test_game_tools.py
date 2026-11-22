@@ -424,7 +424,14 @@ class GameToolsTest(unittest.TestCase):
         # each text given a value. A parameter added with no value here fails
         # the test, so a new one is checked too.
         given = {"song_folder": CORPUS_CHART_FOLDER, "player": "Drums,Hard",
-                 "profile": "Tester"}
+                 "profile": "Tester", "frame_multiplier": 4}
+        # A real settings.ini with vsync off, so the multiplier's own checks
+        # pass and the start reaches the quiet check; the busy refusal leaves
+        # the file as it was.
+        _exe, documents = real_game_paths(self.tmp)
+        settings = os.path.join(documents, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        settings_before = _read(settings)
         args = {}
         for name, param in inspect.signature(GT.GameTools.ch_start).parameters.items():
             if name == "self":
@@ -444,6 +451,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(reply.endswith(suffix), reply)
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
         self.assertIsNone(tools._run)
+        self.assertEqual(_read(settings), settings_before)
 
     # -- ch_start ----------------------------------------------------------------
 
@@ -2284,6 +2292,139 @@ class RunWithoutFocusTest(unittest.TestCase):
         with self.assertRaises(G.SettingNotFound) as missing:
             G.get_game_setting(path, key)
         self.assertIn(f"({missing.exception})", said)
+
+
+class FrameMultiplierTest(unittest.TestCase):
+    """ch_start's frame_multiplier, on ToolRig's fake launch with a copy of the
+    settings.ini a real run backed up (REAL_BACKUP) as the game's file. That
+    copy reads vsync = 0 in [video] and holds the multiplier's line in
+    [game]."""
+
+    REAL_VSYNC_LINE = b"vsync = 0"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.t = ToolRig(self.tmp)
+        self.path = self.t.r.path(G.SETTINGS)
+        self.real = _read(os.path.join(REAL_BACKUP, G.SETTINGS))
+        self.assertEqual(self.real.count(self.REAL_VSYNC_LINE), 1)
+        self.key = G.FRAME_MULTIPLIER
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def put(self, data: bytes) -> None:
+        _write(self.path, data)
+
+    def today(self, data: bytes) -> bytes:
+        """What today's ch_start leaves of `data`: its pause line set to the
+        run's value by the one writer, on a second copy."""
+        copy = os.path.join(self.tmp, "today " + G.SETTINGS)
+        _write(copy, data)
+        G.set_game_setting(copy, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        return _read(copy)
+
+    def assert_started_nothing(self, reply: str, data: bytes) -> None:
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertEqual(_read(self.path), data)
+        self.assertEqual(self.t.r.launch.commands, [])
+        self.assertFalse(os.path.exists(self.t.scratch_root))
+        self.assertIsNone(self.t.tools._run)
+        # The machine recorder was not started either.
+        self.assertEqual(self.t.popen.calls, [])
+
+    def line_for(self, reply: str, key: str) -> str:
+        said = [line for line in reply.splitlines()
+                if line.startswith(f"{G.SETTINGS}: {key} set ")]
+        self.assertEqual(len(said), 1, reply)
+        return said[0]
+
+    def test_with_no_multiplier_the_file_holds_what_todays_start_leaves(self):
+        self.put(self.real)
+        reply = self.t.tools.ch_start()
+        self.assertEqual(len(self.t.r.launch.commands), 1, reply)
+        self.assertEqual(_read(self.path), self.today(self.real))
+        self.assertFalse([line for line in reply.splitlines()
+                          if line.startswith(f"{G.SETTINGS}: {self.key} ")], reply)
+
+    def test_with_one_only_the_multiplier_line_differs_and_the_reply_names_both_values(self):
+        self.put(self.real)
+        old = G.get_game_setting(self.path, self.key)
+        new = G.FRAME_MULTIPLIER_MAX
+        self.assertNotEqual(old, str(new))
+        reply = self.t.tools.ch_start(frame_multiplier=new)
+        self.assertEqual(len(self.t.r.launch.commands), 1, reply)
+        was, now = (self.today(self.real).splitlines(keepends=True),
+                    _read(self.path).splitlines(keepends=True))
+        self.assertEqual(len(was), len(now))
+        differ = [i for i in range(len(was)) if was[i] != now[i]]
+        self.assertEqual(len(differ), 1, differ)
+        self.assertEqual(G.get_game_setting(self.path, self.key), str(new))
+        self.assertEqual(G._game_setting_line(now, self.key), differ[0])
+        line = self.line_for(reply, self.key)
+        self.assertIn(f" from {old} to {new} ", line)
+
+    def test_vsync_not_off_is_refused_before_any_backup_or_launch(self):
+        cases = {"vsync on": self.real.replace(self.REAL_VSYNC_LINE, b"vsync = 1"),
+                 "no vsync line": self.real.replace(self.REAL_VSYNC_LINE, b"")}
+        for name, data in cases.items():
+            with self.subTest(name):
+                self.put(data)
+                reply = self.t.tools.ch_start(frame_multiplier=2)
+                self.assert_started_nothing(reply, data)
+                self.assertIn(G.VSYNC, reply)
+
+    def test_a_value_outside_the_games_range_is_refused_the_same_way(self):
+        self.put(self.real)
+        for value in (G.FRAME_MULTIPLIER_MIN - 1, G.FRAME_MULTIPLIER_MAX + 1):
+            with self.subTest(value):
+                reply = self.t.tools.ch_start(frame_multiplier=value)
+                self.assert_started_nothing(reply, self.real)
+                self.assertIn(f"{G.FRAME_MULTIPLIER_MIN} to {G.FRAME_MULTIPLIER_MAX}", reply)
+
+    def test_a_file_with_no_multiplier_line_is_refused_naming_the_line(self):
+        lines = self.real.splitlines(keepends=True)
+        del lines[G._game_setting_line(lines, self.key)]
+        data = b"".join(lines)
+        self.put(data)
+        reply = self.t.tools.ch_start(frame_multiplier=2)
+        self.assert_started_nothing(reply, data)
+        self.assertIn(self.key, reply)
+
+    def test_the_session_folder_records_framerate_vsync_and_the_multiplier(self):
+        self.put(self.real)
+        old = G.get_game_setting(self.path, self.key)
+        reply = self.t.tools.ch_start(frame_multiplier=2)
+        record_path = os.path.join(self.t.tools._scratch, GT.FRAME_SETTINGS_FILE)
+        with open(record_path, encoding="utf-8") as f:
+            record = json.load(f)
+        self.assertEqual(record, {
+            G.FRAMERATE: G.get_video_setting(self.path, G.FRAMERATE),
+            G.VSYNC: G.get_video_setting(self.path, G.VSYNC),
+            f"{self.key}_before": old, f"{self.key}_after": "2"})
+        self.assertTrue([line for line in reply.splitlines() if record_path in line], reply)
+
+    def test_a_start_with_no_multiplier_records_the_line_as_it_stands(self):
+        self.put(self.real)
+        old = G.get_game_setting(self.path, self.key)
+        self.t.tools.ch_start()
+        with open(os.path.join(self.t.tools._scratch, GT.FRAME_SETTINGS_FILE),
+                  encoding="utf-8") as f:
+            record = json.load(f)
+        self.assertEqual((record[f"{self.key}_before"], record[f"{self.key}_after"]), (old, old))
+
+    def test_after_a_clean_ch_stop_the_line_keeps_the_runs_value(self):
+        self.put(self.real)
+        reply = self.t.tools.ch_start(frame_multiplier=2)
+        stopped = self.t.tools.ch_stop()
+        self.assertIsNone(self.t.tools._run, stopped)
+        self.assertEqual(G.get_game_setting(self.path, self.key), "2")
+        # The reply says the line is not put back in the pause line's own words.
+        pause = self.line_for(reply, G.PAUSE_ON_FOCUS_LOST)
+        words = pause[pause.rindex("("):]
+        self.assertTrue(words.startswith("(not put back"), pause)
+        self.assertTrue(self.line_for(reply, self.key).endswith(words), reply)
 
 
 # The launch agent's status replies from a real human launch, copied from

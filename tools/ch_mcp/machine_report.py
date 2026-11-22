@@ -253,17 +253,17 @@ def _wall(seconds: Fraction) -> str:
 
 def _settings_lines(documents_dir: str) -> List[str]:
     path = os.path.join(documents_dir, game_files.SETTINGS)
-    try:
-        with open(path, encoding="utf-8-sig", errors="replace") as f:
-            lines = [line.strip() for line in f]
-    except OSError as e:
-        return [f"{game_files.SETTINGS}: could not read {path} ({e})"]
     out = []
     for key in SETTINGS_KEYS:
-        found = [line for line in lines if line.split("=", 1)[0].strip().lower() == key
-                 and "=" in line]
-        out += [f"{game_files.SETTINGS}: {line}" for line in found] or [
-            f"{game_files.SETTINGS}: no {key} line"]
+        try:
+            value = game_files.get_video_setting(path, key)
+        except OSError as e:
+            return [f"{game_files.SETTINGS}: could not read {path} ({e})"]
+        except game_files.SettingNotFound as e:
+            out.append(f"{game_files.SETTINGS}: {e}")
+            continue
+        out.append(f"{game_files.SETTINGS}: no {key} line" if value is None
+                   else f"{game_files.SETTINGS}: {key} = {value}")
     return out
 
 

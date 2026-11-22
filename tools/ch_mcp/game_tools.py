@@ -50,6 +50,9 @@ PRESS_LOG_PREFIX = "press-"
 # ch_run_chart's record of the agent builds and the hydra_replay build a run
 # used (build_stamp.builds_record), with the number of the run's press log.
 BUILDS_PREFIX = "builds-"
+# ch_start's record of the frame settings its run started with, in the session
+# folder (_record_frame_settings writes it).
+FRAME_SETTINGS_FILE = "frame-settings.json"
 # The file under the temp root that names an open backup and the worker holding
 # it, so a worker killed before its restore leaves the next worker a way to put
 # the backup back (docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md), design
@@ -720,7 +723,8 @@ class GameTools:
     # -- starting, stopping and status --------------------------------------------
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
-                 profile: Optional[str] = None, human: bool = False) -> str:
+                 profile: Optional[str] = None, human: bool = False,
+                 frame_multiplier: Optional[int] = None) -> str:
         """Check the machine is quiet (quiet.quiet_report), back up the
         Rewired registry key (game_files.backup; no file is backed up), set
         settings.ini's pause_on_focus_lost line for the run (nothing puts it
@@ -729,7 +733,11 @@ class GameTools:
         the bot plays it from the command line; with none the game opens at
         its menu. With `human` and a song folder a human player plays it
         instead (bot_run.launch_human), and `human` with no song folder is
-        refused before anything runs. An open run is stopped and restored
+        refused before anything runs. With `frame_multiplier`, the
+        multiplier's line is set too, beside the pause line and left the
+        same way; _frame_multiplier_refusal says when it is refused, before
+        anything runs. Every start records the frame settings in its session
+        folder (_record_frame_settings). An open run is stopped and restored
         first, so its game is not read as load. A machine that is not quiet
         refuses the launch before any backup or folder, and a quiet one puts
         the report's lines first in the reply. The machine recorder starts
@@ -739,6 +747,10 @@ class GameTools:
             refusal = bot_run.human_refusal(human, song_folder)
             if refusal is not None:
                 return refusal
+            if frame_multiplier is not None:
+                refusal = self._frame_multiplier_refusal(frame_multiplier)
+                if refusal is not None:
+                    return refusal
             lines: List[str] = []
             if self._from_marker:
                 return (f"refused: {self._pending_text()}; call ch_stop to restore it, then "
@@ -774,6 +786,11 @@ class GameTools:
                 # the game has not started yet.
                 self._mark_new_backup(scratch, in_scratch, lines)
                 lines.append(self._pause_setting())
+                before = self._frame_settings()
+                if frame_multiplier is not None:
+                    lines.append(self._frame_multiplier_setting(
+                        frame_multiplier, before[game_files.FRAME_MULTIPLIER]))
+                self._record_frame_settings(scratch, before, lines)
 
             try:
                 try:
@@ -843,6 +860,85 @@ class GameTools:
                     "pause while it is not in front")
         return (f"{game_files.SETTINGS}: {key} set to {value} for this run (not put back "
                 "after the run)")
+
+    def _frame_multiplier_refusal(self, value: int) -> Optional[str]:
+        """Why ch_start refuses to set the multiplier to `value`, or None. A
+        value outside the game's range, a settings.ini without the
+        multiplier's line, and one whose vsync line does not read off are
+        refused, because the multiplier does nothing with vsync on (TM-54 on
+        docs/clone-hero/03-timing.md). The file is only read."""
+        path = os.path.join(self._env.documents_dir, game_files.SETTINGS)
+        key, low, high = (game_files.FRAME_MULTIPLIER, game_files.FRAME_MULTIPLIER_MIN,
+                          game_files.FRAME_MULTIPLIER_MAX)
+        kept = f"nothing was started and {game_files.SETTINGS} was not changed"
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            return (f"refused: frame_multiplier {value!r} is outside the game's range of "
+                    f"{low} to {high} (TM-54); {kept}")
+        try:
+            game_files.get_game_setting(path, key)
+            vsync = game_files.get_video_setting(path, game_files.VSYNC)
+        except (game_files.SettingNotFound, OSError) as e:
+            return f"refused: {game_files.SETTINGS} at {path}: {e}; {kept}"
+        if vsync is None:
+            return (f"refused: {game_files.SETTINGS} at {path} has no {game_files.VSYNC} line "
+                    f"in the [{game_files.VIDEO_SECTION}] section, so {key} may do nothing "
+                    f"(TM-54); {kept}")
+        if vsync.strip() != game_files.VSYNC_OFF:
+            return (f"refused: {game_files.SETTINGS} reads {game_files.VSYNC} = {vsync}, and "
+                    f"{key} does nothing unless it reads {game_files.VSYNC_OFF} (TM-54); {kept}")
+        return None
+
+    def _frame_multiplier_setting(self, value: int, old: Optional[str]) -> str:
+        """Set settings.ini's multiplier line to `value` for the run and say
+        so, with the `old` value it held. Nothing puts it back, the same as
+        the pause line. A line that cannot be set raises OSError, so the
+        launch stops rather than run at a multiplier nobody asked for."""
+        path = os.path.join(self._env.documents_dir, game_files.SETTINGS)
+        key = game_files.FRAME_MULTIPLIER
+        try:
+            self._set_setting(path, key, str(value))
+        except game_files.SettingNotFound as e:
+            raise OSError(f"{game_files.SETTINGS}: {key} not set to {value} ({e})") from e
+        return (f"{game_files.SETTINGS}: {key} set from {old} to {value} for this run (not "
+                "put back after the run)")
+
+    def _frame_settings(self) -> dict:
+        """framerate and vsync from settings.ini's [video] section and the
+        multiplier from its [game] section, as the file holds them now. A
+        value that cannot be read is None."""
+        path = os.path.join(self._env.documents_dir, game_files.SETTINGS)
+        read: dict = {}
+        for key, reader in ((game_files.FRAMERATE, game_files.get_video_setting),
+                            (game_files.VSYNC, game_files.get_video_setting),
+                            (game_files.FRAME_MULTIPLIER, game_files.get_game_setting)):
+            try:
+                read[key] = reader(path, key)
+            except (game_files.SettingNotFound, OSError):
+                read[key] = None
+        return read
+
+    def _record_frame_settings(self, scratch: str, before: dict, lines: List[str]) -> None:
+        """Write FRAME_SETTINGS_FILE into the session folder `scratch`: the
+        `before` values (_frame_settings, read before the multiplier was set)
+        and the multiplier read again now, and add one line saying what it
+        holds. The frame step a run really gets is measured on the frames,
+        not taken from here. A record that cannot be written is one line, and
+        the run goes on."""
+        after = self._frame_settings()
+        key = game_files.FRAME_MULTIPLIER
+        record = {game_files.FRAMERATE: after[game_files.FRAMERATE],
+                  game_files.VSYNC: after[game_files.VSYNC],
+                  f"{key}_before": before[key], f"{key}_after": after[key]}
+        path = os.path.join(scratch, FRAME_SETTINGS_FILE)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(record, f, indent=1)
+        except OSError as e:
+            lines.append(f"frame settings not recorded ({e})")
+            return
+        lines.append(f"frame settings: {game_files.FRAMERATE} {record[game_files.FRAMERATE]}, "
+                     f"{game_files.VSYNC} {record[game_files.VSYNC]}, {key} {before[key]} "
+                     f"before and {after[key]} after; recorded in {path}")
 
     def ch_status(self) -> str:
         """The game side of the session: the run, the backup folder, a
