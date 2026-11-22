@@ -859,10 +859,14 @@ public:
         // pAppData stays the real layer's: its own calls, handed this VFS,
         // read it.
         vfs_.xOpen = &open;
+        // One VFS per name: the real one leaves while this one stands in. A
+        // failure here throws out of the constructor, where the destructor
+        // does not run, so the real layer goes back first.
+        const int left = sqlite3_vfs_unregister(real_);
+        const int stood = left == SQLITE_OK ? sqlite3_vfs_register(&vfs_, 0) : left;
+        if (stood != SQLITE_OK && left == SQLITE_OK) sqlite3_vfs_register(real_, 0);
+        REQUIRE(stood == SQLITE_OK);
         active_ = this;
-        // One VFS per name: the real one leaves while this one stands in.
-        REQUIRE(sqlite3_vfs_unregister(real_) == SQLITE_OK);
-        REQUIRE(sqlite3_vfs_register(&vfs_, 0) == SQLITE_OK);
     }
     ~LockedForNewReaders() {
         sqlite3_vfs_unregister(&vfs_);
