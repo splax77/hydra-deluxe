@@ -2164,6 +2164,74 @@ class GameToolsTest(unittest.TestCase):
         with open(written, encoding="utf-8") as f:
             self.assertEqual([a["file"] for a in json.load(f)["agents"]], recorded)
 
+    # -- the frame clock log ------------------------------------------------------------
+
+    # A fabricated agent's frame clock: frame 7 is missing, as a frame the
+    # hook did not run on would be, and the clock steps unevenly.
+    FRAME_CLOCK = [(5, 1000.0), (6, 1000.758), (8, 1002.274), (9, 1003.5)]
+
+    def _frame_clock_rig(self, *results):
+        """A chained-start rig whose plays, one per ch_run_chart, end with
+        `results`' frame clocks and errors, each after one press row."""
+        results = list(results)
+
+        def played(chords, *, on_press, **_kw):
+            on_press(ROWS[0])
+            return results.pop(0)
+        t, _events, _seen = self._chain_rig(live_play=played)
+        return t
+
+    def _session_file(self, t, prefix, n):
+        return os.path.join(t.tools.session_dir(), f"{prefix}{n}.csv")
+
+    def test_the_frame_clock_is_written_row_for_row_beside_the_press_log(self):
+        # Two runs: each run's frame clock log takes its press log's number,
+        # and holds one row per frame the agent sent, in its order.
+        second = self.FRAME_CLOCK[:2]
+        t = self._frame_clock_rig(play_chart.RunResult(stop="done",
+                                                       frame_clock=list(self.FRAME_CLOCK)),
+                                  play_chart.RunResult(stop="done", frame_clock=list(second)))
+        for n, frames in ((1, self.FRAME_CLOCK), (2, second)):
+            with self.subTest(run=n):
+                self._run(t)
+                self.assertEqual(t.tools._play.log_path,
+                                 self._session_file(t, GT.PRESS_LOG_PREFIX, n))
+                path = self._session_file(t, GT.FRAME_CLOCK_PREFIX, n)
+                self.assertEqual(self._log_table(path),
+                                 [list(play_chart.FRAME_CLOCK_COLUMNS)]
+                                 + [[str(f), str(c)] for f, c in frames])
+                status = t.tools.ch_play_status().splitlines()
+                self.assertIn(f"frame clock log: {path} ({len(frames)} frames)", status)
+
+    def test_a_play_with_no_end_reply_writes_no_frame_clock_and_says_it_is_missing(self):
+        # A run that ended with no stop event from the agent (a lost
+        # session) has no frame clock: no file, and the status says missing,
+        # not empty. A frame clock the agent sent broken says why.
+        cases = (("no end reply", play_chart.RunResult(stop="lost"),
+                  "the kit agent's play sent no end reply carrying it"),
+                 ("broken", play_chart.RunResult(stop="done", frame_clock_error="holds 3 frames "
+                                                 "and 2 clocks"), "holds 3 frames and 2 clocks"))
+        t = self._frame_clock_rig(*(result for _name, result, _why in cases))
+        for n, (name, _result, why) in enumerate(cases, start=1):
+            with self.subTest(case=name):
+                self._run(t)
+                path = self._session_file(t, GT.FRAME_CLOCK_PREFIX, n)
+                self.assertFalse(os.path.exists(path))
+                status = t.tools.ch_play_status().splitlines()
+                self.assertIn(f"frame clock log missing, not written to {path}: {why}", status)
+                self.assertFalse([line for line in status if line.startswith("frame clock log:")])
+
+    def test_a_play_that_failed_writes_no_frame_clock(self):
+        def failed(chords, *, on_press, **_kw):
+            on_press(ROWS[0])
+            raise RuntimeError("the agent went away")
+        t, _events, _seen = self._chain_rig(live_play=failed)
+        self._run(t)
+        path = self._session_file(t, GT.FRAME_CLOCK_PREFIX, 1)
+        self.assertFalse(os.path.exists(path))
+        self.assertIn(f"frame clock log missing, not written to {path}: the kit agent's play "
+                      f"sent no end reply carrying it", t.tools.ch_play_status().splitlines())
+
     # -- probes (task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md) ---
 
     FREAK_SCHEDULE = os.path.join(_PROBE_TESTS, "freak_limits_schedule.json")
