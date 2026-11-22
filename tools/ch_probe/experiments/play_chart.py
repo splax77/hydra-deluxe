@@ -51,7 +51,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from typing import Callable, List, Mapping, Optional, Sequence, TextIO, Tuple
+from typing import Any, Callable, List, Mapping, Optional, Sequence, TextIO, Tuple
 
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
@@ -697,7 +697,16 @@ class RunResult:
     lacked what its press asked for) or STOP_NO_ENGINE (the run found no
     playing song). For every stop but STOP_DONE, `message` says why in
     words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
-    threshold live_in_game read, None when it read none (the keys route reads none)."""
+    threshold live_in_game read, None when it read none (the keys route reads none).
+
+    `frame_clock` is the kit route's frame clock log: the (frame, clock_ms)
+    of every frame the agent's hook ran, from the frame_clock of each stop
+    event of the run in order (kit_tools.frame_clock_rows), so a play the
+    song clock's jump back restarted keeps both parts. It is None when the
+    run ended on no stop event (a lost session, a run play_in_game ended
+    itself) or any of them carried none; `frame_clock_error` then says why
+    a log the agent sent could not be read, and is None otherwise. Neither
+    changes a press or the stop."""
     sent: int = 0
     declined: int = 0
     dropped: int = 0
@@ -706,6 +715,8 @@ class RunResult:
     stop: str = ""
     message: str = ""
     dyn_threshold: Optional[int] = None
+    frame_clock: Optional[list] = None
+    frame_clock_error: Optional[str] = None
 
 
 def start_line(raw_s: float, messages: Sequence[Tuple[Press, List[Press]]],
@@ -1151,6 +1162,10 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     backlog: deque = deque()
     last_score: Optional[int] = None
     stopping_since: Optional[float] = None
+    # The frame clock log of the stop events so far (RunResult.frame_clock):
+    # None once one stop carried none or a broken one, with the reason.
+    frame_clock: Optional[list] = []
+    frame_clock_error: Optional[str] = None
 
     def play_ended() -> bool:
         # The agent sends its stop before it answers any later message, and
@@ -1204,6 +1219,12 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             continue
         if kind == K.EVENT_STOP:
             reason = event.get("reason")
+            try:
+                part_log = K.frame_clock_rows(event)
+            except K.FrameClockBroken as e:
+                part_log, frame_clock_error = None, str(e)
+            frame_clock = (None if frame_clock is None or part_log is None
+                           else frame_clock + part_log)
             if reason == K.STOP_REASON_JUMPED_BACK:
                 print("\n  Song clock jumped back. Re-syncing.", file=out)
                 by_seq = start()
@@ -1214,6 +1235,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_PAST_END: "past_end",
                      K.STOP_REASON_STOPPED: "stopped", K.STOP_REASON_CAP: "cap",
                      K.STOP_REASON_FROZEN: "frozen"}
+            # A stop event ends the agent's play whatever its reason, so its
+            # frame clock log is the whole play's.
+            result.frame_clock, result.frame_clock_error = frame_clock, frame_clock_error
             if reason not in words:
                 return fail("reply", f"the kit agent stopped for a reason this run does "
                                      f"not know: {reason!r}")
@@ -1351,6 +1375,20 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = _press_log_writer(f)
         writer.writeheader()
+        writer.writerows(rows)
+
+
+# The frame clock log's columns: a frame the kit agent's play hook ran on and
+# the song clock it read there (RunResult.frame_clock).
+FRAME_CLOCK_COLUMNS = ("frame", "clock_ms")
+
+
+def write_frame_clock_log(path: str, rows: Sequence[Tuple[Any, Any]]) -> None:
+    """Write the frame clock log: the FRAME_CLOCK_COLUMNS header, then one
+    row per frame of `rows`, in their order."""
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(FRAME_CLOCK_COLUMNS)
         writer.writerows(rows)
 
 

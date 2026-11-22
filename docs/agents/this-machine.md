@@ -8,6 +8,14 @@ Run Python as `py`. It starts the system Python 3.14.5 at `C:\Users\Patrick\AppD
 
 A bare `python` reaches a different install. In both shells it runs `C:\Python314\python.exe`, which is Python 3.14.7. The Microsoft Store alias (`C:\Users\Patrick\AppData\Local\Microsoft\WindowsApps\python.exe`) comes after it on the PATH. Use `py`, so every script runs on the same Python.
 
+pytest is not installed for `py`, so `py -I -m pytest` fails with "No module named pytest". The test files are unittest files. Run one by its module name from the checkout's root, without `-I`, because `-I` leaves the checkout off the import path and `tools` will not import: `py -m unittest tools.ch_mcp.tests.test_kit_tools`. A file can also run with `py -I -m unittest discover -s <its folder> -p <file name> -t .` from the root.
+
+## Clone Hero builds on disk
+
+Two copies of the game are installed. `C:\Clone Hero\1.1 june\Clone Hero` is build 6142, the one the facts table `docs/clone-hero/code/facts-6142.tsv` is read from: its `GameAssembly.dll` MD5 is the one that table's header names. `C:\Clone Hero\1.1 november\Clone Hero` is a different build. So `tools/ch_mcp/dump_facts.py --check` takes the June DLL: `py -I tools/ch_mcp/dump_facts.py C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs --version 1.1.0.6142-final --tsv docs/clone-hero --out docs/clone-hero/code/facts-6142.tsv --dll "C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll" --check`.
+
+The kit agent's TypeScript compiles with `npm run build:kit` in `tools/ch_mcp/agent`, which needs that folder's `node_modules`. Git ignores it, so a new worktree has none. The compiler does not follow a junction to the main checkout's copy, so copy it in: `robocopy <main>\tools\ch_mcp\agent\node_modules <worktree>\tools\ch_mcp\agent\node_modules /E` (about 160 MB).
+
 ## GitHub CLI
 
 `gh` is version 2.97.0, at `C:\Program Files\GitHub CLI\gh.exe`. A bare `gh` finds it from both PowerShell and Bash. It is already signed in, as the account `patseguin1-commits`, with its token in the Windows keyring and the scopes gist, read:org, repo and workflow. It needs no install and no login.

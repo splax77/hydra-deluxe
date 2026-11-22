@@ -982,6 +982,11 @@ interface Play {
     stallMs: number;
     lastFrameWall: number;
     timer: ReturnType<typeof setTimeout> | null;
+    // The frame and the song clock (ms) of every frame the hook ran, in
+    // order. Nothing the scheduler reads; endPlay sends them once, on the
+    // stop event, and kit_tools.py's contract block names the field.
+    frames: number[];
+    clocks: number[];
 }
 
 let play: Play | null = null;
@@ -1127,7 +1132,8 @@ function startPlay(m: Message) {
     const score = needAddress(m, "score_addr");
     const stallMs = needAbove0(m, "stall_ms");
     const schedule = new PressSchedule(m as unknown as PlayConfig, () => score.readU32());
-    const p: Play = { kit, schedule, clock, stallMs, lastFrameWall: Date.now(), timer: null };
+    const p: Play = { kit, schedule, clock, stallMs, lastFrameWall: Date.now(), timer: null,
+                      frames: [], clocks: [] };
     for (const s of schedule.slots.values()) {
         addPads(s.entry.elements);
     }
@@ -1137,7 +1143,8 @@ function startPlay(m: Message) {
     return { playing: true, entries: schedule.slots.size };
 }
 
-// One frame of the play: one clock read, one step.
+// One frame of the play: one clock read, kept in the frame clock log, and
+// one step.
 function onPlayFrame(p: Play): void {
     if (play !== p) {
         return;
@@ -1147,7 +1154,11 @@ function onPlayFrame(p: Play): void {
     try {
         const wall = Date.now();
         p.lastFrameWall = wall;
-        s = p.schedule.step(frameCount(), p.clock.readDouble() * MS_PER_S, wall);
+        const frame = frameCount();
+        const clockMs = p.clock.readDouble() * MS_PER_S;
+        p.frames.push(frame);
+        p.clocks.push(clockMs);
+        s = p.schedule.step(frame, clockMs, wall);
     } catch (e) {
         s = p.schedule.stop(Date.now());
         cause = `the frame step failed: ${e}`;
@@ -1184,8 +1195,10 @@ function applyStep(p: Play, s: Step, cause: string | null, reason: string | null
 // then the last events go, the stop among them. The stop event also carries
 // `cause`, null when the scheduler or stop_play stopped the play, else what
 // stopped it from outside the scheduler, and `lift_error`, null unless
-// unhook failed. `reason`, when given, replaces the stop event's reason: the
-// stall timer's stop is the scheduler's "frozen", not its "stopped".
+// unhook failed, and `frame_clock`, the play's frame clock log (Play.frames
+// and Play.clocks), sent here and nowhere else. `reason`, when given,
+// replaces the stop event's reason: the stall timer's stop is the
+// scheduler's "frozen", not its "stopped".
 function endPlay(p: Play, events: object[], cause: string | null, reason: string | null): void {
     play = null;
     if (p.timer !== null) {
@@ -1201,7 +1214,8 @@ function endPlay(p: Play, events: object[], cause: string | null, reason: string
     const out = events.map((e) => {
         const ev = e as { [key: string]: unknown };
         return ev.kind === "stop"
-            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError } : ev;
+            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError,
+                frame_clock: { frame: p.frames, clock_ms: p.clocks } } : ev;
     });
     send({ type: PLAY_EVENTS, events: out });
 }

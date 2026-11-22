@@ -706,7 +706,9 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #   dropped  the same fields, the down and up ones and judged_ms null
 #   stop     reason, frame, clock_ms, wall_ms, cause (null, or what stopped
 #            the play from outside the scheduler), lift_error (null unless
-#            lifting the pads failed)   (always last)
+#            lifting the pads failed), frame_clock ({frame: [...], clock_ms:
+#            [...]}, the frame and song clock of every frame the play's hook
+#            ran, in order; sent on this event only)   (always last)
 # agent_note is "" or retime_missed. A batch may also carry `error` (the
 # agent's own failure outside any play step, with no stop after it): GamePlayer
 # turns it into an EVENT_ERROR event.
@@ -735,6 +737,35 @@ PRESS_EVENT_FIELDS = ("seq", "index", "clock_ms_at_press", "down_frame", "up_fra
                       "down_ms", "up_ms", "score_before", "score_after",
                       "frame_gap_ms", "agent_note", "step_ms", "predicted_judge_ms",
                       "judged_ms", "judged_in_band", "no_frame_in_band")
+# The stop event's frame clock log, and the two lists it holds.
+STOP_FRAME_CLOCK = "frame_clock"
+FRAME_CLOCK_FRAME = "frame"
+FRAME_CLOCK_CLOCK_MS = "clock_ms"
+
+
+class FrameClockBroken(ValueError):
+    """A stop event's frame_clock is not two lists of one length."""
+
+
+def frame_clock_rows(stop_event: dict) -> Optional[List[Tuple[Any, Any]]]:
+    """The (frame, clock_ms) of each frame a stop event's frame_clock holds,
+    in the order the agent sent them; None when the event carries none.
+    Raises FrameClockBroken, naming what is wrong, when it is not two lists
+    of one length."""
+    log = stop_event.get(STOP_FRAME_CLOCK)
+    if log is None:
+        return None
+    frames = log.get(FRAME_CLOCK_FRAME) if isinstance(log, dict) else None
+    clocks = log.get(FRAME_CLOCK_CLOCK_MS) if isinstance(log, dict) else None
+    if not isinstance(frames, list) or not isinstance(clocks, list):
+        raise FrameClockBroken(f"the stop event's {STOP_FRAME_CLOCK} is not lists "
+                               f"{FRAME_CLOCK_FRAME!r} and {FRAME_CLOCK_CLOCK_MS!r}: {log!r}")
+    if len(frames) != len(clocks):
+        raise FrameClockBroken(f"the stop event's {STOP_FRAME_CLOCK} holds {len(frames)} "
+                               f"frames and {len(clocks)} clocks")
+    return list(zip(frames, clocks))
+
+
 # What a press row's agent_note says when no frame could land in its band:
 # the event's no_frame_in_band, or the player's own when a read end left the
 # band empty (play_chart.retime_from_end).
