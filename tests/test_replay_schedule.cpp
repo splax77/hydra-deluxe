@@ -1118,7 +1118,7 @@ TEST_CASE("schedule: a squeeze whose end lies on its own chord is split with the
     REQUIRE(schedule::equal_room_lead_ms(in) == 0.0);
     std::vector<std::string> refusals;
     const std::optional<double> lead = schedule::anchor_lead_ms({in}, refusals);
-    INFO(refusals.empty() ? std::string() : refusals[0]);
+    INFO((refusals.empty() ? std::string() : refusals[0]));
     REQUIRE(lead.has_value());
     CHECK(*lead == 0.0);
     CHECK(refusals.empty());
