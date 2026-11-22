@@ -38,18 +38,13 @@ _G3 = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1")
 # The addresses a run hands the agent; nothing reads them in a test.
 CLOCK_ADDR, SCORE_ADDR = 0x100, 0x200
 
-# A split chord's later order group goes down this long after its first
-# group: a hand-picked schedule input. It reaches only the play message.
-LATER_GROUP_MS = 5.0
-
-
 def press(index, chart_ms, lanes, **kw):
     """A hand-built Press. One timed from an end read gets
     test_play_chart._unit_end_fields of its aim_end_ms for any end field the
     keywords leave out."""
     fields = dict(index=index, chart_ms=chart_ms, aim_ms=0.0, lanes=list(lanes),
                   dynamics=["none"] * len(lanes), axes=[1.0] * len(lanes), declined=False,
-                  last_send_ms=chart_ms + 50.0, rule="plain")
+                  rule="plain")
     fields.update(kw)
     if fields.get("end_read_after") is not None:
         for key, value in _unit_end_fields(fields["aim_end_ms"]).items():
@@ -63,11 +58,17 @@ def chord(index, ms, *presses):
 
 
 def sent_event(seq, chord_index, clock_ms, score_before, score_after):
-    return {"kind": K.EVENT_SENT, "seq": seq, "index": chord_index,
-            "clock_ms_at_press": clock_ms, "down_frame": 10 + seq,
-            "up_frame": 12 + seq, "down_ms": 1_000_000.0 + seq, "up_ms": 1_000_006.0 + seq,
-            "score_before": score_before, "score_after": score_after,
-            "frame_gap_ms": 3.0, "agent_note": ""}
+    """A sent event in the shape the kit agent sends (K.PRESS_EVENT_FIELDS),
+    the frame-pick fields hand-picked test inputs."""
+    event = {"kind": K.EVENT_SENT, "seq": seq, "index": chord_index,
+             "clock_ms_at_press": clock_ms, "down_frame": 10 + seq,
+             "up_frame": 12 + seq, "down_ms": 1_000_000.0 + seq, "up_ms": 1_000_006.0 + seq,
+             "score_before": score_before, "score_after": score_after,
+             "frame_gap_ms": 3.0, "agent_note": "", "step_ms": 3.0,
+             "predicted_judge_ms": clock_ms, "judged_ms": clock_ms,
+             "judged_in_band": True, "no_frame_in_band": False}
+    assert set(K.PRESS_EVENT_FIELDS) <= set(event)
+    return event
 
 
 def started(seqs=()):
@@ -147,17 +148,17 @@ def recorded_log(name):
 
 def recorded_chords(log_lines):
     """The chords of a recorded press log, at the run's own chart times. A
-    chord's first row is its first order group; a further row of the same
-    index is a later group, LATER_GROUP_MS after it. Lanes reach only the
-    play message, which no row reads."""
+    chord's first row is its first order group, group 0; a further row of
+    the same index is a later group, group 1, which follows group 0 at the
+    same judge target. Lanes reach only the play message, which no row
+    reads."""
     presses = {}
     for r in csv.DictReader(log_lines):
         index, ms = int(r["index"]), float(r["chart_ms"])
         if index not in presses:
             presses[index] = [press(index, ms, [Lane.RED])]
         else:
-            presses[index].append(press(index, ms, [Lane.BLUE], aim_ms=LATER_GROUP_MS,
-                                        after_ms=LATER_GROUP_MS))
+            presses[index].append(press(index, ms, [Lane.BLUE], group=1, follows=0))
     return [chord(index, group[0].chart_ms, *group) for index, group in presses.items()]
 
 
@@ -205,14 +206,14 @@ class PlayInGameTest(unittest.TestCase):
              "start_lead_ms": live.START_LEAD_MS, "hold_frames": K.KIT_HOLD_FRAMES,
              "stall_ms": C.s_to_ms(live.STALL_S), "jump_back_ms": C.s_to_ms(live.JUMP_BACK_S)})
         # One entry per press, in schedule order, each carrying its press's
-        # chord, fire time, last send time and lanes.
+        # chord, judge target and lanes, and no send time.
         presses = [p for c in chords for p in c.presses]
         self.assertEqual(len(message["entries"]), len(presses))
         for seq, (entry, p) in enumerate(zip(message["entries"], presses)):
             self.assertEqual((entry["seq"], entry["index"], entry["at_ms"],
-                              entry["last_send_ms"], entry["after_seq"],
-                              entry["end_read_after"]),
-                             (seq, p.index, p.at_ms, p.last_send_ms, None, None))
+                              entry["after_seq"], entry["end_read_after"]),
+                             (seq, p.index, p.at_ms, None, None))
+            self.assertNotIn("last_send_ms", entry)
             self.assertEqual([e["id"] for e in entry["elements"]],
                              [K.lane_element(lane).id for lane in p.lanes])
 
@@ -343,7 +344,7 @@ class PlayInGameTest(unittest.TestCase):
             word = P.STOP_DONE if reason == K.STOP_REASON_DONE else reason
             self.assertEqual(result.stop, word, reason)
 
-    def test_a_split_chords_later_group_names_its_head_and_its_delay(self):
+    def test_a_split_chords_later_group_names_its_head_and_no_delay(self):
         # The g3 run's chord 3 went down in two order groups. Its schedule is
         # press-1-split.csv (press-1.csv's header and first five rows) and the
         # agent's side kit-1-split.jsonl (kit-1.jsonl's lines 4 to 9, the
@@ -355,9 +356,13 @@ class PlayInGameTest(unittest.TestCase):
         entries = player.posted[0]["entries"]
         (split,) = [c for c in chords if len(c.presses) == 2]
         first, later = [e for e in entries if e["index"] == split.index]
-        self.assertEqual((first["after_seq"], first["after_ms"]), (None, None))
-        self.assertEqual((later["after_seq"], later["after_ms"]),
-                         (first["seq"], split.presses[1].after_ms))
+        # The later group names its head's seq and carries no gap: the agent
+        # sends it on the frame after its head (press_schedule.ts).
+        self.assertIsNone(first["after_seq"])
+        self.assertEqual(later["after_seq"], first["seq"])
+        self.assertEqual(later["at_ms"], split.presses[1].at_ms)
+        for entry in (first, later):
+            self.assertNotIn("after_ms", entry)
 
     def test_a_real_split_chords_rows_are_the_rows_that_run_wrote(self):
         # The same g3 files as the test above: a chord played in two order
