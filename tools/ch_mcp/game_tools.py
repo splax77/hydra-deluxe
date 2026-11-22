@@ -50,6 +50,9 @@ PRESS_LOG_PREFIX = "press-"
 # ch_run_chart's record of the agent builds and the hydra_replay build a run
 # used (build_stamp.builds_record), with the number of the run's press log.
 BUILDS_PREFIX = "builds-"
+# The kit route's frame clock log (play_chart.write_frame_clock_log), with the
+# number of the run's press log.
+FRAME_CLOCK_PREFIX = "frame_clock-"
 # ch_start's record of the frame settings its run started with, in the session
 # folder (_record_frame_settings writes it).
 FRAME_SETTINGS_FILE = "frame-settings.json"
@@ -559,6 +562,10 @@ class _PlaySession:
     # presses on the game's frames; None presses keys through the driver on
     # live_play's Python loop.
     player: Any = None
+    # Where the kit route's frame clock log goes (RunResult.frame_clock), and
+    # what became of it once the run ends; None writes none.
+    frame_clock_path: Optional[str] = None
+    frame_clock_note: Optional[str] = None
 
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -1306,8 +1313,7 @@ class GameTools:
                     return f"refused: {type(e).__name__}: {e}; nothing started"
                 mark_row = probe_run.mark_row
             self._press_log_count += 1
-            builds_path = os.path.join(self.session_dir(),
-                                       f"{BUILDS_PREFIX}{self._press_log_count}.json")
+            builds_path = self._run_file(BUILDS_PREFIX, ".json")
             launch = self._run.launch if self._run is not None else None
             try:
                 write_builds_record(builds_path, run_agent_paths(
@@ -1352,11 +1358,11 @@ class GameTools:
             lines.append(self._recorder.samples_line())
 
             began = self._env.now()
-            log_path = os.path.join(self.session_dir(),
-                                    f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
-            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
+            play = _PlaySession(score_json=score_json, chord_count=len(chords),
+                                log_path=self._run_file(PRESS_LOG_PREFIX, ".csv"),
                                 cap_s=cap_s, find_engine=lambda _proc: engine,
-                                player=player, mark_row=mark_row)
+                                player=player, mark_row=mark_row,
+                                frame_clock_path=self._run_file(FRAME_CLOCK_PREFIX, ".csv"))
             self._start_play(play, played_chords)
             first_press_in_time = play.pressed.wait(cap_s)
             rows = list(play.rows)
@@ -1420,11 +1426,10 @@ class GameTools:
                 return f"refused: {type(e).__name__}: {e}"
             lines = [line for line in (self.ensure_backup(),) if line]
             self._press_log_count += 1
-            log_path = os.path.join(self.session_dir(),
-                                    f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
             play = _PlaySession(score_json=score_json, chord_count=len(chords),
-                                log_path=log_path, cap_s=cap_s, player=player,
-                                mark_row=probe_run.mark_row)
+                                log_path=self._run_file(PRESS_LOG_PREFIX, ".csv"),
+                                cap_s=cap_s, player=player, mark_row=probe_run.mark_row,
+                                frame_clock_path=self._run_file(FRAME_CLOCK_PREFIX, ".csv"))
             self._start_play(play, moved)
             lines.append(f"probe session started: {len(chords)} chords from {score_json}")
             lines.extend(edge_probe.probe_lines(probes))
@@ -1762,7 +1767,34 @@ class GameTools:
             play.error = f"{type(e).__name__}: {e}"
         if play.writer is not None:
             play.log_note = self._end_press_log(play)
+        if play.frame_clock_path is not None:
+            play.frame_clock_note = self._end_frame_clock_log(play)
         play.pressed.set()
+
+    def _run_file(self, prefix: str, ext: str) -> str:
+        """The session folder's file with `prefix` for the run the press log
+        count numbers: a run's press log, builds record and frame clock log
+        share the one number."""
+        return os.path.join(self.session_dir(), f"{prefix}{self._press_log_count}{ext}")
+
+    @staticmethod
+    def _end_frame_clock_log(play: _PlaySession) -> str:
+        """Write the run's frame clock log (RunResult.frame_clock) when the
+        agent sent one, and say what became of it. A run with none writes no
+        file, so a missing log is never mistaken for an empty one."""
+        result = play.result
+        frames = result.frame_clock if result is not None else None
+        if frames is None:
+            why = (result.frame_clock_error if result is not None
+                   and result.frame_clock_error is not None
+                   else "the kit agent's play sent no end reply carrying it")
+            return f"frame clock log missing, not written to {play.frame_clock_path}: {why}"
+        try:
+            play_chart.write_frame_clock_log(play.frame_clock_path, frames)
+        except OSError as e:
+            return f"frame clock log not written to {play.frame_clock_path}: {e}"
+        return (f"frame clock log: {play.frame_clock_path} "
+                f"({len(frames)} frame{'' if len(frames) == 1 else 's'})")
 
     @staticmethod
     def _end_press_log(play: _PlaySession) -> str:
@@ -1803,6 +1835,8 @@ class GameTools:
     def _play_lines(self, play: _PlaySession) -> List[str]:
         rows = list(play.rows)
         lines = [self._press_log_line(play)] if play.log_path else []
+        if play.frame_clock_note is not None:
+            lines.append(play.frame_clock_note)
         lines.append(f"play session: {play.chord_count} chords from {play.score_json}")
         if play.running():
             lines.append(f"running: {len(rows)} presses so far")
