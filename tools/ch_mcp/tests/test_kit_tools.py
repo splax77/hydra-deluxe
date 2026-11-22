@@ -35,7 +35,7 @@ from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     FakeFrida, ReplySession, instant_wait, recorded)
 from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
-from tools.ch_probe.experiments import play_chart  # noqa: E402
+from tools.ch_probe.experiments import overlay_logs, play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _FakeSongClock, _FakeTime  # noqa: E402
@@ -925,7 +925,7 @@ class StrengthTest(Rig):
         for group in groups:
             for values in (None, [0.6] * len(group), [0] * len(group), [1] * len(group)):
                 for message in (K.press_message(group, values=values),
-                                K.press_message([], then=[(group, values, 8.0)])):
+                                K.press_message([], then=[(group, values)])):
                     written = message["elements"] + [
                         e for g in message.get("then", []) for e in g["elements"]]
                     self.assertTrue(written)
@@ -936,28 +936,33 @@ class StrengthTest(Rig):
         with self.assertRaises(ValueError):
             K.press_message([K.KIT_ELEMENTS["red"]], values=[0.6, 0.7])
 
-    def test_two_groups_carry_then_with_after_ms_8(self):
+    def test_two_groups_carry_then_with_elements_only(self):
+        # A later group carries its elements and no gap in milliseconds: the
+        # agent puts it down the frame after the group before it.
         message = K.press_message(
             [K.lane_element(Lane.KICK)], 2,
-            then=[([K.lane_element(Lane.GREEN_CYMBAL)], [0.6], 8.0)])
+            then=[([K.lane_element(Lane.GREEN_CYMBAL)], [0.6])])
         self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
         self.assertEqual(message["then"], [{"elements": [{"id": K.lane_element(
-            Lane.GREEN_CYMBAL).id, "value": 0.6}], "after_ms": 8.0}])
+            Lane.GREEN_CYMBAL).id, "value": 0.6}]}])
         self.assertNotIn("then", K.press_message([K.lane_element(Lane.KICK)]))
+
+    def test_a_later_group_given_a_gap_is_refused(self):
+        # The old (elements, values, gap) shape no longer fits.
+        with self.assertRaises(ValueError):
+            K.press_message([K.lane_element(Lane.RED)],
+                            then=[([K.lane_element(Lane.KICK)], None, 8.0)])
 
     def test_a_bad_later_group_is_refused_before_anything_is_sent(self):
         red = K.lane_element(Lane.RED)
         with self.assertRaisesRegex(ValueError, "are in two groups of one press"):
-            K.press_message([red], then=[([red], None, 8.0)])
-        for bad in (0, -1.0, True, "8"):
-            with self.assertRaisesRegex(ValueError, "after_ms is a number above 0"):
-                K.press_message([red], then=[([K.lane_element(Lane.KICK)], None, bad)])
+            K.press_message([red], then=[([red], None)])
 
     def test_the_kit_refuses_a_repeated_element(self):
         red = K.lane_element(Lane.RED)
         for message in (lambda: K.press_message([red, K.lane_element(Lane.KICK), red]),
                         lambda: K.press_message([K.lane_element(Lane.KICK)],
-                                                then=[([red, red], None, 8.0)])):
+                                                then=[([red, red], None)])):
             with self.assertRaises(ValueError) as caught:
                 message()
             self.assertIn("kit element Snare is twice in one group", str(caught.exception))
@@ -985,9 +990,10 @@ class StrengthTest(Rig):
         self.set_up([SPLIT_PRESS_REPLY])
         press = self.game.kit_source()
         sent = len(self.posted())
-        press([Lane.KICK], None, then=[([Lane.GREEN_CYMBAL], None, 8.0)])
+        press([Lane.KICK], None, then=[([Lane.GREEN_CYMBAL], None)])
         self.assertEqual(len(self.posted()), sent + 1)
-        self.assertEqual(self.posted()[-1]["then"][0]["after_ms"], 8.0)
+        self.assertEqual(self.posted()[-1]["then"], [{"elements": [
+            {"id": K.lane_element(Lane.GREEN_CYMBAL).id, "value": K.pad_axis("none")}]}])
 
     def test_the_kit_press_sends_the_chords_axes(self):
         self.set_up([PRESS_REPLY])
@@ -1362,7 +1368,7 @@ class KitPressTest(Rig):
         lanes, dynamics = [Lane.GREEN, Lane.KICK], ["none", "none"]
         chords = [play_chart.Chord(7, 0, 1000.0, lanes, dynamics, presses=(play_chart.Press(
             index=7, chart_ms=1000.0, aim_ms=-2.0, lanes=lanes, dynamics=dynamics, axes=None,
-            declined=False, last_send_ms=1050.0, rule="plain"),))]
+            declined=False, rule="plain", window_from_ms=950.0, window_to_ms=1050.0),))]
         # The start read, the fresh read before the press, the read after it.
         score = iter([0, 0, 50])
         result = play_chart.play_chords(
@@ -1404,6 +1410,73 @@ class KitPressTest(Rig):
     def test_no_kit_press_before_setup(self):
         self.tools()
         self.assertIsNone(self.game.kit_source())
+
+
+def _press(**kw):
+    """A play_chart.Press of chord 7 at 1000 ms on the green pad, with the
+    given fields changed."""
+    fields = dict(index=7, chart_ms=1000.0, aim_ms=0.0, lanes=[Lane.GREEN],
+                  dynamics=["none"], axes=None, declined=False, rule="plain")
+    return play_chart.Press(**{**fields, **kw})
+
+
+# Names an entry carried before the schedule spoke in judge times.
+_RETIRED_ENTRY_KEYS = ("last_send_ms", "after_ms", "before_end_ms", "lead_ms")
+
+
+class PlayEntryTest(unittest.TestCase):
+    def test_a_plain_press_sends_its_judge_target_band_and_window(self):
+        band = {"from_ms": 914.0, "to_ms": 1086.0, "from_strict": False}
+        entry = K.play_entry(3, _press(aim_ms=-2.0, band=band, window_from_ms=914.0,
+                                       window_to_ms=1086.0), None)
+        self.assertEqual(entry["seq"], 3)
+        self.assertEqual(entry["index"], 7)
+        # The judge target is the chord's time plus the press's aim.
+        self.assertEqual(entry["at_ms"], 998.0)
+        self.assertEqual(entry["band"], band)
+        self.assertEqual((entry["window_from_ms"], entry["window_to_ms"]), (914.0, 1086.0))
+        self.assertIsNone(entry["after_seq"])
+        self.assertNotIn("no_frame_aim_ms", entry)
+        for key in _RETIRED_ENTRY_KEYS:
+            self.assertNotIn(key, entry)
+
+    def test_a_press_with_no_band_or_window_sends_neither(self):
+        entry = K.play_entry(0, _press(), None)
+        self.assertEqual(entry["at_ms"], 1000.0)
+        for key in ("band", "window_from_ms", "window_to_ms", "no_frame_aim_ms"):
+            self.assertNotIn(key, entry)
+
+    def test_a_banded_press_with_a_plain_fallback_sends_where_it_goes_when_no_frame_lands(self):
+        # A squeeze-in: its band ends at the Star Power end, and with no frame
+        # in it the press goes plain, at its fallback's aim.
+        band = {"from_ms": 914.0, "to_ms": 990.0, "from_strict": False}
+        press = _press(aim_ms=-38.0, band=band, window_from_ms=914.0, window_to_ms=1086.0,
+                       fallback={"action": play_chart.FALLBACK_PLAIN, "aim_ms": 0.0})
+        entry = K.play_entry(1, press, None)
+        self.assertEqual(entry["at_ms"], 962.0)
+        self.assertEqual(entry["no_frame_aim_ms"], 1000.0)
+        self.assertEqual(entry["no_frame_aim_ms"], press.no_frame_aim_ms)
+
+    def test_a_later_group_names_the_seq_it_follows_and_no_gap(self):
+        entry = K.play_entry(5, _press(group=1, follows=0), 4)
+        self.assertEqual(entry["after_seq"], 4)
+        for key in _RETIRED_ENTRY_KEYS:
+            self.assertNotIn(key, entry)
+
+
+class PressEventFieldsTest(unittest.TestCase):
+    def test_a_press_event_carries_the_frame_picks_three_columns(self):
+        # The press log's frame step, predicted judge time and real judge
+        # time come from the event's fields of the same names.
+        for column in overlay_logs.FRAME_PICK_PRESS_COLUMNS:
+            self.assertIn(column, K.PRESS_EVENT_FIELDS)
+        self.assertEqual(len(overlay_logs.FRAME_PICK_PRESS_COLUMNS), 3)
+
+    def test_a_press_event_says_whether_a_frame_landed_in_its_band(self):
+        self.assertIn("no_frame_in_band", K.PRESS_EVENT_FIELDS)
+        self.assertIn("judged_in_band", K.PRESS_EVENT_FIELDS)
+        self.assertEqual(K.NOTE_NO_FRAME_IN_BAND, "no_frame_in_band")
+        self.assertNotEqual(K.NOTE_NO_FRAME_IN_BAND, K.NOTE_RETIME_MISSED)
 
 
 class StatusTest(Rig):
@@ -1822,22 +1895,21 @@ class KitAgentTest(unittest.TestCase):
         self.assertEqual(out["replies"][1]["placeholders_created"], 3)
         self.assertEqual(len(out["replies"][1]["placeholders"]), 6)
 
-    def test_a_later_group_goes_down_at_or_after_its_gap_and_each_holds_its_own_frames(self):
-        # Design point 4 of docs/superpowers/plans/2026-11-07-player-limits.md,
-        # question 2 (a): the gap is a floor. The fake frame is 3 ms.
+    def test_a_later_group_goes_down_after_its_heads_frame_and_each_holds_its_own_frames(self):
+        # A later group carries no gap: it goes down on a frame after the
+        # group before it, never on the same one. The fake frame is 3 ms.
         message = K.press_message([K.KIT_ELEMENTS["red"]], 2,
-                                  then=[([K.KIT_ELEMENTS["kick"]], None, 8.0)])
+                                  then=[([K.KIT_ELEMENTS["kick"]], None)])
         out = self.run_agent([K.setup_message("System"), message], frame_ms=3)
         reply = out["replies"][1]
         self.assertNotIn("error", reply)
         first, second = reply["groups"]
         self.assertEqual((reply["down_frame"], reply["down_ms"], reply["up_frame"]),
                          (first["down_frame"], first["down_ms"], first["up_frame"]))
-        self.assertGreaterEqual(second["down_ms"] - first["down_ms"], 8)
         self.assertGreater(second["down_frame"], first["down_frame"])
         for group in (first, second):
             self.assertGreaterEqual(group["up_frame"] - group["down_frame"], 2)
-        self.assertEqual(second["after_ms"], 8.0)
+        self.assertNotIn("after_ms", second)
         writes = out["writes"]
         # Each element's first write is its down. Red's release may come
         # before the kick's down, so the writes are read per element.
@@ -1859,11 +1931,11 @@ class KitAgentTest(unittest.TestCase):
         self.assertNotIn("groups", reply)
         self.assertGreaterEqual(reply["up_frame"] - reply["down_frame"], 2)
 
-    def test_a_later_group_without_a_gap_is_an_error(self):
+    def test_a_later_group_with_a_gap_is_an_error(self):
         message = {**K.press_message([K.KIT_ELEMENTS["red"]], 2),
-                   "then": [{"elements": [{"id": 7, "value": 1.0}]}]}
+                   "then": [{"elements": [{"id": 7, "value": 1.0}], "after_ms": 8.0}]}
         out = self.run_agent([K.setup_message("System"), message], frame_ms=3)
-        self.assertIn('a press "then" group needs an "after_ms" above 0',
+        self.assertIn('a press "then" group is {elements}, with no "after_ms"',
                       out["replies"][1]["error"])
 
     def test_a_teardown_with_no_setup_record_finds_the_controllers_by_tag(self):
