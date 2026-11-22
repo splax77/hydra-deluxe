@@ -2719,7 +2719,7 @@ class _GridClock:
         return value, value
 
     def now(self):
-        return self.reads * self.step_ms / 1000.0
+        return self._s(self.reads * self.step_ms)
 
 
 class KeysRouteJudgeTargetTest(unittest.TestCase):
