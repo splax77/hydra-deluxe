@@ -302,6 +302,8 @@ public:
     // in `state`'s history) and the end choices of the selected row.
     void poll(PbState& state);
     bool busy() const;
+    // A click, a removal or an end choice is still running on its worker.
+    bool editing() const;
     // Forgets everything, for a newly opened chart.
     void clear();
 

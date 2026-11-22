@@ -128,6 +128,10 @@ private:
     // The step a click or an end choice selects once its edit lands, as the
     // mockup selects the step it just made.
     std::optional<size_t> pending_select_;
+    // Where a click on an offered fill parks the song, held until the click's
+    // edit is done and the highway draws the path it left, so the song moves
+    // once, onto the new picture.
+    std::optional<double> pending_seek_ms_;
     // "Show Hydra's best path".
     bool show_best_ = false;
     // While the pointer is on a fill or its list row: the fill, whose row the
@@ -189,6 +193,14 @@ private:
     // Centres the window on scene fill `index` when the timeline does not
     // show it (a list row's click).
     void scroll_to_fill(const app::PreviewScene& scene, size_t index, double length_ms);
+    // The Preview has a scene to draw: loaded, with no error. While the
+    // shown path's overlay builds, that scene is the previous path's, and the
+    // timeline and the list keep drawing it so the screen does not go blank
+    // for those frames. Clicks still need the shown path's (shows_path).
+    bool scene_drawn() const;
+    // Parks the song where pending_seek_ms_ says once the click's edit is
+    // done and the highway draws the shown path.
+    void land_pending_seek();
     // The Preview panel, or the controller's error in its place.
     void draw_preview(const OpenChart& chart);
     void draw_choices(const OpenChart& chart);
@@ -196,7 +208,8 @@ private:
     // What a click on scene fill `index` does (the timeline, the highway or a
     // list row): an offered fill fill_reason accepts starts a window, a taken
     // one selects its step, any other does nothing. Every click also parks
-    // the Preview's clock on the fill's dot (ui::timeline_fill_ms).
+    // the Preview's clock on the fill's dot (ui::timeline_fill_ms): at once,
+    // or through pending_seek_ms_ when the click starts a window.
     void click_fill(const OpenChart& chart, size_t index);
 };
 

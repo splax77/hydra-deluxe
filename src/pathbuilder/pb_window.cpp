@@ -241,6 +241,7 @@ void PbApp::take_in_chart() {
     chart_seen_ = chart;
     set_refusal({}, {});
     pending_select_.reset();
+    pending_seek_ms_.reset();
     selected_.reset();
     hovered_fill_.reset();
     row_hovered_fill_.reset();
@@ -421,6 +422,7 @@ void PbApp::draw_body(const OpenChart& chart) {
         if (pending_select_) select_step(*pending_select_);
         pending_select_.reset();
     }
+    land_pending_seek();
 
     draw_head(chart);
     draw_timeline(chart);
@@ -522,8 +524,20 @@ void PbApp::hold_for_drag(bool held) {
     if (preview_) preview_->set_scrubbing(held, ui::PreviewController::ScrubHold::Timeline);
 }
 
+bool PbApp::scene_drawn() const {
+    return preview_ && !preview_->has_error() && !preview_->loading() &&
+           !preview_->overlay_path_key().empty();
+}
+
+void PbApp::land_pending_seek() {
+    if (!pending_seek_ms_ || !preview_) return;
+    if (state.decisions().editing() || !preview_->shows_path(overlay_key_)) return;
+    preview_->seek_ms(*pending_seek_ms_);
+    pending_seek_ms_.reset();
+}
+
 void PbApp::draw_timeline(const OpenChart& chart) {
-    if (!preview_ || !preview_->shows_path(overlay_key_)) {
+    if (!scene_drawn()) {
         // No rows this frame, so a drag has lost its item: ImGui ends it.
         hold_for_drag(false);
         if (preview_ && preview_->loading()) {
@@ -580,6 +594,8 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     // The drag holds the song through the controller's scrubbing rule, and the
     // clock follows it.
     hold_for_drag(ev.dragged_ms.has_value());
+    // A seek by hand wins over a click's held one.
+    if (ev.dragged_ms) pending_seek_ms_.reset();
     if (ev.dragged_ms) preview_->seek_ms(*ev.dragged_ms);
 
     // The clock as the drag left it: next frame's move_view_with_clock sees
@@ -612,8 +628,11 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     if (ev.clicked_fill && *ev.clicked_fill < scene.fills.size()) {
         click_fill(chart, *ev.clicked_fill);
     } else if (ev.clicked_band) {
-        select_step(*ev.clicked_band);
+        // A band of the previous path's scene, drawn while the shown path's
+        // overlay builds, may name a step the shown path does not have.
+        if (preview_->shows_path(overlay_key_)) select_step(*ev.clicked_band);
     } else if (ev.clicked_ms) {
+        pending_seek_ms_.reset();
         preview_->seek_ms(*ev.clicked_ms);
     }
 }
@@ -652,6 +671,8 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     const app::PreviewScene& scene = preview_->scene();
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
+    preview_->pause();
+    const double dot_ms = ui::timeline_fill_ms(f);
     if (f.state == app::PreviewFillState::Taken) {
         // The step standing on this fill is the one whose taken_fill is it.
         for (size_t k = 0; k < scene.activations.size(); ++k) {
@@ -665,11 +686,15 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
         pending_select_ = h.current().windows.size();
         state.decisions().click_fill(state.search_graph(), chart.settings, h.current().windows,
                                      f.chord_tick, h.generation());
+        // The song moves once the new path is drawn (land_pending_seek), so
+        // the highway never shows the old path at the new spot.
+        pending_seek_ms_ = dot_ms;
+        return;
     }
     // Whatever the click did, the Preview stops on the fill's dot. This comes
-    // last so select_step's seek to the activation does not stand.
-    preview_->pause();
-    preview_->seek_ms(ui::timeline_fill_ms(f));
+    // after select_step so its seek to the activation does not stand.
+    pending_seek_ms_.reset();
+    preview_->seek_ms(dot_ms);
 }
 
 void PbApp::draw_preview(const OpenChart& chart) {
@@ -703,7 +728,7 @@ void PbApp::draw_preview(const OpenChart& chart) {
 void PbApp::draw_choices(const OpenChart& chart) {
     ImGui::TextUnformatted(kChoicesHeading);
     dim_wrapped(kChoicesHint);
-    if (!preview_ || !preview_->shows_path(overlay_key_)) return;
+    if (!scene_drawn()) return;
     const app::PreviewScene& scene = preview_->scene();
     const DecisionList& d = state.decisions();
     const std::vector<app::CandidateCost>& cands = d.candidates();
