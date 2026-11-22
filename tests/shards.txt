@@ -9,8 +9,9 @@
 # entries together run every test case exactly once. It also fails when the
 # exe holds no case from a test file in the tree, so a stale build is caught.
 #
-# The slices are balanced for the AddressSanitizer CI job, where four entries
-# run on four cores. The per-file times they rest on are in
+# The slices are balanced for `ctest -j 4` in CI's "Build and test" job, where
+# four entries run on four cores. The per-file times they rest on were
+# measured on the AddressSanitizer build, and are in
 # docs/superpowers/plans/2026-10-24-asan-ci-speed.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-24-asan-ci-speed.md), under "Local per-case
 # times under ASan". A slice name is only a label; a slice holds whatever files
 # balance it.

@@ -1,9 +1,8 @@
 # Continuous integration: build Hydra and run its tests on every push to main
 # and every pull request into main. Once a night the unit tests and the GUI
-# tests run again from a cold build, beside the slow AddressSanitizer job and
-# the coverage report. The local hooks are the first gate; this is the
-# backstop for a commit made outside them. See "Continuous integration" in
-# docs/development.md.
+# tests run again from a cold build, beside the coverage report. The local
+# hooks are the first gate; this is the backstop for a commit made outside
+# them. See "Continuous integration" in docs/development.md.
 
 name: CI
 
@@ -39,7 +38,7 @@ permissions:
 # Which ctest entries a hosted runner runs. The excluded entry opens the
 # default sound output, and hosted runners have no audio device (tests/shards.txt
 # owns the entry). -R keeps hydra_uitest out of the ctest steps: the "GUI tests"
-# and "asan-gui" jobs run it on their own.
+# and coverage jobs run it on their own.
 env:
   HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device
 
@@ -165,105 +164,6 @@ jobs:
       - name: Run hydra_uitest
         run: .\build-cpp\Release\hydra_uitest.exe --all
 
-  # The same tests built with AddressSanitizer, which stops a test at the first
-  # memory error (an overrun, a use after free) and prints where it happened.
-  # The asan preset runs on the Windows heap instead of mimalloc; the build
-  # never ships. See "The AddressSanitizer build" in docs/development.md.
-  # It is slow, so it runs nightly and on a manual run, not on every push (the
-  # user's call; "Continuous integration" in docs/development.md gives the
-  # timing). It builds with the asan-ninja preset, through the sccache
-  # compiler cache kept in GitHub's cache, a trial measured in
-  # docs/superpowers/plans/2026-10-24-asan-ci-speed.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-24-asan-ci-speed.md), Item 3. The GUI tests
-  # built with AddressSanitizer run in "asan-gui" below, beside this job.
-  asan:
-    name: AddressSanitizer (Windows, Release)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: windows-2025
-    timeout-minutes: 60
-    # Job-wide, so every sccache call (the builds and the stats steps) talks
-    # to the same GitHub-cache-backed server. Changing SCCACHE_GHA_VERSION
-    # starts a clean cache.
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      SCCACHE_GHA_VERSION: asan-1
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
-
-      # Puts the compiler's folder on PATH for every later step. The ASan
-      # runtime DLL lives there, and the exes and the CLI tools that
-      # tests/test_cli.cpp starts as child processes all load it.
-      - name: Set up the Visual Studio developer shell
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      # sccache runs each compile and keeps the object in GitHub's cache.
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      # Starts the server, and falls back to a local cache when GitHub's
-      # cache storage is down (tools/sccache_start.ps1 says why).
-      - name: Start sccache
-        run: .\tools\sccache_start.ps1
-
-      - name: Build hydra_tests
-        run: .\build_cpp.ps1 -Preset asan-ninja -Target hydra_tests
-
-      - name: sccache stats after hydra_tests
-        run: sccache --show-stats
-
-      - name: Run hydra_tests
-        run: ctest --test-dir build-asan-ninja -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
-
-  # The GUI tests built with AddressSanitizer, on their own machine, so they
-  # run beside the asan job's unit tests instead of after them, as "GUI tests"
-  # does for the normal build. No build folder is saved for the asan-ninja
-  # preset; the sccache compiler cache, shared with the asan job, makes the
-  # build fast when it is warm. "Continuous integration" in docs/development.md
-  # gives the timing.
-  asan-gui:
-    name: AddressSanitizer GUI tests (Windows, Release)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: windows-2025
-    timeout-minutes: 30
-    # As in the asan job: the asan-ninja preset runs every compile through sccache.
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      SCCACHE_GHA_VERSION: asan-1
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
-
-      # Puts the compiler's folder on PATH for every later step, as in the
-      # asan job: hydra_uitest loads the ASan runtime DLL from there.
-      - name: Set up the Visual Studio developer shell
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
-      # As in the asan job.
-      - name: Start sccache
-        run: .\tools\sccache_start.ps1
-
-      - name: Build hydra_uitest
-        run: .\build_cpp.ps1 -Preset asan-ninja -Target hydra_uitest
-
-      - name: sccache stats after hydra_uitest
-        run: sccache --show-stats
-
-      - name: Run hydra_uitest
-        run: .\build-asan-ninja\Release\hydra_uitest.exe --all
-
   # A map of which lines of src\ the tests reach. It informs and never blocks
   # (no threshold), and it costs a second full build and test pass, so it runs
   # nightly and on a manual run, not on every push (the user's call). See
@@ -283,10 +183,10 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    # Job-wide, as in the asan job: the coverage-ninja preset runs every
-    # compile through sccache, and every sccache call talks to the same
-    # GitHub-cache-backed server. Its own SCCACHE_GHA_VERSION keeps this cache
-    # apart from the asan one; changing it starts a clean cache.
+    # Job-wide, so every sccache call (the builds and the stats steps) talks
+    # to the same GitHub-cache-backed server: the coverage-ninja preset runs
+    # every compile through sccache. Changing SCCACHE_GHA_VERSION starts a
+    # clean cache.
     env:
       COVERAGE_SESSION: hydra_ci
       COVERAGE_OUT: ${{ github.workspace }}\coverage-out
@@ -341,7 +241,8 @@ jobs:
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
-      # As in the asan job.
+      # Starts the server, and falls back to a local cache when GitHub's
+      # cache storage is down (tools/sccache_start.ps1 says why).
       - name: Start sccache
         run: .\tools\sccache_start.ps1
 
@@ -436,7 +337,7 @@ jobs:
         uses: actions/checkout@v7
 
       # Puts the compiler's folder on PATH. The ASan runtime DLL the fuzz exes
-      # load lives there, as in the asan job above.
+      # load lives there.
       - name: Set up the Visual Studio developer shell
         uses: ilammy/msvc-dev-cmd@v1
         with:

@@ -14,7 +14,7 @@
 # for the whole job, so no later compile has to start a new server with
 # GitHub's cache on again.
 #
-# Used by the asan, asan-gui and coverage jobs in .github/workflows/ci.yml,
+# Used by the coverage job in .github/workflows/ci.yml,
 # after the "Install sccache" step.
 
 $env:SCCACHE_IDLE_TIMEOUT = '0'
