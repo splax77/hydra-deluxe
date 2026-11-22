@@ -594,6 +594,12 @@ def moved_band(p: Press, own_now_ms: float) -> Press:
     strict, to its window's back edge; every other band's upper edge is the
     end, and _ending_at moves it."""
     if p.band["from_strict"]:
+        if own_now_ms >= p.window_to_ms:
+            # A strict band that starts at the back edge holds no judge time:
+            # the press goes with no band, aimed at the back edge so the agent
+            # puts it on the window's last frame, and says no_frame_in_band.
+            return replace(p, band=None, aim_ms=p.window_to_ms - p.chart_ms,
+                           no_frame_in_band=True)
         band = end_band(own_now_ms, p.window_to_ms, True)
         return replace(p, band=band, aim_ms=band_middle_ms(band) - p.chart_ms)
     return _ending_at(p, own_now_ms)

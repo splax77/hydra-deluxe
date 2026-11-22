@@ -2529,6 +2529,22 @@ class LateGemBandTest(unittest.TestCase):
             self.assertNotAlmostEqual(own_a, own_b, delta=1.0)
             self.assertAlmostEqual(at_b - at_a, (own_b - own_a) / 2, delta=1e-9)
 
+    def test_a_read_at_the_threshold_leaves_the_gem_no_band_and_says_so(self):
+        # Read exactly at the threshold the gem's own end is the window's
+        # back edge, so its strict band holds no judge time. It fails if the
+        # gem kept an empty band without no_frame_in_band.
+        late = _press_of(play_chart.load_schedule(_MOUTHS_SCHEDULE).chords, 740,
+                         "squeeze_out_late")
+        read_ms = late.fallback["if_end_after_ms"]
+        self.assertTrue(play_chart._in_read_range(late, read_ms))
+        (moved,) = play_chart.retime_from_end([late], late.end_read_after, read_ms)
+        self.assertAlmostEqual(play_chart.own_end_now_ms(late, read_ms), late.window_to_ms,
+                               delta=1e-6)
+        self.assertEqual(moved.retimed, play_chart.RETIMED_LATE)
+        self.assertIsNone(moved.band)
+        self.assertTrue(moved.no_frame_in_band)
+        self.assertAlmostEqual(moved.at_ms, late.window_to_ms, delta=1e-6)
+
     def test_a_read_past_the_threshold_joins_the_inside_group(self):
         # Mouths chord 740, with the read after 704 5 ms past the late gem's
         # threshold (a hand-picked input). The gem goes down in one press

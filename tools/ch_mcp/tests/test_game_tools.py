@@ -1970,6 +1970,28 @@ class GameToolsTest(unittest.TestCase):
             for column in ("index", "frame_gap_ms", "agent_note"):
                 self.assertEqual(cells[columns.index(column)], row[column], column)
 
+    def test_the_status_shows_no_frame_in_band_on_the_row_that_says_it(self):
+        # A row whose agent_note says no_frame_in_band (the press row's own
+        # word, kit_tools.NOTE_NO_FRAME_IN_BAND) is printed with that word in
+        # its agent_note cell; a row without it prints an empty cell. The
+        # rows are a real run's, with one row's note set.
+        from tools.ch_mcp import kit_tools
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "press-1.csv")
+        with open(path, encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        self.assertGreater(len(rows), 1)
+        self.assertEqual(rows[0]["agent_note"], "")
+        rows[1]["agent_note"] = kit_tools.NOTE_NO_FRAME_IN_BAND
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                      log_path=None, rows=rows)
+        lines = tools.ch_play_status().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith("rows, newest first ("))
+        columns = lines[start][len("rows, newest first ("):-len("):")].split(", ")
+        notes = [line[2:].split(", ")[columns.index("agent_note")] for line in lines[start + 1:]]
+        self.assertEqual(notes, [row["agent_note"] for row in reversed(rows)])
+        self.assertEqual(notes.count(kit_tools.NOTE_NO_FRAME_IN_BAND), 1)
+
     # -- the right song and path (D318 item 4) --------------------------------------------
 
     def test_run_chart_refuses_when_the_loaded_folder_is_not_the_schedules_chart(self):
