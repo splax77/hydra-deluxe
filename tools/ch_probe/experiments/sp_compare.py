@@ -628,9 +628,7 @@ def _check_multipliers(report: Report, rows: list, chords: list,
 def _slip_note(report: Report, chords: list, parted_ms, reach: dict) -> None:
     """A note at the point _check_activations says the game's activations
     part from the path, saying what that does to the missed notes after it.
-    It is a note only, so it changes no PASS or FAIL. Which unhit fill gems
-    the game counts as missed: docs/clone-hero/04-fills.md and 06-scoring.md.
-    The chord named is the one _landed_chord gives for parted_ms."""
+    It is a note only, so it changes no PASS or FAIL. The chord named is the one _landed_chord gives for parted_ms."""
     if parted_ms is None:
         return
     chord_ms = [c["ms"] for c in chords]
