@@ -5,9 +5,11 @@
 // SP-end steps and their anchors (Activation, core/model.h), each squeeze's
 // stored end, anchor and ratios, the steady spans (core/squeeze_rating.h),
 // and which windows paid each chord (ReplayChord::paid_by, core/replay.h).
-// The game's per-note hit window at 100% speed is core/note_window.h's; the
-// player's timing constants live in replay_schedule.cpp, each with its
-// source.
+// The game's per-note hit window at 100% speed is core/note_window.h's.
+// Every press time in the file is the time the press should be judged, with
+// the band it may be judged in; when to send it so the game judges it then
+// is the player's, from the frame step it measures. The schedule keeps no
+// millisecond constant of its own.
 //
 // Only hydra_replay and its tests read this. Nothing under src/ includes it,
 // so no Hydra screen reads the player's constants. The plan that set this up
@@ -97,15 +99,53 @@ double moving_ratio(const SqueezeGeometry& g);
 // how far from the chord's time; the direction is the anchor's press).
 double equal_room_lead_ms(const SqueezeGeometry& g);
 
-// One squeeze's two presses at an anchor lead of `lead_ms`.
+// ---- judge times and bands ---------------------------------------------------
+
+// The earliest and latest song time a press of the chord at `chord_ms` with
+// side `side_ms` may be judged at and still hit it (TM-27: equal is inside).
+// The window is the same on both sides of the chord (chord_sides_ms).
+double first_judge_ms(double chord_ms, double side_ms);
+double last_judge_ms(double chord_ms, double side_ms);
+
+// Where a press may be judged, in song ms. `to_ms` is always inside. A late
+// gem must be judged after its end, not on it (SP-29 on
+// docs/clone-hero/05-star-power.md), so its `from_ms` is strict.
+struct Band {
+    double from_ms = 0.0;
+    double to_ms = 0.0;
+    bool from_strict = false;
+};
+
+// The middle of `band`: where a banded press aims, the same room from each
+// edge (the user's equal split).
+double band_middle_ms(const Band& band);
+
+// A press aimed at a point: its band is its chord's whole window.
+Band window_band(double chord_ms, double side_ms);
+
+// A press that must be judged by the Star Power end `end_ms` to be paid
+// inside: from the window's front edge to that end. A hit in a frame whose
+// clock equals the end is paid inside (SP-29), so the end is in the band.
+Band end_band(double chord_ms, double side_ms, double end_ms);
+
+// A squeeze-out's late gem: after its own end `end_ms`, up to its window's
+// back edge.
+Band late_gem_band(double chord_ms, double side_ms, double end_ms);
+
+// A band as the file writes it: "from_ms", "to_ms", "from_strict".
+nlohmann::json band_json(const Band& band);
+
+// One squeeze's two presses at an anchor lead of `lead_ms`. Whether the
+// squeeze fits is not the split's question: the file's "feasible" is Hydra's
+// safe sum (squeeze_window_ends in core/note_window.h).
 struct SqueezeSplit {
-    double anchor_aim_ms = 0.0;    // off the anchor chord's time, negative early
-    double squeeze_aim_ms = 0.0;   // off the squeeze chord's time
-    double anchor_room_ms = 0.0;
-    double squeeze_room_ms = 0.0;
-    double planned_end_ms = 0.0;   // the end once the anchor is judged kJudgeEarlyMs after its aim
-    double aim_end_ms = 0.0;       // the end the squeeze press's aim assumed
-    bool feasible = false;         // both rooms clear kRoomMarginMs
+    double anchor_aim_ms = 0.0;    // judge target off the anchor chord's time, negative early
+    double squeeze_aim_ms = 0.0;   // judge target off the squeeze chord's time: squeeze_band's middle
+    Band squeeze_band;             // late_gem_band for a squeeze-out, end_band for a squeeze-in
+    double anchor_room_ms = 0.0;   // press_room_ms of the anchor's aim
+    double squeeze_room_ms = 0.0;  // press_room_ms at the end the squeeze press must clear
+    double planned_end_ms = 0.0;   // the end once the anchor is judged at its aim
+    double aim_end_ms = 0.0;       // the end the squeeze press's band assumed
 };
 SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms);
 SqueezeSplit split_squeeze(const SqueezeGeometry& g);  // at equal_room_lead_ms
@@ -119,14 +159,9 @@ SqueezeSplit split_squeeze(const SqueezeGeometry& g);  // at equal_room_lead_ms
 std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_anchor,
                                      std::vector<std::string>& refusals);
 
-// A press's room: how far inside the chord's side `side_ms` it stays,
-// measured from its aim or its latest judged position, whichever is farther
-// from the chord.
+// A press's room: how far inside the chord's side `side_ms` a judge time
+// `aim_ms` off the chord's time stays.
 double press_room_ms(double aim_ms, double side_ms);
-
-// The latest song clock a press of the chord at `chord_ms` with side
-// `side_ms` may still be sent at (TM-27: equal is inside).
-double last_send_ms(double chord_ms, double side_ms);
 
 // ---- the two ends of a timed press ----------------------------------------
 // Design points 3 and 4 of
@@ -161,10 +196,11 @@ TransferScale end_conversion(const TransferScale& own, const TransferScale& read
 // early side.
 double read_at_own_ms(const EndLink& link, double own_ms);
 
-// The live fallbacks' thresholds, in own-end terms: the own end past which a
-// squeeze-out's late press leaves its chord's side, and the own end before
-// which a squeeze-in's press before the end lands ahead of it. The file
-// writes each in read terms, through read_at_own_ms.
+// The live fallbacks' thresholds, in own-end terms: the own end at or past
+// which a squeeze-out's late gem has no band left in its window, and the own
+// end before which a squeeze-in's band has none. Each is an edge of the
+// chord's window and nothing else. The file writes each in read terms,
+// through read_at_own_ms.
 double sqout_fallback_after_ms(double chord_ms, double side_ms);
 double sqin_fallback_before_ms(double chord_ms, double side_ms);
 
@@ -189,14 +225,16 @@ std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
 // A drum pad: a gem's colour and whether it is a cymbal.
 using Pad = std::pair<NoteColor, bool>;
 
-// One pad the player presses for a chord, and the song clock it is sent at.
+// One pad the player presses for a chord, and the range of song times it may
+// be judged in (both the aim, for a press aimed at a point).
 struct PadSend {
     Pad pad;
-    double send_ms = 0.0;
+    double from_ms = 0.0;
+    double to_ms = 0.0;
 };
 
 // One chord as the far-press check sees it: its pads in the chart, and each
-// pad the player sends for it with its send time (a declined chord's kept
+// pad the player sends for it with its judge range (a declined chord's kept
 // gems only; none for a chord the schedule does not press).
 struct PadChord {
     int index = 0;
@@ -206,16 +244,16 @@ struct PadChord {
     std::vector<PadSend> sends;
 };
 
-// The refusal for a press of `chords[place]` sent at `send_ms` on `pads`,
-// judged one frame after it is sent: when it leaves its own chord's window,
-// or when it lands inside the window of an earlier chord on one of its pads
-// that is still unhit then, because the player sends that chord no press on
-// the pad or sends it no earlier than this one. The game gives such a press
-// to the earlier note: TM-50 on docs/clone-hero/03-timing.md, followed as
-// D322 item 1 rules. A later chord's window is no reason to refuse. Unset
-// when the press is safe.
-std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place,
-                                             double send_ms, const std::vector<Pad>& pads);
+// The refusal for a press of `chords[place]` on `pads` that may be judged
+// anywhere from `from_ms` to `to_ms`: when any of that range leaves its own
+// chord's window, or when any of it falls inside the window of an earlier
+// chord on one of its pads that may still be unhit then, because the player
+// sends that chord no press on the pad or one that may be judged no earlier
+// than this one's `from_ms`. The game gives such a press to the earlier note:
+// TM-50 on docs/clone-hero/03-timing.md, followed as D322 item 1 rules. A
+// later chord's window is no reason to refuse. Unset when the press is safe.
+std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place, double from_ms,
+                                             double to_ms, const std::vector<Pad>& pads);
 
 // ---- the file --------------------------------------------------------------
 
@@ -253,7 +291,12 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
 // ("end_read_after") and the EndLink fields ("aim_end_ms", "own_end_ms",
 // "read_stored_end_ms", "own_stored_end_ms", "conversion", and
 // "read_range_ms" as [read_low_ms, read_high_ms], null on an open side); its fallback
-// thresholds are in read terms. Every chord row carries "refused": true when the
+// thresholds are in read terms. Every press row's "aim_ms" is its judge target
+// off its chord's time, "band" (band_json) where it may be judged,
+// "window_from_ms" and "window_to_ms" its chord's window edges, "group" its
+// place among its chord's groups and "follows" the group it goes down the
+// frame after, or null. Each squeeze carries "safe_ms", Hydra's safe sum, and
+// "feasible" from it. Every chord row carries "refused": true when the
 // schedule writes no press for it, and then a line in "refusals" says why.
 // `replay` is replay_path over the same path's windows. `rules` are the
 // rules the path was priced under: a squeeze-out's late press holds the gems

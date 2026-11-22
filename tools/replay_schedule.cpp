@@ -16,45 +16,12 @@ namespace hydra::schedule {
 namespace {
 
 // ---- the constants ---------------------------------------------------------
-// Each is written into the file's "constants" object, where the tests pin it.
-// The window's clamps and formula constants are core/note_window.h's.
-
-// The game's frame period: one frame at the game's framerate = 330 cap
-// (TM-49 on docs/clone-hero/03-timing.md) and the 2.98 to 3.03 ms the live
-// activations showed (SP-47 on docs/clone-hero/05-star-power.md). The user
-// set it: question 1 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
-constexpr double kFrameMs = 3.0;
-
-// A press is judged one frame after the clock the player read when it sent
-// it (SP-47 on docs/clone-hero/05-star-power.md). Every rule here reads this
-// one frame: the user chose "One frame", D319 item 3.
-constexpr double kJudgeEarlyMs = 1 * kFrameMs;
-
-// Each chord is pressed this many ms before its time (D51).
-constexpr double kPressLeadMs = 2.0;
-
-// A chord that ends Star Power is pressed this many ms before its time, so
-// the hit lands in a frame before the end check. The user set it: question 3
-// of the optimal-score run plan, which has left the tree (removed; git show
-// d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md).
-constexpr double kSpEndLeadMs = 15.0;
-
-// A squeezed-out chord's late gem is pressed this many ms after the Star
-// Power end, so the hit lands after the frame that ends it. The user set it:
-// question 2 of docs/superpowers/plans/2026-11-07-player-refinements.md.
-constexpr double kSpOutLagMs = 15.0;
-
-// A chord whose gems the game would score in an order that costs points is
-// pressed in groups, each this many ms after the one before (SC-38 on
-// docs/clone-hero/06-scoring.md says why). The user set it ("8 ms"), and said
-// to split "Only where it matters": the amendment after LS-R1b run 1 in
-// docs/superpowers/plans/2026-11-07-player-refinements.md.
-constexpr double kChordOrderGapMs = 8.0;
-
-// How far inside its window every press of a squeeze must stay, in the worst
-// frame case, for the squeeze to be feasible at 100% speed. The user set it:
-// question 2 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
-constexpr double kRoomMarginMs = 3.0;
+// The file's "constants" object holds the game's window clamps and formula
+// constants, which are core/note_window.h's. The schedule keeps no
+// millisecond value of its own: every press time is a judge time worked out
+// from a chord's time, its window or a Star Power end. When a press is sent
+// to be judged then is the player's question, from the frame step it
+// measures, because the frame length is a game setting.
 
 nlohmann::json constants_json() {
     return nlohmann::json{
@@ -64,13 +31,6 @@ nlohmann::json constants_json() {
         {"formula_square", kFormulaSquare},
         {"formula_scale", kFormulaScale},
         {"formula_offset_ms", kFormulaOffsetMs},
-        {"frame_ms", kFrameMs},
-        {"judge_early_ms", kJudgeEarlyMs},
-        {"press_lead_ms", kPressLeadMs},
-        {"sp_end_lead_ms", kSpEndLeadMs},
-        {"sp_out_lag_ms", kSpOutLagMs},
-        {"chord_order_gap_ms", kChordOrderGapMs},
-        {"room_margin_ms", kRoomMarginMs},
     };
 }
 
@@ -108,6 +68,10 @@ std::string tick_text(int64_t tick) { return "tick " + std::to_string(tick); }
 
 }  // namespace
 
+nlohmann::json band_json(const Band& band) {
+    return nlohmann::json{{"from_ms", band.from_ms}, {"to_ms", band.to_ms}, {"from_strict", band.from_strict}};
+}
+
 // ---- a declined chord ------------------------------------------------------
 
 // Chord::activation_note owns the pad order (the one FL-09 on
@@ -133,44 +97,44 @@ namespace {
 // tool's branches read the anchor's press.
 bool anchor_goes_early(Press anchor_press) { return anchor_press == Press::Early; }
 
-// How far an anchor press of `lead_ms` moves the end once the game has judged
-// it `judged_ms` after the send: earlier by r(lead - judged) for an anchor
-// pressed early, later by r(lead + judged) for one pressed late (design
-// point 4). The one place the end's shift is worked out; the splits, the
-// reads and the final-end chord's lead all call it.
-double anchor_end_shift_ms(Press anchor_press, double ratio, double lead_ms, double judged_ms) {
-    return anchor_goes_early(anchor_press) ? -ratio * (lead_ms - judged_ms) : ratio * (lead_ms + judged_ms);
+// How far an anchor judged `lead_ms` off its chord's time moves the end:
+// earlier by r * lead for an anchor pressed early, later by r * lead for one
+// pressed late (design point 4). The one place the end's shift is worked
+// out; the splits, the reads and the final-end chord's band all call it.
+double anchor_end_shift_ms(Press anchor_press, double ratio, double lead_ms) {
+    return anchor_goes_early(anchor_press) ? -ratio * lead_ms : ratio * lead_ms;
 }
 }  // namespace
 
-// Question 1 (a) of the plan, equal room: both presses keep the same room,
-// each judged one frame (j, kJudgeEarlyMs) after it is sent. A squeeze-out
-// (design point 4): the anchor goes L early and is judged j later, so its
-// room is side_a - L and the end lands r(L - j) early; the late gem goes
-// kSpOutLagMs after that end and is judged j later. Solving
-// side_a - L = side_s - (gap + lag - r(L - j)) - j gives
-// L = (side_a - side_s + gap + lag) / (1 + r) + j.
-//
-// A squeeze-in is the mirror: the anchor goes L late and is judged j later,
-// so its room is side_a - L - j and the end lands r(L + j) late; the squeeze
-// press goes kSpEndLeadMs before that end, and its room is side_s minus how
-// far before the chord that aim is. Solving
-// side_a - L - j = side_s - (gap + lead - r(L + j)) gives
-// L = (side_a - side_s + gap + lead - j - r j) / (1 + r), gap being how far
-// the chord sits past the end.
+// Equal room: both presses of a squeeze keep the same room, the user's
+// "it can be split equally". The anchor is judged L off its chord, so its
+// room is side_a - L and the end moves r * L the anchor's way. The squeeze
+// press's room is how far inside its own side that moved end sits: for a
+// squeeze-out the late gem must be judged after the end, which sits gap past
+// the chord before the move; for a squeeze-in the press must be judged by
+// the end, which sits gap before the chord. Either way the room is
+// side_s - (gap - r L), and solving side_a - L = side_s - gap + r L gives
+// L = (side_a - side_s + gap) / (1 + r).
 double equal_room_lead_ms(const SqueezeGeometry& g) {
     const double r = moving_ratio(g);
-    if (anchor_goes_early(g.anchor_press)) {
-        const double gap = g.end_ms - g.squeeze_ms;
-        return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpOutLagMs) / (1.0 + r) + kJudgeEarlyMs;
-    }
-    const double gap = g.squeeze_ms - g.end_ms;
-    return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpEndLeadMs - kJudgeEarlyMs - r * kJudgeEarlyMs) /
-           (1.0 + r);
+    const double gap = anchor_goes_early(g.anchor_press) ? g.end_ms - g.squeeze_ms : g.squeeze_ms - g.end_ms;
+    return (g.anchor_side_ms - g.squeeze_side_ms + gap) / (1.0 + r);
 }
 
-double press_room_ms(double aim_ms, double side_ms) {
-    return side_ms - std::max(std::abs(aim_ms), std::abs(aim_ms + kJudgeEarlyMs));
+double press_room_ms(double aim_ms, double side_ms) { return side_ms - std::abs(aim_ms); }
+
+double band_middle_ms(const Band& band) { return (band.from_ms + band.to_ms) / 2.0; }
+
+Band window_band(double chord_ms, double side_ms) {
+    return Band{first_judge_ms(chord_ms, side_ms), last_judge_ms(chord_ms, side_ms), false};
+}
+
+Band end_band(double chord_ms, double side_ms, double end_ms) {
+    return Band{first_judge_ms(chord_ms, side_ms), end_ms, false};
+}
+
+Band late_gem_band(double chord_ms, double side_ms, double end_ms) {
+    return Band{end_ms, last_judge_ms(chord_ms, side_ms), true};
 }
 
 SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms) {
@@ -178,17 +142,17 @@ SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms) {
     SqueezeSplit s;
     const bool early = anchor_goes_early(g.anchor_press);
     s.anchor_aim_ms = early ? -lead_ms : lead_ms;
-    // The end once the anchor is judged one frame after its aim; the squeeze
-    // press's aim assumes that same end.
-    s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.anchor_press, r, lead_ms, kJudgeEarlyMs);
+    // The end once the anchor is judged at its aim; the squeeze press's band
+    // assumes that same end.
+    s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.anchor_press, r, lead_ms);
     s.aim_end_ms = s.planned_end_ms;
-    if (early)
-        s.squeeze_aim_ms = s.aim_end_ms + kSpOutLagMs - g.squeeze_ms;
-    else
-        s.squeeze_aim_ms = s.aim_end_ms - kSpEndLeadMs - g.squeeze_ms;
+    s.squeeze_band = early ? late_gem_band(g.squeeze_ms, g.squeeze_side_ms, s.aim_end_ms)
+                           : end_band(g.squeeze_ms, g.squeeze_side_ms, s.aim_end_ms);
+    s.squeeze_aim_ms = band_middle_ms(s.squeeze_band) - g.squeeze_ms;
     s.anchor_room_ms = press_room_ms(s.anchor_aim_ms, g.anchor_side_ms);
-    s.squeeze_room_ms = press_room_ms(s.squeeze_aim_ms, g.squeeze_side_ms);
-    s.feasible = s.anchor_room_ms >= kRoomMarginMs && s.squeeze_room_ms >= kRoomMarginMs;
+    // The squeeze press's room is measured at the end it must clear, the
+    // edge of its band the anchor's press moves.
+    s.squeeze_room_ms = press_room_ms(s.aim_end_ms - g.squeeze_ms, g.squeeze_side_ms);
     return s;
 }
 
@@ -218,12 +182,13 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
     }
     const bool is_out = anchor_goes_early(need->anchor_press);
     const char* way = is_out ? "early" : "late";
-    // Below the plain press's own lead the split would press the anchor the
-    // other way, where the ratio and the frame model it rests on do not hold.
-    if (lead < kPressLeadMs) {
+    // At or below zero the split would judge the anchor on or past its own
+    // time the other way, where the ratio it rests on does not hold.
+    if (lead <= 0.0) {
         refusals.push_back("the equal-room split for chord " + std::to_string(need->squeeze_chord) +
                            " would press anchor chord " + std::to_string(anchor) + " " +
-                           std::to_string(lead) + " ms " + way + ", less than a plain press; no rule times that");
+                           std::to_string(lead) + " ms " + way +
+                           ", which presses it the other way; no rule times that");
         return std::nullopt;
     }
     // The ratio holds only while the tempo stays steady (steady_spans): on
@@ -275,25 +240,22 @@ double read_at_own_ms(const EndLink& link, double own_ms) {
     return link.read_stored_end_ms + (own_ms - link.own_stored_end_ms) / c;
 }
 
-double last_send_ms(double chord_ms, double side_ms) { return chord_ms + side_ms - kJudgeEarlyMs; }
+// TM-27: a judge time equal to either edge is inside.
+double first_judge_ms(double chord_ms, double side_ms) { return chord_ms - side_ms; }
+double last_judge_ms(double chord_ms, double side_ms) { return chord_ms + side_ms; }
 
-// The late press goes kSpOutLagMs after its own end and is judged one frame
-// later.
-double sqout_fallback_after_ms(double chord_ms, double side_ms) {
-    return chord_ms + side_ms - kSpOutLagMs - kJudgeEarlyMs;
-}
+// The late gem's band runs from its own end to its window's back edge, so it
+// is empty once the end reaches that edge.
+double sqout_fallback_after_ms(double chord_ms, double side_ms) { return last_judge_ms(chord_ms, side_ms); }
 
-// Design point 5's threshold as the plan writes it: the press goes
-// kSpEndLeadMs before its own end, held kJudgeEarlyMs further inside.
-double sqin_fallback_before_ms(double chord_ms, double side_ms) {
-    return chord_ms - side_ms + kSpEndLeadMs + kJudgeEarlyMs;
-}
+// A squeeze-in's band runs from its window's front edge to its own end, so
+// it is empty once the end is before that edge.
+double sqin_fallback_before_ms(double chord_ms, double side_ms) { return first_judge_ms(chord_ms, side_ms); }
 
 // _order_groups in tools/ch_probe/experiments/play_chart.py, moved: "An
 // activation's chord presses its activating_gem first; the rest go in groups
 // by multipliers, the lower multiplier first." The user's "Only where it
-// matters" (kChordOrderGapMs's source) is why a chord whose gems share one
-// multiplier stays one group.
+// matters" is why a chord whose gems share one multiplier stays one group.
 std::vector<std::vector<size_t>> press_groups(const std::vector<int>& multipliers,
                                               const std::vector<size_t>& places,
                                               std::optional<size_t> first) {
@@ -346,36 +308,41 @@ std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
 
 // TM-50: the game gives a press inside two unhit same-pad windows to the
 // earlier note. So a press is safe from an earlier chord only when that
-// chord's own press on the pad was sent before it; one sent at the same
-// clock lands with it, while the earlier note is still unhit.
-std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place,
-                                             double send_ms, const std::vector<Pad>& pads) {
+// chord's own press on the pad is judged before it can be; one that may be
+// judged in the same frame lands with it, while the earlier note is still
+// unhit. The press may be judged anywhere from `from_ms` to `to_ms`, so the
+// whole of that range is checked.
+std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place, double from_ms,
+                                             double to_ms, const std::vector<Pad>& pads) {
     const PadChord& own = chords[place];
-    const double judged_ms = send_ms + kJudgeEarlyMs;
-    auto inside = [&](const PadChord& c) { return std::abs(judged_ms - c.ms) <= c.side_ms; };
+    auto in_own = [&](double t) { return std::abs(t - own.ms) <= own.side_ms; };
+    auto meets = [&](const PadChord& c) {
+        return from_ms <= last_judge_ms(c.ms, c.side_ms) && to_ms >= first_judge_ms(c.ms, c.side_ms);
+    };
     auto has = [](const std::vector<Pad>& list, const Pad& p) {
         return std::find(list.begin(), list.end(), p) != list.end();
     };
     // No chord's side is wider than one with no neighbours (TM-19), so the
-    // walk back stops at the first chord that far from the judged time.
+    // walk back stops at the first chord that far from the earliest judge time.
     const double widest_side = window_side_ms(std::nullopt, std::nullopt);
-    const std::string who = "a press of chord " + std::to_string(own.index) + " sent at " +
-                            std::to_string(send_ms) + " ms";
-    if (!inside(own))
+    const std::string who = "a press of chord " + std::to_string(own.index) + " judged from " +
+                            std::to_string(from_ms) + " to " + std::to_string(to_ms) + " ms";
+    if (!in_own(from_ms) || !in_own(to_ms))
         return who + " leaves its own window (" + std::to_string(own.side_ms) + " ms a side)";
     for (const Pad& pad : pads) {
         for (size_t i = place; i-- > 0;) {
             const PadChord& before = chords[i];
-            if (judged_ms - before.ms > widest_side) break;
-            if (!has(before.chart_pads, pad) || !inside(before)) continue;
+            if (from_ms - before.ms > widest_side) break;
+            if (!has(before.chart_pads, pad) || !meets(before)) continue;
             std::optional<double> pressed_ms;
             for (const PadSend& s : before.sends)
-                if (s.pad == pad && (!pressed_ms || s.send_ms < *pressed_ms)) pressed_ms = s.send_ms;
-            if (pressed_ms && *pressed_ms < send_ms) continue;
+                if (s.pad == pad && (!pressed_ms || s.to_ms < *pressed_ms)) pressed_ms = s.to_ms;
+            if (pressed_ms && *pressed_ms < from_ms) continue;
             const std::string pad_name = color_str(pad.first) + std::string(pad.second ? " cymbal" : "");
             return who + " lands inside the window of chord " + std::to_string(before.index) +
                    ", an earlier note on its " + pad_name + " pad that is still unhit then: " +
-                   (pressed_ms ? "the player presses it at " + std::to_string(*pressed_ms) + " ms, no earlier"
+                   (pressed_ms ? "the player's press of it may be judged as late as " +
+                                     std::to_string(*pressed_ms) + " ms"
                                : std::string("the player sends it no press on that pad"));
         }
     }
@@ -685,6 +652,10 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     for (size_t a = 0; a < acts.size(); ++a) {
         for (size_t k = 0; k < acts[a]->sqinouts.size(); ++k) {
             nlohmann::json& q = act_list[a]["squeezes"][k];
+            // Whether the squeeze fits is Hydra's safe sum, the one the
+            // Dynamic Hit Window row prints (squeeze_window_ends).
+            const std::optional<WindowEnds> ends = squeeze_window_ends(*acts[a], k, chords);
+            q["safe_ms"] = ends ? nlohmann::json(ends->safe_ms) : nlohmann::json(nullptr);
             if (acts[a]->sqinouts[k].needs_no_timing()) {
                 q["feasible"] = true;
                 continue;
@@ -694,6 +665,10 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 q["feasible"] = false;  // a refusal says why
                 continue;
             }
+            if (!ends)
+                refusals.push_back("the activation at " + tick_text(acts[a]->timecode.ticks()) + "'s squeeze " +
+                                   std::to_string(k) +
+                                   " has no safe sum (squeeze_window_ends gives none), so it is not feasible");
             const SqueezeSplit& s = *timed[it->second].split;
             q["anchor_aim_ms"] = s.anchor_aim_ms;
             q["squeeze_aim_ms"] = s.squeeze_aim_ms;
@@ -701,16 +676,15 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             q["squeeze_room_ms"] = s.squeeze_room_ms;
             q["planned_end_ms"] = s.planned_end_ms;
             q["aim_end_ms"] = s.aim_end_ms;
-            q["feasible"] = s.feasible;
+            q["feasible"] = ends.has_value() && !ends->is_short();
         }
     }
 
     // ---- the reads: after the activation's own press, after the chord its
     // final end moves with, and after every chord that leads a squeeze. Each
     // read sees the end in force after that chord's step; its planned value
-    // is that end moved by the chord's press judged kJudgeEarlyMs after its
-    // aim, at that same step's own scale (step_transfer_scale; design point
-    // 2 of
+    // is that end moved by the chord's press judged at its aim, at that same
+    // step's own scale (step_transfer_scale; design point 2 of
     // `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     struct ReadPlan {
         double stored_ms = 0.0;
@@ -758,12 +732,11 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 continue;
             }
             const double stored = ms_of(act.sp_end_steps[*step].end_tick);
-            // A led chord moves the end as its lead does; a plain press goes
-            // kPressLeadMs early and is judged kJudgeEarlyMs after it.
+            // A led chord moves the end as its lead does; a plain press is
+            // judged at its chord's own time, so it leaves the end as stored.
             const double shift =
-                lead_of.count(x) > 0
-                    ? anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *scale), lead_of[x], kJudgeEarlyMs)
-                    : scale->late * (kJudgeEarlyMs - kPressLeadMs);
+                lead_of.count(x) > 0 ? anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *scale), lead_of[x])
+                                     : 0.0;
             read_plan[{a, x}] = ReadPlan{stored, stored + shift, *scale,
                                          steady_spans(tick, act.sp_end_steps[*step].end_tick, timing)};
             chord_list[static_cast<size_t>(x)]["reads"].push_back(nlohmann::json{{"activation", a},
@@ -774,12 +747,12 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         }
         // The final end moves with its anchor's lead, early or late, at the
         // last step's own scale. A plain-pressed anchor leaves it as stored:
-        // the read carries that press's one-frame drift.
+        // the read carries how far that press really landed off its time.
         if (final_anchor[a] && lead_of.count(*final_anchor[a]) > 0 && !act.sp_end_steps.empty()) {
             const int x = *final_anchor[a];
             if (const std::optional<TransferScale> own =
                     step_transfer_scale(act, act.sp_end_steps.size() - 1, timing)) {
-                final_shift[a] = anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *own), lead_of[x], kJudgeEarlyMs);
+                final_shift[a] = anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *own), lead_of[x]);
                 final_led[a] = true;
             }
         }
@@ -817,29 +790,48 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     };
 
     // ---- the presses, chord by chord
+    // A press's aim is its judge target off its chord's time. Its band is
+    // where it may be judged: its window for a press aimed at a point (the
+    // frame pick takes the frame nearest the aim), or the band it is aimed
+    // at the middle of (the frame pick may land anywhere in it).
     struct Press {
         size_t chord = 0;
         std::vector<size_t> gems;
         double aim_ms = 0.0;
-        std::optional<double> after_ms;
+        Band band;
+        bool banded = false;             // aimed at the middle of `band`
+        size_t group = 0;                // its place among its chord's groups
+        std::optional<size_t> follows;   // the group it goes down the frame after
         const char* rule = "plain";
         std::optional<size_t> act;       // timed_from_end
         std::optional<int> read_after;   // the chord whose read it is retimed from
         std::optional<EndLink> link;     // the two ends, for a press timed from an end
         nlohmann::json fallback;         // null: none
         bool checked = false;            // the far-press check reads it
+        // The range the far-press check asks about: the whole band when the
+        // press may land anywhere in it, else its aim.
+        double judged_from_ms(double chord_ms) const { return banded ? band.from_ms : chord_ms + aim_ms; }
+        double judged_to_ms(double chord_ms) const { return banded ? band.to_ms : chord_ms + aim_ms; }
     };
     std::vector<Press> presses;
-    auto add_groups = [&](size_t i, const std::vector<std::vector<size_t>>& groups, double first_aim_ms,
-                          bool checked, const char* rule, std::optional<size_t> act = std::nullopt,
-                          std::optional<int> read_after = std::nullopt,
+    // Every group of one chord shares its aim and band. A later group goes
+    // down the frame after the group before it, so the game scores the gems
+    // in the groups' order (SC-38 on docs/clone-hero/06-scoring.md): its row
+    // names that group and carries no gap of its own.
+    auto add_groups = [&](size_t i, const std::vector<std::vector<size_t>>& groups, double aim_ms,
+                          std::optional<Band> band, bool checked, const char* rule,
+                          std::optional<size_t> act = std::nullopt, std::optional<int> read_after = std::nullopt,
                           std::optional<EndLink> link = std::nullopt) {
+        const ReplayChord& c = replay.chords[i];
         for (size_t g = 0; g < groups.size(); ++g) {
             Press p;
             p.chord = i;
             p.gems = groups[g];
-            p.aim_ms = first_aim_ms + static_cast<double>(g) * kChordOrderGapMs;
-            if (g > 0) p.after_ms = static_cast<double>(g) * kChordOrderGapMs;
+            p.aim_ms = aim_ms;
+            p.band = band ? *band : window_band(c.ms, sides[i]);
+            p.banded = band.has_value();
+            p.group = g;
+            if (g > 0) p.follows = g - 1;
             p.rule = rule;
             p.act = act;
             p.read_after = read_after;
@@ -848,6 +840,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             presses.push_back(std::move(p));
         }
     };
+    // A press aimed at the middle of `band`, off the chord at `chord_ms`.
+    auto middle_aim = [](const Band& band, double chord_ms) { return band_middle_ms(band) - chord_ms; };
     // The activating note goes first on an activation's chord (row P27:
     // Chord::activation_note names it).
     auto flagged = [&](size_t i) -> std::optional<size_t> {
@@ -873,7 +867,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 continue;
             }
             const double l = lead_of[ci];
-            add_groups(i, groups, anchor_goes_early(way_of[ci]) ? -l : l, true, "anchor");
+            add_groups(i, groups, anchor_goes_early(way_of[ci]) ? -l : l, std::nullopt, true, "anchor");
             continue;
         }
 
@@ -881,7 +875,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             const auto [a, k] = squeeze_at[ci];
             const auto it = timed_of.find({a, k});
             if (acts[a]->sqinouts[k].needs_no_timing()) {
-                add_groups(i, groups, -kPressLeadMs, false, "needs_no_timing");
+                add_groups(i, groups, 0.0, std::nullopt, false, "needs_no_timing");
                 continue;
             }
             if (it == timed_of.end() || !timed[it->second].split) {
@@ -930,62 +924,72 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                     refused.insert(i);  // squeeze_out_inside_groups wrote the line
                     continue;
                 }
-                // "The last inside group goes down at the inside time,
-                // SP_END_LEAD_MS before the end, so no later group can land
-                // close to the end check and pay outside."
-                const double last_inside_aim = s.aim_end_ms - kSpEndLeadMs - c.ms;
-                const double first_inside_aim =
-                    last_inside_aim - static_cast<double>(inside->empty() ? 0 : inside->size() - 1) * kChordOrderGapMs;
+                // The inside groups are judged by the end, aimed at the
+                // middle of their band from the window's front edge to it.
+                const Band inside_band = end_band(c.ms, side, s.aim_end_ms);
                 if (!inside->empty())
-                    add_groups(i, *inside, first_inside_aim, true, "squeeze_out_inside", a, anchor, link);
+                    add_groups(i, *inside, middle_aim(inside_band, c.ms), inside_band, true, "squeeze_out_inside",
+                               a, anchor, link);
                 Press late;
                 late.chord = i;
                 late.gems = late_gems;
                 late.aim_ms = s.squeeze_aim_ms;
+                late.band = s.squeeze_band;
+                late.banded = true;
+                late.group = inside->size();
                 late.rule = "squeeze_out_late";
                 late.act = a;
                 late.read_after = anchor;
                 late.link = link;
                 late.checked = true;
-                // The freak-fixes plan's question 3 (a): past the threshold
-                // the late gem joins the last inside group, pressed
-                // before_end_ms before the own end as the read moved it, and
-                // the row says retimed=inside.
+                // The freak-fixes plan's question 3 (a): once the own end
+                // reaches the window's back edge the late gem's band is empty,
+                // so it is paid inside and the row says retimed=inside. It
+                // joins the last inside group; with none, it takes an end-band
+                // of its own, from the window's front edge to its own end.
                 late.fallback = nlohmann::json{
                     {"if_end_after_ms", read_at_own_ms(*link, sqout_fallback_after_ms(c.ms, side))},
-                    {"action", "join_group"},
-                    {"join_gems", inside->empty() ? std::vector<size_t>{} : inside->back()},
-                    {"before_end_ms", kSpEndLeadMs},
                     {"retimed", "inside"}};
+                if (inside->empty()) {
+                    late.fallback["action"] = "end_band";
+                    late.fallback["band"] = band_json(inside_band);
+                    late.fallback["aim_ms"] = middle_aim(inside_band, c.ms);
+                } else {
+                    late.fallback["action"] = "join_group";
+                    late.fallback["join_gems"] = inside->back();
+                }
                 presses.push_back(std::move(late));
             } else {
                 const size_t first = presses.size();
-                add_groups(i, press_groups(mults[i], sent[i], std::nullopt), s.squeeze_aim_ms, true, "squeeze_in",
-                           a, anchor, link);
-                // Question 3 (a): before the threshold the chord is pressed
-                // plain, so it scores and the combo holds.
+                add_groups(i, press_groups(mults[i], sent[i], std::nullopt), s.squeeze_aim_ms, s.squeeze_band,
+                           true, "squeeze_in", a, anchor, link);
+                // Question 3 (a): once the own end is before the window's
+                // front edge the band is empty, so the chord is pressed plain
+                // at its own time, so it scores and the combo holds.
                 for (size_t p = first; p < presses.size(); ++p)
                     presses[p].fallback = nlohmann::json{
                         {"if_end_before_ms", read_at_own_ms(*link, sqin_fallback_before_ms(c.ms, side))},
                         {"action", "plain"},
-                        {"aim_ms", -kPressLeadMs + presses[p].after_ms.value_or(0.0)},
+                        {"aim_ms", 0.0},
                         {"retimed", "plain"}};
             }
             continue;
         }
 
         // A chord on a final end (when its activation does not squeeze out)
-        // goes kSpEndLeadMs before that end, as its anchor's lead moved it.
+        // is judged by that end, as its anchor's lead moved it.
         if (on_end && acts[end_act[c.tick]]->sqout_tick == std::nullopt) {
             const size_t a = end_act[c.tick];
             if (const std::optional<EndLink> link = final_link(a)) {
-                add_groups(i, groups, final_shift[a] - kSpEndLeadMs, true, "sp_end", a, *final_anchor[a], link);
+                const Band band = end_band(c.ms, side, ms_of(c.tick) + final_shift[a]);
+                add_groups(i, groups, middle_aim(band, c.ms), band, true, "sp_end", a, *final_anchor[a], link);
                 continue;
             }
         }
 
-        // A chord paid inside, before an end a lead moved earlier, goes
-        // kSpEndLeadMs before that end when its plain press would come later.
+        // A chord paid inside, before an end a lead moved earlier, is judged
+        // by that end when its own time is after it: SP-29 would pay a hit at
+        // its own time without Star Power.
         bool placed = false;
         for (const ReplayPayment& pay : c.paid_by) {
             const auto an = act_number.find(pay.act_tick);
@@ -995,18 +999,19 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             if (chords.at(pay.act_tick) == std::optional<int>(ci)) continue;
             const std::optional<int64_t> d = acts[a]->deact_tick();
             if (!d) continue;
-            const double aim = ms_of(*d) + final_shift[a] - kSpEndLeadMs - c.ms;
-            if (aim >= -kPressLeadMs) continue;
+            const double moved_end = ms_of(*d) + final_shift[a];
+            if (c.ms <= moved_end) continue;
             const std::optional<EndLink> link = final_link(a);
             if (!link) continue;
-            add_groups(i, groups, aim, true, "inside_moved_end", a, *final_anchor[a], link);
+            const Band band = end_band(c.ms, side, moved_end);
+            add_groups(i, groups, middle_aim(band, c.ms), band, true, "inside_moved_end", a, *final_anchor[a], link);
             placed = true;
             break;
         }
-        if (!placed) add_groups(i, groups, -kPressLeadMs, false, "plain");
+        if (!placed) add_groups(i, groups, 0.0, std::nullopt, false, "plain");
     }
 
-    // ---- rooms, latest sends, and the far-press check
+    // ---- rooms, windows, bands and the far-press check
     std::stable_sort(presses.begin(), presses.end(), [&](const Press& x, const Press& y) {
         return replay.chords[x.chord].ms + x.aim_ms < replay.chords[y.chord].ms + y.aim_ms;
     });
@@ -1020,16 +1025,18 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         for (PadChord& pc : pad_chords) pc.sends.clear();
         for (const Press& p : presses) {
             if (refused.count(p.chord) > 0) continue;
+            const double ms = replay.chords[p.chord].ms;
             for (size_t g : p.gems)
-                pad_chords[p.chord].sends.push_back({pad_chords[p.chord].chart_pads[g],
-                                                     replay.chords[p.chord].ms + p.aim_ms});
+                pad_chords[p.chord].sends.push_back(
+                    {pad_chords[p.chord].chart_pads[g], p.judged_from_ms(ms), p.judged_to_ms(ms)});
         }
         for (const Press& p : presses) {
             if (!p.checked || p.gems.empty() || refused.count(p.chord) > 0) continue;
             std::vector<Pad> pads;
             for (size_t g : p.gems) pads.push_back(pad_chords[p.chord].chart_pads[g]);
+            const double ms = replay.chords[p.chord].ms;
             if (std::optional<std::string> r =
-                    far_press_refusal(pad_chords, p.chord, replay.chords[p.chord].ms + p.aim_ms, pads)) {
+                    far_press_refusal(pad_chords, p.chord, p.judged_from_ms(ms), p.judged_to_ms(ms), pads)) {
                 refuse_chord(p.chord, std::move(*r));
                 more = true;
             }
@@ -1043,7 +1050,11 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         nlohmann::json row{{"chord", c.index},
                            {"gems", p.gems},
                            {"aim_ms", p.aim_ms},
-                           {"after_ms", or_null(p.after_ms)},
+                           {"group", p.group},
+                           {"follows", p.follows ? nlohmann::json(*p.follows) : nlohmann::json(nullptr)},
+                           {"band", band_json(p.band)},
+                           {"window_from_ms", first_judge_ms(c.ms, side)},
+                           {"window_to_ms", last_judge_ms(c.ms, side)},
                            {"rule", p.rule},
                            {"timed_from_end", p.act ? nlohmann::json(*p.act) : nlohmann::json(nullptr)},
                            {"end_read_after", or_null(p.read_after)},
@@ -1057,8 +1068,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                            {"read_range_ms", p.link ? nlohmann::json::array({or_null(p.link->read_low_ms),
                                                                              or_null(p.link->read_high_ms)})
                                                     : nlohmann::json(nullptr)},
-                           {"room_ms", press_room_ms(p.aim_ms, side)},
-                           {"last_send_ms", last_send_ms(c.ms, side)}};
+                           {"room_ms", press_room_ms(p.aim_ms, side)}};
         if (!p.fallback.is_null()) row["fallback"] = p.fallback;
         press_list.push_back(std::move(row));
     }
