@@ -289,7 +289,7 @@ exit 0
     New-Case
     $env:HYDRA_BUILD_PASS = New-Pass 'session-a'
     $env:CLAUDECODE = '1'
-    $r = Invoke-Build @('-Preset', 'asan-ninja', '-Target', 'hydra_tests')
+    $r = Invoke-Build @('-Preset', 'coverage-ninja', '-Target', 'hydra_tests')
     $said = Get-CMakeLines
     Check ($r.Code -eq 0 -and @($said | Where-Object { Test-TargetBuildLine $_ }).Count -eq 1 -and -not ($said -match 'lowPriority')) "Ninja preset: expected one build of hydra_tests, not at low priority; exit $($r.Code), lines:`n$($said -join "`n")`n$($r.Text)"
     Check ((Get-Locks).Count -eq 0) 'Ninja preset: the slot was not given back'

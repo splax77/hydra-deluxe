@@ -71,7 +71,7 @@ jobs:
         uses: actions/checkout@v7
 
       # Puts the compiler's folder on PATH. The ASan runtime DLL the fuzz exes
-      # load lives there, as in ci.yml's asan job.
+      # load lives there.
       - name: Set up the Visual Studio developer shell
         uses: ilammy/msvc-dev-cmd@v1
         with:

@@ -27,11 +27,10 @@ param(
     # own folder. ship: the installer's build (no attached GUI tests).
     # asan: the AddressSanitizer test build, which never ships. coverage and
     # fuzz: the coverage and fuzzing builds, which never ship either.
-    # asan-ninja and coverage-ninja: the AddressSanitizer and coverage builds
-    # through Ninja and sccache, as CI builds them (CMakePresets.json says
-    # what they set). mutation: the mutation tool's build, which never ships
-    # (tools/mutate).
-    [ValidateSet("default", "vs2022", "ship", "asan", "asan-ninja", "coverage", "coverage-ninja", "fuzz", "mutation")]
+    # coverage-ninja: the coverage build through Ninja and sccache, as CI
+    # builds it (CMakePresets.json says what it sets). mutation: the mutation
+    # tool's build, which never ships (tools/mutate).
+    [ValidateSet("default", "vs2022", "ship", "asan", "coverage", "coverage-ninja", "fuzz", "mutation")]
     [string]$Preset = "default"
 )
 

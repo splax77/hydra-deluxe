@@ -336,10 +336,6 @@ never ships.
 ctest --test-dir build-asan -C Release -j 4 -R hydra_tests --output-on-failure
 ```
 
-The `asan-ninja` preset is the same build through Ninja and the sccache
-compiler cache, in `build-asan-ninja\`. CI uses it, so a night with few
-changes rebuilds from the cache.
-
 Run these from a Visual Studio developer shell ("Developer PowerShell for VS").
 The ASan runtime DLL sits beside the compiler, not beside the exes, and that
 shell puts it on `PATH`. The CLI tests start the command line tools as child
@@ -365,8 +361,8 @@ instrument a native exe. Instrumenting rewrites the exe in place so it records
 each line it runs. The build never ships.
 
 The `coverage-ninja` preset is the same build through Ninja and the sccache
-compiler cache, in `build-coverage-ninja\`, the way `asan-ninja` is for the
-ASan build. CI uses it, so a night with few changes rebuilds from the cache.
+compiler cache, in `build-coverage-ninja\`. CI uses it, so a night with few
+changes rebuilds from the cache.
 The tool still instruments an exe built this way: each object keeps its own
 debug info, and the linker still writes the exe's `.pdb`.
 
@@ -860,17 +856,10 @@ main job builds and runs `hydra_tests`. A second job, "GUI tests", builds
 time, so the run takes as long as the slower of the two, not both added up.
 Both jobs also run once a night, from a cold build.
 
-The `asan` job builds the same tests with the `asan-ninja` preset (the `asan`
-build again, through Ninja and the sccache compiler cache) and runs them (see
-"The AddressSanitizer build" above). Any memory error it finds fails the run.
-A second job, `asan-gui`, builds `hydra_uitest` the same way and runs the GUI
-tests on its own machine at the same time. Both run once a night and when
-someone starts the workflow by hand, not on every push. On run 40201169431,
-with the cache warm, the `asan` job took 226 s and `asan-gui` 381 s. A cold
-build takes longer: 548 s for the `asan` build alone on run 40195923058.
-Start them by hand from the Actions tab after a change to memory-heavy code.
-Both keep the default shallow checkout, so the precheck self-test skips its
-two real commit ranges there; the main job runs them.
+CI runs no AddressSanitizer build of the tests. Only the fuzz exes are built
+with it, in the weekly fuzz run and the `fuzz-replay` job (see "Fuzzing the
+file parsers" above). To check a change to memory-heavy code under ASan, run
+"The AddressSanitizer build" above on your own machine.
 
 Once a night, and when someone starts the workflow by hand, a `coverage` job
 builds the tests with the `coverage-ninja` preset (the `coverage` build again,
@@ -885,11 +874,10 @@ The build step before the cache took 7 min 17 s (run 40313402500). The cold
 run's coverage report matches the old build's: 158 files, 44,746 coverable lines,
 84%.
 
-The sccache jobs (`asan`, `asan-gui` and `coverage`) keep their cache in
-GitHub's own cache storage, and that storage is sometimes briefly down. Run
-43231044457 failed that way: the storage answered "503 ServerBusy", the
-sccache server would not start, and the build stopped. So each of those jobs
-starts the server with `tools\sccache_start.ps1` before it builds. When
+The `coverage` job keeps its sccache cache in GitHub's own cache storage, and
+that storage is sometimes briefly down. Run 43231044457 failed that way: the
+storage answered "503 ServerBusy", the sccache server would not start, and the
+build stopped. So the job starts the server with `tools\sccache_start.ps1` before it builds. When
 GitHub's cache does not answer, the script starts the server with a local
 cache instead and puts a warning on the run. The build is then as slow as a
 cold one, but it does not fail. In the same way, the fuzz jobs in
