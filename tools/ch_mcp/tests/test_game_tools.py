@@ -1308,7 +1308,8 @@ class GameToolsTest(unittest.TestCase):
 
     def _assert_order_names_split_chords(self, doc, line):
         """`line` is an order line naming, in order, every chord the schedule
-        `doc` presses in order groups (a press with an `after_ms`), less its
+        `doc` presses in order groups (a press whose `follows` names the
+        group before it), less its
         timed squeeze-outs, whose presses the squeeze line names, and says
         "then" once for each of a chord's presses after its first."""
         squeeze_outs = {q["chord"] for act in doc["activations"] for q in act["squeezes"]
@@ -1317,7 +1318,7 @@ class GameToolsTest(unittest.TestCase):
         for press in doc["presses"]:
             presses_of[press["chord"]] = presses_of.get(press["chord"], 0) + 1
         split = sorted({press["chord"] for press in doc["presses"]
-                        if press["after_ms"] is not None} - squeeze_outs)
+                        if press["follows"] is not None} - squeeze_outs)
         self.assertTrue(split, "the fixture presses no chord in order groups")
         items = line.split(": ", 1)[1].split("), ")
         self.assertEqual([int(item.split(" (", 1)[0].split()[-1]) for item in items], split,
@@ -1355,7 +1356,7 @@ class GameToolsTest(unittest.TestCase):
         with open(self.EDGE_WALK_SCHEDULE, encoding="utf-8") as f:
             doc = json.load(f)
         self.assertFalse([press["chord"] for press in doc["presses"]
-                          if press["after_ms"] is not None])
+                          if press["follows"] is not None])
         chords, lines = GT.chords_to_play(self.EDGE_WALK_SCHEDULE)
         self.assertEqual(GT.order_lines(chords, doc), [])
         self.assertEqual(lines, [GT.declined_line(chords, doc)])
@@ -3616,8 +3617,9 @@ class PlayerLimitsLinesTest(unittest.TestCase):
     def test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times(self):
         # live_in_game builds the kit agent's `play` entries from the chords
         # the probe handed it. A probe moves only its own chord: it fires at
-        # the chord's time minus the probe's lead, and its last send keeps
-        # the unmoved press's gap after the fire time.
+        # the chord's time minus the probe's lead, as a judge target with no
+        # band and no window (edge_probe.shift_chord), while every other
+        # chord's entry keeps its target, band and window.
         from tools.ch_mcp import kit_tools
 
         def entries_of(chords):
@@ -3636,13 +3638,15 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         for index, entry in moved.items():
             with self.subTest(chord=index):
                 if index != probed:
-                    self.assertEqual((entry["at_ms"], entry["last_send_ms"]),
-                                     (unmoved[index]["at_ms"], unmoved[index]["last_send_ms"]))
+                    self.assertEqual(entry, unmoved[index])
                     continue
                 self.assertEqual(entry["at_ms"], chord_ms[index] - probe_lead_ms)
                 self.assertNotEqual(entry["at_ms"], unmoved[index]["at_ms"])
-                self.assertEqual(entry["last_send_ms"] - entry["at_ms"],
-                                 unmoved[index]["last_send_ms"] - unmoved[index]["at_ms"])
+                self.assertIn("band", unmoved[index])
+                self.assertIn("window_from_ms", unmoved[index])
+                for key in ("band", "no_frame_aim_ms", "window_from_ms", "window_to_ms"):
+                    self.assertNotIn(key, entry)
+                self.assertEqual(entry["elements"], unmoved[index]["elements"])
 
     def test_the_probe_needs_the_kit(self):
         # A GameTools with no kit set up, as the server starts.
