@@ -1223,7 +1223,8 @@ class GameTools:
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
             lines.append(f"route: {route} ("
                          + ("presses through the virtual kit inside the game"
-                            if route == ROUTE_KIT else "keys to the focused game window") + ")")
+                            if route == ROUTE_KIT else "keys to the focused game window, each "
+                            "sent at its judge target: no judge delay is applied") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
             lines.extend(plan_lines)
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
