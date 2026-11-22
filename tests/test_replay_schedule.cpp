@@ -702,11 +702,11 @@ TEST_CASE("schedule: a squeeze the game cannot make is not feasible") {
 }
 
 TEST_CASE("schedule: a split that would press the anchor the other way is refused") {
-    // A lead at or below zero would judge the anchor on or past its own time
-    // the other way. A squeeze-out whose squeeze side outreaches the anchor
-    // side by more than the gap gives a lead below zero.
+    // A lead below zero would judge the anchor past its own time the other
+    // way. A squeeze-out whose squeeze side outreaches the anchor side by
+    // more than the gap gives a lead below zero.
     const schedule::SqueezeGeometry g = sqout(20.0, 1000.0, 60.0, 1010.0, 1.0);
-    REQUIRE(schedule::equal_room_lead_ms(g) <= 0.0);
+    REQUIRE(schedule::equal_room_lead_ms(g) < 0.0);
     std::vector<std::string> refusals;
     CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
@@ -1064,6 +1064,70 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     const schedule::SqueezeSplit m = schedule::split_squeeze(mirror);
     check_equal_room_split(mirror, m);
     CHECK(m.anchor_aim_ms < 0.0);
+}
+
+TEST_CASE("schedule: a squeeze whose end lies on its own chord is split with the anchor on its own time") {
+    // The Fall of Troy - Mouths Like Sidewinder Missiles [highfine] has two
+    // such squeezes: chord 740, a squeeze-out whose end tick is its own tick
+    // 48480, led by chord 704; and chord 1240, a squeeze-in whose end tick is
+    // its own tick 83328, led by chord 1208. All four chords have the same
+    // side. With no gap and equal sides the equal-room lead is exactly zero:
+    // the anchor is judged on its own time, which moves no end, and the
+    // squeeze press alone sits on the far side of the end. That is a press,
+    // not one the other way, so it is planned and not refused.
+    //
+    // The overfill shape with its clamped end moved onto chord 4's own tick
+    // is the squeeze-out: every side there is the cap, so the sides are equal.
+    Overfill o{plain_song({0, 768, 1536, 2304, 3072, 3840}), Activation{}};
+    o.song.sequence[4].chord.add_note(NoteColor::Kick);
+    o.act.timecode = o.song.timecode(768);
+    o.act.bank_rise_ticks = {0, 768};
+    o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, 3072, SpEndKind::Clamped}};
+    SPSqueeze out{};
+    out.kind = SqueezeKind::SqOut;
+    out.offset_ms = offset_from_sp_end(o.song.timecode(3072).ms(), o.song.timecode(3072).ms());
+    REQUIRE_FALSE(out.needs_no_timing());
+    o.act.sqinouts.push_back(out);
+    o.act.sqout_tick = 3072;
+    o.act.transfer_post = TransferScale{1.0, 1.0};
+    const json sch = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules());
+    INFO(sch["refusals"].dump());
+    CHECK(sch["refusals"].empty());
+    const json& q = sch["activations"][0]["squeezes"][0];
+    REQUIRE(q.contains("anchor_aim_ms"));
+    const double end_ms = q["end_ms"].get<double>();
+    CHECK(end_ms == sch["chords"][4]["ms"].get<double>());  // the end is on chord 4's own time
+    CHECK(q["anchor_aim_ms"].get<double>() == 0.0);
+    CHECK(q["planned_end_ms"].get<double>() == end_ms);  // the anchor moves no end
+    CHECK(q["anchor_room_ms"].get<double>() == doctest::Approx(q["squeeze_room_ms"].get<double>()));
+    const std::vector<json> anchor = presses_of(sch, 2, "anchor");
+    REQUIRE(anchor.size() == 1);
+    CHECK(anchor[0]["aim_ms"].get<double>() == 0.0);
+    // The late gem is judged after the end, which is its own chord's time.
+    const std::vector<json> late = presses_of(sch, 4, "squeeze_out_late");
+    REQUIRE(late.size() == 1);
+    CHECK(late[0]["band"]["from_ms"].get<double>() == end_ms);
+    CHECK(late[0]["band"]["from_strict"].get<bool>());
+    CHECK(late[0]["aim_ms"].get<double>() > 0.0);
+
+    // The squeeze-in, chord 1240's shape: the hand-built squeeze-in with its
+    // chord moved onto its end and the anchor's side set to the chord's.
+    schedule::SqueezeGeometry in = hand_built_squeeze_in();
+    in.squeeze_ms = in.end_ms;
+    in.anchor_side_ms = in.squeeze_side_ms;
+    REQUIRE(schedule::equal_room_lead_ms(in) == 0.0);
+    std::vector<std::string> refusals;
+    const std::optional<double> lead = schedule::anchor_lead_ms({in}, refusals);
+    INFO(refusals.empty() ? std::string() : refusals[0]);
+    REQUIRE(lead.has_value());
+    CHECK(*lead == 0.0);
+    CHECK(refusals.empty());
+    const schedule::SqueezeSplit s = schedule::split_at_lead(in, *lead);
+    CHECK(s.anchor_aim_ms == 0.0);
+    CHECK(s.planned_end_ms == in.end_ms);
+    CHECK(s.squeeze_band.to_ms == in.end_ms);  // judged by the end, its own time
+    CHECK(s.squeeze_aim_ms < 0.0);
+    CHECK(s.anchor_room_ms == doctest::Approx(s.squeeze_room_ms));
 }
 
 TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kind") {

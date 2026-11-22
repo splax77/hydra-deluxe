@@ -183,9 +183,13 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
     }
     const bool is_out = anchor_goes_early(need->anchor_press);
     const char* way = is_out ? "early" : "late";
-    // At or below zero the split would judge the anchor on or past its own
-    // time the other way, where the ratio it rests on does not hold.
-    if (lead <= 0.0) {
+    // Below zero the split would judge the anchor past its own time the other
+    // way, where the ratio it rests on does not hold. A lead of zero judges
+    // it on its own time, which moves no end on either side, so it is the
+    // plain press and needs no ratio: a squeeze whose end lies on its own
+    // chord, with the anchor's side equal to the squeeze chord's, gives
+    // exactly that.
+    if (lead < 0.0) {
         refusals.push_back("the equal-room split for chord " + std::to_string(need->squeeze_chord) +
                            " would press anchor chord " + std::to_string(anchor) + " " +
                            std::to_string(lead) + " ms " + way +
