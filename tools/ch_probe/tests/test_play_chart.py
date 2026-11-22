@@ -77,10 +77,13 @@ def _schedule_of(score):
                        "ends_sp": False, "declined": False, "paid_by": [],
                        "reads": [], "refused": False})
         presses.append({"chord": chord["index"], "gems": list(range(len(gems))),
-                        "aim_ms": -2.0, "after_ms": None, "rule": "plain",
+                        "aim_ms": 0.0, "group": 0, "follows": None, "rule": "plain",
                         "timed_from_end": None, "end_read_after": None,
-                        "aim_end_ms": None, "room_ms": 48.0,
-                        "last_send_ms": chord["ms"] + 50.0})
+                        "aim_end_ms": None, "room_ms": 50.0,
+                        "band": {"from_ms": chord["ms"] - 50.0, "to_ms": chord["ms"] + 50.0,
+                                 "from_strict": False},
+                        "window_from_ms": chord["ms"] - 50.0,
+                        "window_to_ms": chord["ms"] + 50.0})
     return {"song_length_ms": 200000.0, "activations": [], "chords": chords,
             "presses": presses, "refusals": []}
 
@@ -223,11 +226,14 @@ class LoadScheduleTest(unittest.TestCase):
         doc["activations"] = [{"index": 0, "chord": 38, "read_end_after": 38,
                                "sp_ready_ms": None, "squeezes": [
                                    {"chord": 91, "kind": "SqOut", "feasible": False,
-                                    "anchor_room_ms": -1.5, "squeeze_room_ms": -2.5}]}]
+                                    "anchor_room_ms": -1.5, "squeeze_room_ms": -2.5,
+                                    "safe_ms": -4.0}]}]
         with self.assertRaises(ValueError) as caught:
             _write_and_load(doc, play_chart.load_schedule)
-        # The refusal names the squeeze's chord; its wording is the loader's.
+        # The refusal names the squeeze's chord and the safe sum the file
+        # gives; its wording is the loader's.
         self.assertIn("chord 91", str(caught.exception))
+        self.assertIn("safe sum -4 ms", str(caught.exception))
 
     def test_no_timing_constant_is_defined_in_python(self):
         # The schedule file's `constants` block is the list of timing numbers
