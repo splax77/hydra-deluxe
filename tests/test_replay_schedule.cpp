@@ -1874,6 +1874,46 @@ Overfill three_step_overfill(std::optional<int64_t> change_at) {
 
 }  // namespace
 
+TEST_CASE("schedule: every end-band press runs from its window's front edge to its own end") {
+    // A chord on a final end, each inside group of a squeeze-out, a chord
+    // paid inside before a moved end and a squeeze-in: each band runs from
+    // the front edge of its chord's window to the end it must beat, and its
+    // target is the band's middle. A chord paid inside before a moved end is
+    // banded only when its own time is after that end.
+    std::set<std::string> seen;
+    auto check = [&](const json& sch) {
+        for (const json& p : sch["presses"]) {
+            const std::string rule = p["rule"].get<std::string>();
+            if (rule != "sp_end" && rule != "squeeze_out_inside" && rule != "inside_moved_end" &&
+                rule != "squeeze_in")
+                continue;
+            seen.insert(rule);
+            INFO("chord " << p["chord"].get<int>() << " " << rule);
+            const double ms = sch["chords"][p["chord"].get<size_t>()]["ms"].get<double>();
+            const json& band = p["band"];
+            CHECK(band["from_ms"].get<double>() == doctest::Approx(p["window_from_ms"].get<double>()));
+            CHECK(band["to_ms"].get<double>() == doctest::Approx(p["own_end_ms"].get<double>()));
+            CHECK_FALSE(band["from_strict"].get<bool>());
+            CHECK(ms + p["aim_ms"].get<double>() ==
+                  doctest::Approx((band["from_ms"].get<double>() + band["to_ms"].get<double>()) / 2.0));
+            if (rule == "inside_moved_end") CHECK(ms > p["own_end_ms"].get<double>());
+        }
+    };
+    check(pitch_dark().sch);
+    const Overfill o = overfill();
+    check(schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules()));
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song&, const std::vector<const Activation*>&,
+                                      const PathReplay&, const json& sch) {
+        INFO(path);
+        check(sch);
+    });
+    INFO("rules seen: " << seen.size());
+    CHECK(seen.count("squeeze_out_inside") == 1);
+    CHECK(seen.count("squeeze_in") == 1);
+    CHECK(seen.count("sp_end") == 1);
+}
+
 TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
     const PitchDark pd = pitch_dark();
     const json& sch = pd.sch;
