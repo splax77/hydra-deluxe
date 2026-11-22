@@ -449,5 +449,111 @@ class PlayInGameTest(unittest.TestCase):
             assert_rows_are_the_runs(self, f.read().splitlines(), lines)
 
 
+def with_frame_clock(stop_event, frames):
+    """A stop event carrying the frame clock log `frames`, (frame, clock_ms)
+    pairs, in the shape kit.ts's endPlay sends it."""
+    return {**stop_event, K.STOP_FRAME_CLOCK: {
+        K.FRAME_CLOCK_FRAME: [f for f, _c in frames],
+        K.FRAME_CLOCK_CLOCK_MS: [c for _f, c in frames]}}
+
+
+class GonePlayer(FakePlayer):
+    """A FakePlayer whose session is gone once its queued events are read."""
+
+    def alive(self):
+        return not self.events.empty()
+
+
+class FrameClockTest(unittest.TestCase):
+    """The frame clock log the kit agent sends on its stop event
+    (RunResult.frame_clock). The agent's side is typed here: no recorded run
+    carries one yet."""
+
+    # Hand-picked frames and clocks: frame 7 is missing, as a frame the hook
+    # did not run on would be, and the clock steps unevenly.
+    FRAMES = [(5, 1000.0), (6, 1000.758), (8, 1002.274), (9, 1003.5)]
+
+    def _one_press(self):
+        return [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
+
+    def test_the_stop_events_frame_clock_is_written_row_for_row(self):
+        batch = [started(), sent_event(0, 0, 1001.0, 0, 50),
+                 with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]
+        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [batch]}))
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        self.assertEqual(result.frame_clock, self.FRAMES)
+        self.assertIsNone(result.frame_clock_error)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        written = os.path.join(scratch.name, "frame_clock.csv")
+        P.write_frame_clock_log(written, result.frame_clock)
+        with open(written, encoding="utf-8", newline="") as f:
+            table = list(csv.reader(f))
+        self.assertEqual(table, [list(P.FRAME_CLOCK_COLUMNS)]
+                         + [[str(frame), str(clock)] for frame, clock in self.FRAMES])
+
+    def test_every_stop_reason_hands_its_frame_clock_on(self):
+        for reason in (K.STOP_REASON_DONE, K.STOP_REASON_STOPPED, K.STOP_REASON_CAP,
+                       K.STOP_REASON_FROZEN, K.STOP_REASON_PAST_END):
+            batch = [started(), sent_event(0, 0, 1001.0, 0, 50),
+                     with_frame_clock(stopped(reason), self.FRAMES)]
+            result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [batch]}))
+            self.assertEqual(result.frame_clock, self.FRAMES, reason)
+
+    def test_a_jump_back_keeps_both_plays_frames_in_order(self):
+        # The song clock's jump back ends the agent's play with its own log;
+        # the play started again sends the rest on its stop.
+        before, after = self.FRAMES[:2], [(20, 500.0), (21, 500.758)]
+        batches = [[started(), with_frame_clock(stopped(K.STOP_REASON_JUMPED_BACK), before)],
+                   [started(), sent_event(0, 0, 1001.0, 0, 50),
+                    with_frame_clock(stopped(K.STOP_REASON_DONE), after)]]
+        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: batches}))
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        self.assertEqual(result.frame_clock, before + after)
+
+    def test_a_jump_back_whose_first_play_sent_none_leaves_no_log(self):
+        # Half a log would read as the whole play's, so there is none.
+        batches = [[started(), stopped(K.STOP_REASON_JUMPED_BACK)],
+                   [started(), sent_event(0, 0, 1001.0, 0, 50),
+                    with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]]
+        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: batches}))
+        self.assertIsNone(result.frame_clock)
+
+    def test_a_play_with_no_end_reply_has_no_frame_clock(self):
+        # The session goes before the agent's stop: the log is missing, which
+        # None says, never an empty list.
+        batch = [started(), sent_event(0, 0, 1001.0, 0, 50)]
+        result = run(self._one_press(), GonePlayer({K.PLAY_TYPE: [batch]}))
+        self.assertEqual(result.stop, "lost")
+        self.assertIsNone(result.frame_clock)
+        self.assertIsNone(result.frame_clock_error)
+
+    def test_a_broken_frame_clock_is_said_and_changes_no_press(self):
+        good = [started(), sent_event(0, 0, 1001.0, 0, 50),
+                with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]
+        broken_stop = with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)
+        broken_stop[K.STOP_FRAME_CLOCK][K.FRAME_CLOCK_CLOCK_MS].pop()
+        broken = [*good[:2], broken_stop]
+        with_log = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [good]}))
+        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [broken]}))
+        self.assertIsNone(result.frame_clock)
+        with self.assertRaises(K.FrameClockBroken) as caught:
+            K.frame_clock_rows(broken_stop)
+        self.assertEqual(result.frame_clock_error, str(caught.exception))
+        self.assertEqual((result.stop, result.message, result.rows),
+                         (with_log.stop, with_log.message, with_log.rows))
+
+    def test_the_frame_clock_changes_no_press(self):
+        # The same play with and without the log gives the same rows, stop
+        # and message.
+        plain = [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(K.STOP_REASON_DONE)]
+        logged = [*plain[:2], with_frame_clock(plain[2], self.FRAMES)]
+        a = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [plain]}))
+        b = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [logged]}))
+        self.assertEqual((a.stop, a.message, a.rows), (b.stop, b.message, b.rows))
+        self.assertIsNone(a.frame_clock)
+        self.assertEqual(b.frame_clock, self.FRAMES)
+
+
 if __name__ == "__main__":
     unittest.main()
