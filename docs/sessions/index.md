@@ -575,7 +575,12 @@
 - 2026-11-21 9f61bc5c Chapter 10 fills and followups handoff (2026-11-21) | docs, agents, hooks, review, tests | The session ended with main pushed to GitHub, with the handoff rule, the pointer check and the citation cleanup all in.
 - 2026-11-21 76ea2f48 Understanding the 569 number (2026-11-21) | docs, tests, review, planning | The session ended with the audit JSON removed from main, and nothing pushed to GitHub.
 - 2026-11-21 02ed5228 Release 3.2.0 (2026-11-21) | release, installer, tests, review, agents | The 3.2.0 release was merged, built, signed and published, and the build-step fix was pushed, all in one session. [stale]
-- 2026-11-22 76fb0f03 Screen flicker in path builder activations (2026-11-22) | path-builder, builder-timeline, activation, review, tests | The session ended with the fix merged into main, not pushed.
+- 2026-11-22 c6a4951d CI runs still failing (2026-11-22) | ci, tests, performance, memory | The session ended at 03:04 UTC with both CI fixes, the nightly ASan removal, and main pushed to GitHub.
+- 2026-11-22 76fb0f03 Screen flicker in path builder activations (2026-11-22) | path-builder, builder-timeline, activation, review, tests | The session ended with the fix merged into main, not pushed. [stale]
+- 2026-11-22 97245ab7 Clone Hero replay precision (2026-11-22) | clone-hero, squeeze, planning, review | The session ended at 04:12 UTC with a handoff written on its own branch and the plan still unmerged, waiting for the user's go. [write-back]
+- 2026-11-22 2588d344 Squeeze safety precision (2026-11-22) | squeeze, frontend-squeeze, backend-squeeze, chart | The session ended at 04:17 UTC with exact margins reported for four squeezes. All four are positive, and each is under 0.004 ms. No code was changed.
+- 2026-11-22 7ff4eef0 Squeeze timing fix handoff (2026-11-22) | clone-hero, squeeze, planning, review | The session ended at 05:18 UTC on the user's stop order, with a handoff written and committed on its own branch and no agent running. [write-back]
+- 2026-11-22 7adc3712 Merge gate review recognition (2026-11-22) | review, hooks, planning, docs, agents | The session ended at 04:42 UTC with two handoffs written and committed, each on its own branch cut from main. Neither was merged or pushed.
 
 ## Proposed tags
 
