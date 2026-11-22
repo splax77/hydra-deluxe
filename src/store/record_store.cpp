@@ -1837,9 +1837,19 @@ struct CloseDb {
 };
 using ReaderDb = std::unique_ptr<sqlite3, CloseDb>;
 
+// How long a read-only connection open_reader opened waits for a lock on the
+// file before its read fails. A new connection's first read can meet a lock
+// another connection holds for a moment (several readers opening at once, or
+// a checkpoint), which normally clears within milliseconds; without a wait
+// SQLite fails that read at once with "database is locked". Past this wait
+// the read still fails and says so, as any failed read does (D73). The
+// store's own read-write connection sets no wait: its writes rely on failing
+// fast when another connection holds the write lock (drop_empty_profiles).
+constexpr int kReaderBusyTimeoutMs = 2000;
+
 // Opens `path` read-only, for one share of the threaded chart list read or
-// for a StoreReader. A failed open is a failed read (D73), worded with
-// SQLite's own message.
+// for a StoreReader, waiting up to kReaderBusyTimeoutMs for a lock. A failed
+// open is a failed read (D73), worded with SQLite's own message.
 ReaderDb open_reader(const std::string& path) {
     sqlite3* db = nullptr;
     const int rc = open_sqlite(path, &db, SQLITE_OPEN_READONLY);
@@ -1848,6 +1858,7 @@ ReaderDb open_reader(const std::string& path) {
         throw KindedError(ErrorKind::DatabaseRead,
                           std::string("opening a read-only connection failed: ") +
                               (db ? sqlite3_errmsg(db) : "unknown error"));
+    sqlite3_busy_timeout(db, kReaderBusyTimeoutMs);
     return owned;
 }
 
@@ -2072,9 +2083,10 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
     const RowsReadFn& on_row) {
     // Every connection opens here, on the calling thread, before any share
     // reads, so an open that fails fails the whole read with nothing read.
-    // The store's own connection stays open all the while: with no connection
-    // open, the new connections' first reads race to rebuild the WAL index
-    // and fail with "database is locked" (tools/bench.cpp's section 4 met it).
+    // The store's own connection stays open all the while, so the new
+    // connections find the WAL index built and never race to rebuild it. A
+    // lock a new connection's first read still meets for a moment is waited
+    // out in open_reader (kReaderBusyTimeoutMs), not failed at once.
     const int fail_at = fail_chart_list_reader_open_for_test_;
     fail_chart_list_reader_open_for_test_ = 0;
     std::vector<ReaderDb> readers;
