@@ -13,7 +13,8 @@ mid-song are live.py's.
 No test opens the game or sends a key. The run-cap, caller-hook,
 scored-between and dropped-press tests, among others, play the Freak fixture
 on the song clock and score a real run recorded, cut into
-testdata/ch_runs/ls-f1-run1, on the real timer. Other run tests still use
+testdata/ch_runs/ls-f1-run1, one recorded row per clock read on the
+recording's own timer (_RecordedGame). Other run tests still use
 the fakes below.
 """
 
@@ -329,7 +330,7 @@ class _FakeGame:
 class PressLogTest(unittest.TestCase):
     def test_one_row_per_press_with_the_press_log_columns(self):
         # The Freak schedule played on the recorded mid-song clock and score
-        # of ls-f1-run1, with the real timer and a 2 s cap inside the 2.6 s
+        # of ls-f1-run1, on the recording's timer and a 2 s cap inside the 2.6 s
         # the recording holds.
         result, sent, _out, _took, chords = _play_recorded(
             _F1_MID_SONG, cap_s=CallerHooksTest._CAP_S)
@@ -376,7 +377,7 @@ class PressLogTest(unittest.TestCase):
                              else play_chart.DECLINED if press.declined else play_chart.SENT, r)
 
 
-# --- a run on a recorded game clock and the real timer ------------------------
+# --- a run on a recorded game clock and its own timer -------------------------
 
 # Clock windows cut from the Star Power watcher log (sp_watch-1.csv) of the
 # real run hydra-data/ch-mcp-runs/2026-11-07/ls-f1-run1, which played
@@ -394,15 +395,25 @@ _E_REPLIES = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-e-run1",
 
 
 class _RecordedGame:
-    """The song clock and score one real run recorded, read back at the
-    recording's own pace on the real timer: a read gives the row the watcher
-    logged as much wall time after its first row as has passed since this
-    object's first read. A read past the last row fails the test at once,
-    since the recording cannot say what the game did next. A recording that
-    keeps the active byte and stored end columns also gives the Star Power
-    end, as _recorded_end gives it for a row."""
+    """The song clock and score one real run recorded, read back one row per
+    clock read: each read() gives the next row the watcher logged, and the
+    score and Star Power end reads give the row the last read() reached.
+    The run's timer is the recording's own: `now` is that row's wall_s (the
+    first row's before any read), so the machine's real timer never decides
+    which row a read sees. `sleep` waits for nothing, since only a read moves
+    the recording on. A read past the last row fails the test at once, since
+    the recording cannot say what the game did next. A recording that keeps
+    the active byte and stored end columns also gives the Star Power end, as
+    _recorded_end gives it for a row.
 
-    def __init__(self, path: str) -> None:
+    With `real_timer`, every read instead gives the row the watcher logged
+    as much wall time after its first row as has passed on the machine's
+    timer since this object's first read, so reads faster than the watcher
+    logged see the same row again. That pacing hangs on the machine keeping
+    up, so it is only for a test that needs several reads within one
+    recorded row; such a game has no `now` or `sleep` to hand out."""
+
+    def __init__(self, path: str, real_timer: bool = False) -> None:
         with open(path, encoding="utf-8", newline="") as f:
             recorded = list(csv.DictReader(f))
         self._rows = [(float(r["wall_s"]), float(r["clock_s"]), int(r["score"]))
@@ -411,35 +422,56 @@ class _RecordedGame:
                       if recorded and "sp_end_s" in recorded[0] else None)
         self._walls = [row[0] for row in self._rows]
         self._name = os.path.basename(path)
+        self._real_timer = real_timer
+        # The row the last read() reached; -1 before the first read.
+        self._at = -1
+        # The machine's timer at the first read, with real_timer.
         self._t0 = None
 
     @property
     def last_clock_s(self) -> float:
         return self._rows[-1][1]
 
-    def _at(self) -> int:
-        now = time.perf_counter()
+    def _past_the_end(self):
+        return AssertionError(f"the run read past the end of {self._name}")
+
+    def _row_index(self) -> int:
+        if not self._real_timer:
+            return max(self._at, 0)
+        t = time.perf_counter()
         if self._t0 is None:
-            self._t0 = now
-        at = self._walls[0] + (now - self._t0)
+            self._t0 = t
+        at = self._walls[0] + (t - self._t0)
         if at > self._walls[-1]:
-            raise AssertionError(f"the run read past the end of {self._name}")
+            raise self._past_the_end()
         return bisect.bisect_right(self._walls, at) - 1
 
-    def _row(self):
-        return self._rows[self._at()]
+    def now(self) -> float:
+        if self._real_timer:
+            raise AssertionError(f"{self._name} is read on the real timer")
+        return self._rows[self._row_index()][0]
+
+    def sleep(self, _seconds: float) -> None:
+        if self._real_timer:
+            raise AssertionError(f"{self._name} is read on the real timer")
 
     def read(self):
-        clock_s = self._row()[1]
+        if self._real_timer:
+            self._at = self._row_index()
+        elif self._at + 1 >= len(self._rows):
+            raise self._past_the_end()
+        else:
+            self._at += 1
+        clock_s = self._rows[self._at][1]
         return clock_s, clock_s
 
     def read_score(self) -> int:
-        return self._row()[2]
+        return self._rows[self._row_index()][2]
 
     def read_sp_end(self):
         if self._ends is None:
             raise AssertionError(f"{self._name} keeps no Star Power columns")
-        return self._ends[self._at()]
+        return self._ends[self._row_index()]
 
 
 def _recorded_end(row):
@@ -483,10 +515,11 @@ def _plan_parts(chords):
 
 def _play_recorded(path, sent=None, chords=None, press=None, read_end=False, **kwargs):
     """play_chords over `chords` (the Freak schedule when None) on the
-    recording at `path`, with the real timer. The default `press` only notes
-    each chord's keys in `sent`, since no key may reach a window from a
-    test. With `read_end`, the run reads the game's end from the recording
-    too."""
+    recording at `path`, on the recording's own timer (_RecordedGame's
+    `now` and `sleep`). The default `press` only notes each chord's keys in
+    `sent`, since no key may reach a window from a test. With `read_end`,
+    the run reads the game's end from the recording too. The time it gives
+    back is how long the run took on that timer."""
     game = _RecordedGame(path)
     if read_end:
         kwargs["read_sp_end"] = game.read_sp_end
@@ -496,15 +529,16 @@ def _play_recorded(path, sent=None, chords=None, press=None, read_end=False, **k
         def press(lanes, _axes=None, then=()):
             sent.append(list(lanes))
     out = io.StringIO()
-    began = time.perf_counter()
+    began = game.now()
     result = play_chart.play_chords(
-        chords, game, game.read_score, press, out=out, **kwargs)
-    return result, sent, out.getvalue(), time.perf_counter() - began, chords
+        chords, game, game.read_score, press, out=out,
+        now=game.now, sleep=game.sleep, **kwargs)
+    return result, sent, out.getvalue(), game.now() - began, chords
 
 
 def _pressed_rows(result):
     """The rows of a run's messages that were sent: a message the run
-    dropped calls no press, and a run on the real timer may drop one."""
+    dropped calls no press, and a recorded clock may reach a press late."""
     return [r for r in result.rows if r[play_chart.SEND_COLUMN] != play_chart.DROPPED]
 
 
@@ -2266,7 +2300,7 @@ class StartLineTest(unittest.TestCase):
         out = io.StringIO()
         result = play_chart.play_chords(chords, game, game.read_score,
                                         lambda lanes, _axes=None, then=(): sent.append(lanes),
-                                        out=out)
+                                        now=game.now, sleep=game.sleep, out=out)
         self.assertEqual(result.stop, "past_end")
         self.assertEqual(result.skipped, len(pressed))
         self.assertEqual((sent, result.rows), ([], []))
