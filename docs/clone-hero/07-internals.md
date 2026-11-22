@@ -859,6 +859,17 @@ Game code (6142): `GameManager.Update`, RVA `0xC05A0`, the method hooked; `GameM
 Hydra: no owner: Hydra never reads the running game. The tools run the probe with `ch_kit_frame_probe` and judge its reply with `frame_probe_lines` in tools/ch_mcp/kit_tools.py.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-11-12, session 1ac0d6b4 (LS-G1)
+
+### IN-94 Rewired's ReInput takes a System.Action on its InputSourceUpdateEvent, and the game's MIDI kit subscribes there
+
+Rule: Rewired's static ReInput class has a public pair of methods that add and remove a System.Action on its InputSourceUpdateEvent, the event Rewired raises on its input updates. The game's MIDI kit subscribes its pump with the add method, so a delegate subscribed the same way runs where the game's own MIDI pads are written. A second pair with the same two names sits on a different class, and is not that event.
+Label: Proven in the game's code
+Evidence: `dump.cs` line 310785 (the static class ReInput in the namespace Rewired, TypeDefIndex 3751), lines 310994 and 310995 (`ReInput.add_InputSourceUpdateEvent`, taking one Action) and lines 310997 and 310998 (`ReInput.remove_InputSourceUpdateEvent`, the same). `code/6142/midi_register_21CDE0.asm` line 252 calls the add method's address with a new System.Action over the MIDI pump (`code/6142/midi_register_21CDE0.md`, the paragraph on lines 234 to 253). The second pair is at `dump.cs` lines 334056 to 334060: two internal instance methods of the class CustomController in the namespace Rewired.ComponentControls (TypeDefIndex 4282, line 334030), Rewired's on-screen control component, not the Rewired.CustomController the kit is. They take the same Action but belong to one component object, and no listing shows the game calling them, so the kit uses the public static ReInput pair the game itself calls. The dump holds signatures only, so how often Rewired raises the event in a frame was not read. The kit's frame probe subscribes and removes its delegate through this pair; tools/ch_mcp/kit_methods.json lists the calls with these dump lines.
+Game code (6142): the add method RVA `0x1F704D0` and the remove method RVA `0x1F75B70`, on the class with TypeDefIndex 3751.
+Hydra: no owner: Hydra never reads the running game. The tools run the probe with `ch_kit_frame_probe` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-22, session 1390758e (task fc-t1-frame-order), read in the dump.
+
 ### IN-78 The game takes the front just after launch, and keeps running behind other windows
 
 Rule: Asked to start minimized and not in front, the game still comes to the front 0.4 to 0.5 seconds after launch. In LS-K2 it kept the front until the user clicked another window. With `pause_on_focus_lost` at 0, as the tools set it for a run, the game keeps running when it is not in front.
