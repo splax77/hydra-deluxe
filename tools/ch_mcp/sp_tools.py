@@ -322,7 +322,8 @@ class SpTools:
         hydra_replay score JSON, with each chord's press times from
         sp_compare.run_reach over `schedule_json`, the same path's
         hydra_replay schedule, and `press_csv`, the run's press log, whose
-        judged times it prefers. A schedule or press log that run_reach
+        judged times it prefers; left out, it is the last play session's press
+        log (GameTools.play_snapshot). A schedule or press log that run_reach
         cannot read, or a schedule that refuses its path, gets one line
         naming why. `resolution` is
         the chart's Resolution, which no file here holds, and the run's stop
@@ -339,6 +340,10 @@ class SpTools:
                 return "compare refused: the play session is still running; call ch_play_stop first"
             stop = play["stop"] if play is not None else None
             stop_message = play["message"] if play is not None else ""
+            # Left out, the press log is the last play session's, so a kit run
+            # is compared on the game's judged times without being asked.
+            if press_csv is None and play is not None:
+                press_csv = play.get("press_log")
             try:
                 rows = sp_compare.load_watch_rows(watch_csv)
                 score = sp_compare.load_score(score_json)

@@ -1062,7 +1062,7 @@ class GameToolsTest(unittest.TestCase):
         play = self._running_session(tools, rows)
         self.assertEqual(tools.play_snapshot(), {"last_row": rows[-1],
                                                  "press_count": len(rows), "stop": None,
-                                                 "message": ""})
+                                                 "message": "", "press_log": play.log_path})
         self.assertEqual(tools.ch_play_stop().splitlines()[-1], "stopped")
         self.assertTrue(play.stop.is_set())
         play.thread.join(THREAD_CAP_S)

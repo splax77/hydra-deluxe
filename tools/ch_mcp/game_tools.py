@@ -712,7 +712,8 @@ class GameTools:
         """While a play session exists: {"last_row": the last press row or
         None, "press_count": the rows delivered so far, "stop": the run's stop
         reason, or None while it runs, "message": the run's RunResult.message,
-        empty while it runs or when it left no result}. None when no play
+        empty while it runs or when it left no result, "press_log": the press
+        log's path, or None when the session writes none}. None when no play
         session ever ran."""
         with self._lock:
             play = self._play
@@ -722,6 +723,7 @@ class GameTools:
             ended = not play.running()
             return {"last_row": rows[-1] if rows else None,
                     "press_count": len(rows),
+                    "press_log": play.log_path,
                     "stop": self._stop_reason(play) if ended else None,
                     "message": play.result.message if ended and play.result is not None
                     else ""}

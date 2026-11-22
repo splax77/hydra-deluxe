@@ -741,6 +741,33 @@ class SpToolsOnARecordedRunTest(unittest.TestCase):
         self.assertEqual(reply.splitlines(), report.splitlines() + ready)
         self.assertIn(source, reply.splitlines())
 
+    def test_ch_sp_compare_left_without_a_press_log_reads_the_last_plays(self):
+        # The same judged press log as above, named only by the last play
+        # session: the reply equals the one given that log by name.
+        rows, score, score_json, schedule_json = self.rise_files()
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        planned = sp_compare.press_reach(schedule_json)
+        press_csv = write_press_log(
+            os.path.join(self.tmp.name, "press-1.csv"),
+            [(c["index"], planned[c["index"]].earliest_ms - 1.0) for c in score["chords"]])
+        named = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution,
+                                           press_csv=press_csv)
+
+        # The last play session as play_snapshot gives it once a run ended.
+        self.game.play_snapshot = lambda: {"last_row": None, "press_count": 0,
+                                           "stop": "done", "message": "",
+                                           "press_log": press_csv}
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution)
+        _reach, source = sp_compare.run_reach(schedule_json, press_csv)
+        self.assertIn(source, reply.splitlines())
+        # The two differ only in the stop check (this play ended "done", the
+        # named call had no play) and so in the summary's counts.
+        def body(text, stop_line):
+            return [l for l in text.splitlines()
+                    if l != stop_line and not l.startswith("Summary: ")]
+        self.assertEqual(body(reply, stop_check("done", "")[1]),
+                         body(named, stop_check(None)[1]))
+
     def test_ch_sp_compare_names_a_missing_press_log(self):
         _rows, _score, score_json, schedule_json = self.rise_files()
         missing = os.path.join(self.tmp.name, "no-press.csv")
