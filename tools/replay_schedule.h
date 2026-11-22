@@ -125,7 +125,8 @@ Band window_band(double chord_ms, double side_ms);
 
 // A press that must be judged by the Star Power end `end_ms` to be paid
 // inside: from the window's front edge to that end. A hit in a frame whose
-// clock equals the end is paid inside (SP-29), so the end is in the band.
+// clock equals the end is paid inside (SP-29), so the end is in the band. An
+// end past the window's back edge gives the whole window.
 Band end_band(double chord_ms, double side_ms, double end_ms);
 
 // A squeeze-out's late gem: after its own end `end_ms`, up to its window's

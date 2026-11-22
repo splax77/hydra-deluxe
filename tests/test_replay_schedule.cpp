@@ -1387,6 +1387,9 @@ TEST_CASE("schedule: every rule reads judge times, with no frame in them") {
     CHECK(e.to_ms == 1010.0);
     CHECK_FALSE(e.from_strict);
     CHECK(schedule::band_middle_ms(e) == doctest::Approx(980.0));
+    // An end past the back edge gives the whole window, not a band that
+    // leaves it.
+    CHECK(schedule::end_band(chord_ms, side_ms, chord_ms + side_ms + 20.0).to_ms == chord_ms + side_ms);
     const schedule::Band l = schedule::late_gem_band(chord_ms, side_ms, 1010.0);
     CHECK(l.from_ms == 1010.0);
     CHECK(l.to_ms == chord_ms + side_ms);
@@ -1895,7 +1898,8 @@ TEST_CASE("schedule: every end-band press runs from its window's front edge to i
             const double ms = sch["chords"][p["chord"].get<size_t>()]["ms"].get<double>();
             const json& band = p["band"];
             CHECK(band["from_ms"].get<double>() == doctest::Approx(p["window_from_ms"].get<double>()));
-            CHECK(band["to_ms"].get<double>() == doctest::Approx(p["own_end_ms"].get<double>()));
+            CHECK(band["to_ms"].get<double>() ==
+                  doctest::Approx(std::min(p["own_end_ms"].get<double>(), p["window_to_ms"].get<double>())));
             CHECK_FALSE(band["from_strict"].get<bool>());
             CHECK(ms + p["aim_ms"].get<double>() ==
                   doctest::Approx((band["from_ms"].get<double>() + band["to_ms"].get<double>()) / 2.0));

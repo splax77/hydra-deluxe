@@ -130,7 +130,8 @@ Band window_band(double chord_ms, double side_ms) {
 }
 
 Band end_band(double chord_ms, double side_ms, double end_ms) {
-    return Band{first_judge_ms(chord_ms, side_ms), end_ms, false};
+    // An end past the window's back edge leaves the whole window inside it.
+    return Band{first_judge_ms(chord_ms, side_ms), std::min(end_ms, last_judge_ms(chord_ms, side_ms)), false};
 }
 
 Band late_gem_band(double chord_ms, double side_ms, double end_ms) {
