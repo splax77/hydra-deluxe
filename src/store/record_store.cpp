@@ -1841,8 +1841,9 @@ using ReaderDb = std::unique_ptr<sqlite3, CloseDb>;
 // file before its read fails. A new connection's first read can meet a lock
 // another connection holds for a moment (several readers opening at once, or
 // a checkpoint), which normally clears within milliseconds; without a wait
-// SQLite fails that read at once with "database is locked". Past this wait
-// the read still fails and says so, as any failed read does (D73). The
+// SQLite fails that read at once with "database is locked". Two seconds is
+// far past such a lock, and short enough that a lock that never clears
+// still fails the read soon, and says so, as any failed read does. The
 // store's own read-write connection sets no wait: its writes rely on failing
 // fast when another connection holds the write lock (drop_empty_profiles).
 constexpr int kReaderBusyTimeoutMs = 2000;
