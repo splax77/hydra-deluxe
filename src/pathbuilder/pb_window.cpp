@@ -672,7 +672,6 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
     preview_->pause();
-    const double dot_ms = ui::timeline_fill_ms(f);
     if (f.state == app::PreviewFillState::Taken) {
         // The step standing on this fill is the one whose taken_fill is it.
         for (size_t k = 0; k < scene.activations.size(); ++k) {
@@ -688,13 +687,13 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
                                      f.chord_tick, h.generation());
         // The song moves once the new path is drawn (land_pending_seek), so
         // the highway never shows the old path at the new spot.
-        pending_seek_ms_ = dot_ms;
+        pending_seek_ms_ = ui::timeline_fill_ms(f);
         return;
     }
     // Whatever the click did, the Preview stops on the fill's dot. This comes
     // after select_step so its seek to the activation does not stand.
     pending_seek_ms_.reset();
-    preview_->seek_ms(dot_ms);
+    preview_->seek_ms(ui::timeline_fill_ms(f));
 }
 
 void PbApp::draw_preview(const OpenChart& chart) {
