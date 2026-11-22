@@ -2,7 +2,7 @@
 
 This page covers note values, the multiplier and combo, accents and ghosts, the solo bonus, star cutoffs and the score breakdown.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-22.
 
 The run files named below are of three kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. The virtual kit runs of 2026-11-06 to 2026-11-08 each have a folder under C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\<date>\, named by its run (such as ls-o3-run1), holding the run's scorestats file. With the bot files that makes 16 scorestats files under that folder. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -119,6 +119,16 @@ Game code (6142): not looked for
 Hydra: `multsqueeze_gain` in src/core/scoring.cpp line 134 prices the order; the score file's per-gem `multiplier` and `sp_points` carry it
 Ruling: none needed: card 56ac5b71 rules the player picks the order ("you have to hit the kick first"); the open point is the auto-player's press order
 Found: 2026-11-07, session f3d8ce9f; the rerun, 2026-11-08, session 77057df2 (docs-gaps search)
+
+### SC-39 A press judged before its gem's window opens is an excess hit and breaks the combo
+
+Rule: A pad press the game judges just before the window of the gem it was meant for has opened does not hit that gem. The game counts it as an excess hit, and the combo breaks, so the multiplier falls to 1. On Petal this happened on an activation chord, so Star Power was not activated there; the gem itself still scored at 1x as its window closed, which fits FL-31's grant.
+Label: Proven in a live run
+Evidence: LS-P2 run 1, 2026-11-22, on CHON - Petal (B), Pro Drums, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run1\`. The schedule `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-prep\schedule.json` gives chord 692 (a kick and a blue gem, Hydra's third activation) two press groups, each with `window_from_ms` 114,490.50. In `press-1.csv` the blue gem's group was judged at 114,490.03 ms (`judged_ms`), 0.47 ms before that, and the kick's group at 114,490.94 ms. In `sp_watch-1.csv` the score rises by 50, from 272,275 to 272,325, at clock 114,492.95 ms, and in the same row the multiplier (`sp_mult_byte`) falls from 4 to 1 while Star Power stays off; the next rise, of 65 with the multiplier still 1, comes at 114,662.07 ms, just after the window's close at 114,661.93 ms. `scorestats-CHON_-_Petal_B-20261122-110230.json` there reads `excess_hits` 1 and `max_streak` 881, and 881 is the number of gems before chord 692 in the schedule. LS-P2 run 2, with the same chord's blue group judged at 114,490.96 ms, inside the window, reads `excess_hits` 0 and `max_streak` 1,390 (`scorestats-after-run.json` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run2\`). The stats file's `excess_hits` is the engine's overhit count (SC-37; TM-46 has the overhit path).
+Game code (6142): not read for this case; the overhit path is TM-46's, the press handler RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209.
+Hydra: no owner: Hydra's paths press every gem inside its window. The press bands that keep a press inside it come from tools/replay_schedule.cpp.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-22, session 1390758e (LS-P2 runs 1 and 2).
 
 ### SC-11 Whether the combo carries into the next song of a setlist
 

@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-19.
+Last write-back: 2026-11-22.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -356,6 +356,16 @@ Hydra: no frame model in `src/` (SP-29); the press schedule's frame model plans 
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-11-08, session 6341c618, from the runs of session d0a3868c
 
+### SP-49 On a kit run, the press log's judged time is the clock at which the game credits the press
+
+Rule: On a run played on the virtual kit from inside the game's frame, the time the press log gives as a press's judge time is the song clock at which the game credits that press: the Star Power watch row where the score and the meter move for it reads the same clock, to the last digit. So a press's judge time can be read from the press log, without matching it to the watch by hand.
+Label: Proven in a live run
+Evidence: LS-L1 run 1, 2026-11-22, on CHON - Petal (B), `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-l1-run1\press-1.csv` against `sp_watch-1.csv` there. Chord 473: `judged_ms` 84,811.20594037566, and watch row 19,003 (counting data rows from 0) has `clock_s` 84.81120594037566; at that row the score moves from 151,950 to 152,350 and `sp_amount_u32` from 10,918 to 14,400, and the press row's `score_before` and `score_after` are the same two scores. Chord 815: `judged_ms` 140,005.21182442026, and watch row 31,465 has `clock_s` 140.00521182442026; there the score moves from 281,750 to 281,950 and the meter from 7,200 to 10,800, again the press row's two scores. No other watch row has either clock. The press log's `judged_ms` is the judge time the kit agent records for the press (tools/ch_mcp/kit_tools.py, the press event's fields).
+Game code (6142): field `#8288+0x100`, the engine clock the watch reads (TM-13); the order that makes the credit land at that clock is IN-95.
+Hydra: no owner: Hydra never reads the running game.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-22, session 1390758e (LS-L1 run 1).
+
 ## Phrases collected during Star Power
 
 ### SP-34 A phrase collected during Star Power moves the end later
@@ -449,6 +459,16 @@ Game code (6142): none (a Hydra record rule)
 Hydra: src/search/engine.cpp (per the cards; not re-opened)
 Ruling: card 99e42ceb: "hydra should not display any backends beyond a squeeze out, that doesnt make any sense. do not just change the display, find where the engine calculates these records and fix it there" (03:55 UTC)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
+
+### SP-50 Petal's 1.6 ms squeeze landed on the kit, and the run scored Hydra's total
+
+Rule: On CHON - Petal (B), Expert Pro Drums with 2x kick, at frame multiplier 4, the kit run played the first path of Hydra's dump and scored 442,735, exactly Hydra's total for it, with every note hit and no excess hit. Every one of its 1,107 presses was judged inside its band, including the path's squeeze: the activation on chord 692 inside the first 0.79 ms of its window and the squeeze-out kick on chord 730 inside the last 0.79 ms of its own, about 1.6 ms of room in all. An earlier run on the same schedule, played as plain Drums by mistake, scored 397,750 with every note hit: plain Drums scores the first chord, a kick and a green cymbal, at 100, where Pro Drums gives 115 (SC-01, SC-02).
+Label: Proven in a live run
+Evidence: LS-P2 run 2, 2026-11-22, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run2\`. `scorestats-after-run.json` reads ProDrums, Expert, modifier DoubleKick, score 442,735, `notes_hit` 1,390 of 1,390, `excess_hits` 0 and `max_streak` 1,390. Hydra's total is the `total` of path 0, 442,735, in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-prep\dump.json`, the path `schedule.json` there names in its `path_source`. Each of the 1,107 rows of `press-2.csv` has its `judged_ms` inside the band the schedule's press of the same position gives (from `from_ms`, open when `from_strict` is true, to `to_ms`), and each row's `index` is that press's chord. The schedule's squeeze, under activation 2 (`squeezes`, kind SqOut), gives `anchor_room_ms` and `squeeze_room_ms` of 0.79 ms each. Chord 692's blue gem, the activating press, was judged at 114,490.96 ms; its window opens at 114,490.50 ms and the anchor's room ends at 114,491.29 ms (`anchor_aim_ms` -84.93 ms from the chord's 114,576.22 ms). Chord 730's kick, rule `squeeze_out_late`, was judged at 122,577.77 ms, inside its band from 122,577.33 ms (open) to 122,578.13 ms. `sp_watch-2.csv` there shows four activations, the path's four, the third at clock 114,493.99 ms. `frame-settings.json` there records framerate 330, vsync 0 and multiplier 4. The plain Drums run is LS-L1 run 1, 2026-11-22, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-l1-run1\`: `scorestats-after-ls-l1.json` reads Drums, Expert, score 397,750 and 1,390 of 1,390, and the first row of `press-1.csv` moves the score from 0 to 100, where the first rows of LS-P2 runs 1 and 2 move it from 0 to 115.
+Game code (6142): not read for this run; the windows the bands are cut from are TM-19 to TM-22.
+Hydra: the path and its total come from Hydra's search, as `hydra_replay` dumps it; the bands come from the press schedule in tools/replay_schedule.cpp.
+Ruling: none needed: the game matched Hydra
+Found: 2026-11-22, session 1390758e (LS-P2 run 2, LS-L1 run 1).
 
 ## The 3 ms leeway
 
