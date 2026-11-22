@@ -1,9 +1,8 @@
 # Continuous integration: build Hydra and run its tests on every push to main
 # and every pull request into main. Once a night the unit tests and the GUI
 # tests run again from a cold build, beside the coverage report. The local
-# hooks are the first gate; this is the
-# backstop for a commit made outside them. See "Continuous integration" in
-# docs/development.md.
+# hooks are the first gate; this is the backstop for a commit made outside
+# them. See "Continuous integration" in docs/development.md.
 
 name: CI
 

@@ -877,7 +877,8 @@ run's coverage report matches the old build's: 158 files, 44,746 coverable lines
 The `coverage` job keeps its sccache cache in GitHub's own cache storage, and
 that storage is sometimes briefly down. Run 43231044457 failed that way: the
 storage answered "503 ServerBusy", the sccache server would not start, and the
-build stopped. So the job starts the server with `tools\sccache_start.ps1` before it builds. When
+build stopped. So the job starts the server with `tools\sccache_start.ps1`
+before it builds. When
 GitHub's cache does not answer, the script starts the server with a local
 cache instead and puts a warning on the run. The build is then as slow as a
 cold one, but it does not fail. In the same way, the fuzz jobs in
