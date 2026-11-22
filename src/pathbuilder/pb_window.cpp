@@ -258,6 +258,7 @@ void PbApp::set_refusal(std::string sentence, std::string detail) {
 
 void PbApp::start_over() {
     pending_select_.reset();
+    pending_seek_ms_.reset();
     state.history().edit(PlayerPath{});
 }
 
@@ -292,6 +293,7 @@ void PbApp::act_on_menu() {
     if (choice != MenuChoice::None) {
         set_refusal({}, {});
         pending_select_.reset();
+        pending_seek_ms_.reset();
     }
 
     switch (choice) {
@@ -418,9 +420,11 @@ void PbApp::draw_body(const OpenChart& chart) {
     d.show(state.search_graph(), chart.settings, shown,
            "player " + std::to_string(state.history().generation()));
     if (open_preview(chart, shown)) d.price_fills(preview_->scene().trailing_skipped_fill_ticks);
+    drop_pending_seek_if_moved();
     if (d.take_player_changed()) {
         if (pending_select_) select_step(*pending_select_);
         pending_select_.reset();
+        if (pending_seek_ms_ && preview_) pending_seek_seen_ms_ = preview_->position_ms();
     }
     land_pending_seek();
 
@@ -500,6 +504,7 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::BeginDisabled(!h.can_undo());
     if (ImGui::Button(kUndoLabel)) {
         pending_select_.reset();
+        pending_seek_ms_.reset();
         h.undo();
     }
     ImGui::EndDisabled();
@@ -511,6 +516,7 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::BeginDisabled(!d.can_finish());
     if (ImGui::Button(kFinishForMeLabel)) {
         pending_select_.reset();
+        pending_seek_ms_.reset();
         d.finish(state);
     }
     ImGui::EndDisabled();
@@ -529,8 +535,17 @@ bool PbApp::scene_drawn() const {
            !preview_->overlay_path_key().empty();
 }
 
+void PbApp::drop_pending_seek_if_moved() {
+    if (pending_seek_ms_ && preview_ && preview_->position_ms() != pending_seek_seen_ms_)
+        pending_seek_ms_.reset();
+}
+
 void PbApp::land_pending_seek() {
     if (!pending_seek_ms_ || !preview_) return;
+    if (preview_->has_error()) {
+        pending_seek_ms_.reset();
+        return;
+    }
     if (state.decisions().editing() || !preview_->shows_path(overlay_key_)) return;
     preview_->seek_ms(*pending_seek_ms_);
     pending_seek_ms_.reset();
@@ -688,6 +703,7 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
         // The song moves once the new path is drawn (land_pending_seek), so
         // the highway never shows the old path at the new spot.
         pending_seek_ms_ = ui::timeline_fill_ms(f);
+        pending_seek_seen_ms_ = preview_->position_ms();
         return;
     }
     // Whatever the click did, the Preview stops on the fill's dot. This comes
@@ -903,6 +919,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
             }
             if (ImGui::Button(last ? kRemoveLastLabel : kRemoveEarlierLabel)) {
                 pending_select_.reset();
+                pending_seek_ms_.reset();
                 d.click_remove(state.search_graph(), chart.settings, windows, windows[i].act_tick,
                                h.generation());
             }

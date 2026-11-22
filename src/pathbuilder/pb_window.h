@@ -132,6 +132,10 @@ private:
     // edit is done and the highway draws the path it left, so the song moves
     // once, onto the new picture.
     std::optional<double> pending_seek_ms_;
+    // The Preview's clock when the click parked its held seek. A clock that
+    // reads otherwise later was moved by hand (the Preview panel's scrubber,
+    // a jump button, play), which drops the held seek.
+    double pending_seek_seen_ms_ = 0.0;
     // "Show Hydra's best path".
     bool show_best_ = false;
     // While the pointer is on a fill or its list row: the fill, whose row the
@@ -201,6 +205,7 @@ private:
     // Parks the song where pending_seek_ms_ says once the click's edit is
     // done and the highway draws the shown path.
     void land_pending_seek();
+    void drop_pending_seek_if_moved();
     // The Preview panel, or the controller's error in its place.
     void draw_preview(const OpenChart& chart);
     void draw_choices(const OpenChart& chart);
