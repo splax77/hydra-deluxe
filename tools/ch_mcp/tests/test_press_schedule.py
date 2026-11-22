@@ -627,5 +627,206 @@ class PressScheduleTest(unittest.TestCase):
                          [(1887.0, 900.0), (1887.0, 900.0)])
 
 
+# The cost driver: as DRIVER, but each step prints only what the cost cases
+# read, so a song's worth of frames stays small: the scheduler's examined
+# count, the seqs written and the press and stop events, cut to a few keys.
+COST_DRIVER = """
+import { readFileSync } from "node:fs";
+const { PressSchedule } = await import(%(url)s);
+const c = JSON.parse(readFileSync(0, "utf8"));
+const out = [];
+const keys = ["kind", "seq", "down_frame", "clock_ms_at_press", "predicted_judge_ms",
+              "judged_in_band", "reason"];
+try {
+    const sched = new PressSchedule(c.play, () => 0);
+    for (const op of c.ops) {
+        if (op.op === "step") {
+            const r = sched.step(op.frame, op.clock_ms, op.wall_ms);
+            out.push({
+                examined: sched.examined ?? null,
+                write: r.write.map((w) => w.seq),
+                events: r.events.filter((e) => e.kind !== "skipped").map(
+                    (e) => Object.fromEntries(keys.filter((k) => k in e).map((k) => [k, e[k]]))),
+            });
+        } else if (op.op === "retime") {
+            out.push(sched.retime(op.read_after, op.entries));
+        }
+    }
+} catch (e) {
+    out.push({ error: e.message });
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+# LS-P2 try 1's press count (P6 of the squeeze frame cost plan), the schedule
+# whose per-frame work slowed the game's frames.
+LS_P2_PRESSES = 1107
+# The cost cases' fixed-step clock: frames GRID_STEP_MS apart from
+# GRID_FIRST_CLOCK_MS. Every chord's at_ms is a judge time of that clock, so
+# each head has one frame judged exactly at its planned time.
+GRID_FIRST_CLOCK_MS = 1000.0
+GRID_STEP_MS = 3.0
+# How far a neighbourhood's short schedule starts before its first chord, and
+# how many chords at each end of a neighbourhood are left out of the frames
+# compared: those frames also see the presses outside it in the long run.
+LEAD_IN_MS = 300.0
+EDGE_CHORDS = 3
+
+
+def grid_chords():
+    """LS_P2_PRESSES entries as chords, each a list of its entries, head
+    first. Chords come 39.0 ms apart; every fourth has a kick as a later
+    group; every other head has a strict band 9.0 ms each side of its time.
+    Each has a window 60.0 ms each side."""
+    pads = (SNARE, TOM, CYMBAL)
+    chords = []
+    count = 0
+    g = 0
+    while count < LS_P2_PRESSES:
+        at = GRID_FIRST_CLOCK_MS + 2 * GRID_STEP_MS + GRID_STEP_MS * (200 + 13 * g)
+        window = (at - 60.0, at + 60.0)
+        head = entry(count, at, pads[g % 3], index=g, window=window,
+                     band=band(at - 9.0, at + 9.0, True) if g % 2 == 0 else None)
+        chord = [head]
+        count += 1
+        if g % 4 == 3 and count < LS_P2_PRESSES:
+            chord.append(entry(count, at, KICK, index=g, window=window, after_seq=head["seq"]))
+            count += 1
+        chords.append(chord)
+        g += 1
+    return chords
+
+
+def flat(chords):
+    return [e for c in chords for e in c]
+
+
+def grid_ops(first_clock, last_clock):
+    """One frame per GRID_STEP_MS from first_clock to last_clock, numbered
+    and timed by their place on the whole grid, so two runs share frames."""
+    first = int((first_clock - GRID_FIRST_CLOCK_MS) / GRID_STEP_MS)
+    last = int((last_clock - GRID_FIRST_CLOCK_MS) / GRID_STEP_MS)
+    return [step(10 + k, GRID_FIRST_CLOCK_MS + k * GRID_STEP_MS, 5000.0 + k * GRID_STEP_MS)
+            for k in range(max(first, 0), last + 1)]
+
+
+def grid_play(entries):
+    return play(entries, start_lead_ms=1.0, cap_ms=1.0e9)
+
+
+def run_cost(play_msg, ops):
+    driver = COST_DRIVER % {"url": json.dumps(pathlib.Path(SCHEDULER).as_uri())}
+    done = subprocess.run(
+        [NODE, "--input-type=module", "-e", driver],
+        input=json.dumps({"play": play_msg, "ops": ops}), capture_output=True,
+        text=True, timeout=NODE_CAP_S, check=False)
+    if done.returncode != 0:
+        raise AssertionError(f"node exited {done.returncode}: {done.stderr}")
+    out = json.loads(done.stdout)
+    if out and "error" in out[-1]:
+        raise AssertionError(f"the scheduler threw: {out[-1]['error']}")
+    return out
+
+
+@unittest.skipIf(NODE is None, "node is not on PATH, so press_schedule.ts cannot run")
+class FrameCostTest(unittest.TestCase):
+    """Task T2 of the squeeze frame cost plan: a frame's work does not grow
+    with the schedule's length, and the presses' frames do not change."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.chords = grid_chords()
+        cls.end_clock = cls.chords[-1][0]["at_ms"] + LEAD_IN_MS
+        cls.long_ops = grid_ops(GRID_FIRST_CLOCK_MS, cls.end_clock)
+        cls.long_out = run_cost(grid_play(flat(cls.chords)), cls.long_ops)
+
+    def at(self, chord):
+        return self.chords[chord][0]["at_ms"]
+
+    def check_neighbourhood(self, first, last):
+        """The chords first to last as a schedule of their own, run on the
+        same frames as the long one from LEAD_IN_MS before chord first. On
+        every frame where the long run sees only these chords, the two
+        examine the same number of slots."""
+        start = GRID_FIRST_CLOCK_MS if first == 0 else self.at(first) - LEAD_IN_MS
+        lo = GRID_FIRST_CLOCK_MS if first == 0 else self.at(first + EDGE_CHORDS)
+        hi = self.end_clock if last == len(self.chords) - 1 else self.at(last - EDGE_CHORDS)
+        ops = grid_ops(start, self.end_clock)
+        short_out = run_cost(grid_play(flat(self.chords[first:last + 1])), ops)
+        long_by_frame = {op["frame"]: r for op, r in zip(self.long_ops, self.long_out)}
+        compared = [(op["frame"], long_by_frame[op["frame"]]["examined"], r["examined"])
+                    for op, r in zip(ops, short_out) if lo <= op["clock_ms"] <= hi]
+        self.assertGreater(len(compared), 0)
+        for frame, long_count, short_count in compared:
+            self.assertIsInstance(long_count, int, f"frame {frame} has no examined count")
+            self.assertEqual(long_count, short_count, f"frame {frame}")
+        # The frames compared do work, so equal counts are not two zeros.
+        self.assertTrue(any(c > 0 for _, c, _ in compared))
+
+    def test_a_frame_before_the_first_press_costs_what_it_costs_in_a_short_schedule(self):
+        self.check_neighbourhood(0, 20)
+
+    def test_a_frame_around_press_550_costs_what_it_costs_in_a_short_schedule(self):
+        middle = next(g for g, c in enumerate(self.chords)
+                      if any(e["seq"] == LS_P2_PRESSES // 2 for e in c))
+        self.check_neighbourhood(middle - 10, middle + 10)
+
+    def test_a_frame_around_the_last_press_costs_what_it_costs_in_a_short_schedule(self):
+        last = len(self.chords) - 1
+        self.check_neighbourhood(last - 20, last)
+
+    def test_every_press_of_the_long_schedule_goes_down_on_its_planned_frame(self):
+        events = [e for r in self.long_out for e in r["events"]]
+        sent = {e["seq"]: e for e in events if e["kind"] == "sent"}
+        self.assertEqual(sorted(sent), list(range(LS_P2_PRESSES)))
+        self.assertEqual([e["reason"] for e in events if e["kind"] == "stop"], ["done"])
+        for chord in self.chords:
+            head = sent[chord[0]["seq"]]
+            # Each chord's time is a judge time of the grid, inside its band.
+            self.assertEqual(head["predicted_judge_ms"], chord[0]["at_ms"], chord[0])
+            self.assertTrue(head["judged_in_band"], chord[0])
+            for later in chord[1:]:
+                self.assertEqual(sent[later["seq"]]["down_frame"], head["down_frame"] + 1, later)
+
+    def test_a_retime_on_the_long_schedule_keeps_the_queue_in_plan_order(self):
+        # Just after chord c's presses are down, a retime drops chords c+1
+        # and c+2, moves chord c+3 to 51.0 ms after chord c+4 (between c+5
+        # and c+6), and lists every later chord unmoved.
+        c = next(g for g, ch in enumerate(self.chords)
+                 if any(e["seq"] == LS_P2_PRESSES // 2 for e in ch))
+        moved = 3
+        shift = self.at(c + 4) + 51.0 - self.at(c + moved)
+
+        def shifted(e):
+            out = {**e, "at_ms": e["at_ms"] + shift,
+                   "window_from_ms": e["window_from_ms"] + shift,
+                   "window_to_ms": e["window_to_ms"] + shift}
+            if "band" in e:
+                out["band"] = band(e["band"]["from_ms"] + shift, e["band"]["to_ms"] + shift, True)
+            return out
+
+        listed = ([shifted(e) for e in self.chords[c + moved]]
+                  + flat(self.chords[c + 4:]))
+        before = grid_ops(GRID_FIRST_CLOCK_MS, self.at(c) + GRID_STEP_MS)
+        after = grid_ops(self.at(c) + 2 * GRID_STEP_MS, self.end_clock)
+        out = run_cost(grid_play(flat(self.chords)),
+                       before + [{"op": "retime", "read_after": c, "entries": listed}] + after)
+        retimed = out[len(before)]
+        self.assertEqual(retimed, {"removed": [e["seq"] for e in flat(self.chords[c + 1:c + 3])],
+                                   "ignored": []})
+        later_writes = [s for r in out[len(before) + 1:] for s in r["write"]]
+        heads = {e["seq"] for e in listed if e["after_seq"] is None}
+        by_plan = sorted((e for e in listed if e["after_seq"] is None),
+                         key=lambda e: (e["at_ms"], e["seq"]))
+        # The next press out is the earliest by plan, chord c+4, not the
+        # first listed; every head after goes down in plan order.
+        self.assertEqual(later_writes[0], self.chords[c + 4][0]["seq"])
+        self.assertEqual([s for s in later_writes if s in heads], [e["seq"] for e in by_plan])
+        sent = {e["seq"]: e for r in out for e in r.get("events", []) if e["kind"] == "sent"}
+        for e in listed:
+            if e["after_seq"] is None:
+                self.assertEqual(sent[e["seq"]]["predicted_judge_ms"], e["at_ms"], e)
+
+
 if __name__ == "__main__":
     unittest.main()
