@@ -317,12 +317,15 @@ class PressTimeSpreadTest(unittest.TestCase):
 
 class PressLogFileTest(unittest.TestCase):
     def test_reads_the_log_play_chart_writes(self):
-        # Pitch Dark's rows, in the current header, written again by
-        # play_chart: every row loads as it did from the run's own file.
-        self.assertEqual(_log_table(_SPLIT_LOG)[0], overlay_logs.PRESS_LOG_COLUMNS)
+        # Pitch Dark's rows, written again by play_chart in the current
+        # header: every row loads as it did from the run's own file.
         original, rewritten = _rewritten(_SPLIT_LOG)
         self.assertTrue(original)
         self.assertEqual(rewritten, original)
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "press.csv")
+            play_chart.write_press_log(out, _log_table(_SPLIT_LOG)[1])
+            self.assertEqual(_log_table(out)[0], overlay_logs.PRESS_LOG_COLUMNS)
 
     def test_a_wrong_header_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
@@ -436,6 +439,33 @@ class PressLogHeaderTest(unittest.TestCase):
             with self.subTest(column=column):
                 self.assertEqual([getattr(p, column) for p in rewritten],
                                  [getattr(p, column) for p in original])
+
+    def test_a_log_with_the_header_before_the_frame_pick_columns_still_loads(self):
+        # Pitch Dark's rows were written before the frame pick's columns
+        # existed: they load, with the three columns blank.
+        presses = self.assert_loads_as_written(
+            _SPLIT_LOG, overlay_logs.PRESS_COLUMNS_BEFORE_FRAME_PICK)
+        self.assertNotIn("", {p.frame_gap_ms for p in presses})
+        for column in overlay_logs.FRAME_PICK_PRESS_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual({getattr(p, column) for p in presses}, {""})
+
+    def test_the_frame_pick_columns_play_chart_writes_read_back(self):
+        # No run has written the three columns yet, so Pitch Dark's rows get
+        # made-up texts for them, distinct per row and per column. play_chart
+        # writes them, and each loads back as written.
+        _, rows = _log_table(_SPLIT_LOG)
+        for k, row in enumerate(rows):
+            for j, column in enumerate(overlay_logs.FRAME_PICK_PRESS_COLUMNS):
+                row[column] = f"{k + 1}.{j}5"
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "press.csv")
+            play_chart.write_press_log(out, rows)
+            presses = self.assert_loads_as_written(out, overlay_logs.PRESS_LOG_COLUMNS)
+        for column in overlay_logs.FRAME_PICK_PRESS_COLUMNS:
+            with self.subTest(column=column):
+                self.assertEqual([getattr(p, column) for p in presses],
+                                 [r[column] for r in rows])
 
     def test_other_headers_are_refused(self):
         for header in (

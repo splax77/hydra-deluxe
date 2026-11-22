@@ -43,8 +43,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments.overlay_logs import (
-    IN_GAME_PRESS_COLUMNS, KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS,
-    PRESS_COLUMNS_BEFORE_IN_GAME, PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_WITH_HIT,
+    FRAME_PICK_PRESS_COLUMNS, IN_GAME_PRESS_COLUMNS, KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS,
+    PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_BEFORE_FRAME_PICK, PRESS_COLUMNS_BEFORE_IN_GAME, PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_WITH_HIT,
     PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_WALL,
     PRESS_LOG_COLUMNS, RETIME_PRESS_COLUMNS, TIMING_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
 from tools.ch_probe.experiments.play_chart import ROUTE_KEYS, ROUTE_KIT, STOP_DONE
@@ -56,17 +56,18 @@ _DYNAMIC_WORDS = ("ghost", "accent")
 # The older press logs overlay_logs names (KEYS_PRESS_COLUMNS,
 # PRESS_COLUMNS_WITHOUT_WALL, PRESS_COLUMNS_WITHOUT_PLAYER,
 # PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITH_HIT,
-# PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_BEFORE_IN_GAME) load too, with the
-# missing columns blank.
+# PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_BEFORE_IN_GAME,
+# PRESS_COLUMNS_BEFORE_FRAME_PICK) load too, with the missing columns blank.
 
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row. The kit, wall, player, retime, timing and in-game
-    fields keep the log's text as written; they are blank for a keys-route
-    run (kit fields), for a row they do not apply to (player, retime, timing
-    and in-game fields) and for a log from before the column existed. The
-    score check reads none of the player, retime, timing or in-game fields.
+    """One press-log row. The kit, wall, player, retime, timing, in-game and
+    frame-pick fields keep the log's text as written; they are blank for a
+    keys-route run (kit fields), for a row they do not apply to (player,
+    retime, timing, in-game and frame-pick fields) and for a log from before
+    the column existed. The score check reads none of the player, retime,
+    timing, in-game or frame-pick fields.
     The log's send column, and an older log's `hit`, are left out."""
     index: int
     chart_ms: float
@@ -92,6 +93,9 @@ class Press:
     prev_handoff_took_ms: str = ""
     frame_gap_ms: str = ""
     agent_note: str = ""
+    step_ms: str = ""
+    predicted_judge_ms: str = ""
+    judged_ms: str = ""
 
 
 @dataclass(frozen=True)
@@ -106,7 +110,8 @@ class HydraChord:
 def load_press_log(path: str) -> List[Press]:
     """The press log's rows. Raises ValueError when the header is not
     PRESS_LOG_COLUMNS or one of the older headers this module names."""
-    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_BEFORE_IN_GAME, PRESS_COLUMNS_BEFORE_TIMING,
+    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_BEFORE_FRAME_PICK,
+                PRESS_COLUMNS_BEFORE_IN_GAME, PRESS_COLUMNS_BEFORE_TIMING,
                 PRESS_COLUMNS_WITH_HIT, PRESS_COLUMNS_WITHOUT_RETIME,
                 PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
     with open(path, encoding="utf-8", newline="") as f:
@@ -121,7 +126,8 @@ def load_press_log(path: str) -> List[Press]:
                       **{c: row.get(c) or ""
                          for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS
                          + PLAYER_PRESS_COLUMNS + RETIME_PRESS_COLUMNS
-                         + TIMING_PRESS_COLUMNS + IN_GAME_PRESS_COLUMNS})
+                         + TIMING_PRESS_COLUMNS + IN_GAME_PRESS_COLUMNS
+                         + FRAME_PICK_PRESS_COLUMNS})
                 for row in reader]
 
 

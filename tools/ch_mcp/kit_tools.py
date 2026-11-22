@@ -299,8 +299,8 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
                   rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
                   read: Sequence[str] = (),
                   values: Optional[Sequence[float]] = None,
-                  then: Sequence[Tuple[Sequence[KitElement], Optional[Sequence[float]],
-                                       float]] = ()) -> dict:
+                  then: Sequence[Tuple[Sequence[KitElement], Optional[Sequence[float]]]] = ()
+                  ) -> dict:
     """The press message for `elements`, in order. Every element is written
     as an axis value. `values` gives each element's value, one per
     element, and an element with a `strength` ignores its own and is written
@@ -309,15 +309,15 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
     agent reads back on the kit's player during the hold; the message carries
     it only when it names some.
 
-    `then` holds a chord's later order groups, each (elements, values,
-    after_ms): the agent puts each group down in the first frame at or after
-    `after_ms` from the first group's down, and holds each group
+    `then` holds a chord's later order groups, each (elements, values): the
+    agent puts each group down the frame after the group before it (kit.ts's
+    press, the same rule as the play route's), and holds each group
     `hold_frames` frames from its own down (design point 4 of
-    docs/superpowers/plans/2026-11-07-player-limits.md). The message carries
-    `then` only when it holds some. Raises ValueError for an element twice
-    in one group, which would send one press for two gems (D321 item 3),
-    for an element in two groups, since one group's release would lift the
-    other's, and for an `after_ms` that is not a number above 0."""
+    docs/superpowers/plans/2026-11-07-player-limits.md). A group carries no
+    gap in milliseconds. The message carries `then` only when it holds
+    some. Raises ValueError for an element twice in one group, which would
+    send one press for two gems (D321 item 3), and for an element in two
+    groups, since one group's release would lift the other's."""
     def element_list(group: Sequence[KitElement],
                      group_values: Optional[Sequence[float]]) -> List[dict]:
         if group_values is None:
@@ -337,17 +337,13 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
     if then:
         used = {e.id for e in elements}
         later = []
-        for group, group_values, after_ms in then:
-            if (isinstance(after_ms, bool) or not isinstance(after_ms, (int, float))
-                    or not after_ms > 0):
-                raise ValueError(f"a later group's after_ms is a number above 0, not {after_ms!r}")
+        for group, group_values in then:
             twice = sorted(used & {e.id for e in group})
             if twice:
                 raise ValueError(f"kit elements {', '.join(map(str, twice))} are in two groups "
                                  f"of one press")
             used |= {e.id for e in group}
-            later.append({"elements": element_list(group, group_values),
-                          "after_ms": float(after_ms)})
+            later.append({"elements": element_list(group, group_values)})
         message["then"] = later
     return message
 
@@ -644,7 +640,7 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
     chord's lanes at their `axes` to the kit agent and returns its reply,
     which play_chords checks with reply_gap and keeps in the press row. Axes of None press every pad as
     a plain gem. `then` holds a split chord's later groups as play_chords
-    gives them, each (lanes, axes, after_ms), and goes in the same message
+    gives them, each (lanes, axes), and goes in the same message
     (press_message), so the agent replies once, with a `groups` entry per
     group. It waits at most KIT_PRESS_CAP_S and raises
     frida_attach.ReadFailed when no reply comes, which ends the run. A reply
@@ -653,12 +649,12 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
     lock = request_lock if request_lock is not None else threading.Lock()
 
     def press(lanes: Sequence[int], axes: Optional[Sequence[float]] = None,
-              then: Sequence[Tuple[Sequence[int], Optional[Sequence[float]], float]] = ()
+              then: Sequence[Tuple[Sequence[int], Optional[Sequence[float]]]] = ()
               ) -> dict:
         message = press_message(
             [lane_element(lane) for lane in lanes], hold_frames, values=axes,
-            then=[([lane_element(lane) for lane in group], group_axes, after_ms)
-                  for group, group_axes, after_ms in then])
+            then=[([lane_element(lane) for lane in group], group_axes)
+                  for group, group_axes in then])
         with lock:
             try:
                 return agent.request(message, KIT_PRESS_CAP_S)
@@ -688,9 +684,12 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #               nothing, because its arrival clears retime_missed for it)
 #   stop_play   (no fields)
 #   frame_probe seconds, clock_addr, elements, read, hold_frames, cap_s
-# An entry: seq, index (the chord), at_ms, last_send_ms, elements (each id and
-# value, as a press message's), after_ms and after_seq (both null on a head),
-# end_read_after (null when the entry is timed from no end read).
+# An entry: seq, index (the chord), at_ms (the time it should be judged at),
+# band ({from_ms, to_ms, from_strict}, or left out: the band is the window),
+# window_from_ms and window_to_ms, no_frame_aim_ms (only with a band; left out
+# for none), elements (each id and value, as a press message's), after_seq
+# (null on a head), end_read_after (null when the entry is timed from no end
+# read). press_schedule.ts's contract block says what each means.
 #
 # The agent's events, sent with no id: either one event payload with a
 # `kind`, or {"type": "play_events", "events": [event, ...]} for a frame's batch
@@ -698,8 +697,12 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #   skipped  seqs, count, clock_ms   (once, on the first frame)
 #   sent     seq, index, clock_ms_at_press, down_frame, up_frame, down_ms,
 #            up_ms, score_before, score_after (null when play stopped first),
-#            frame_gap_ms (null on the first frame), agent_note
-#   dropped  the same fields, the down and up ones null
+#            frame_gap_ms (null on the first frame), agent_note, step_ms (the
+#            measured frame step it was timed with), predicted_judge_ms (the
+#            judge time it was timed for), judged_ms (the judge time that
+#            really followed; null when play stopped first), judged_in_band,
+#            no_frame_in_band (true when no frame could land in its band)
+#   dropped  the same fields, the down and up ones and judged_ms null
 #   stop     reason, frame, clock_ms, wall_ms, cause (null, or what stopped
 #            the play from outside the scheduler), lift_error (null unless
 #            lifting the pads failed)   (always last)
@@ -729,7 +732,12 @@ STOP_REASONS = (STOP_REASON_DONE, STOP_REASON_PAST_END, STOP_REASON_STOPPED,
 # The fields every sent or dropped event must hold.
 PRESS_EVENT_FIELDS = ("seq", "index", "clock_ms_at_press", "down_frame", "up_frame",
                       "down_ms", "up_ms", "score_before", "score_after",
-                      "frame_gap_ms", "agent_note")
+                      "frame_gap_ms", "agent_note", "step_ms", "predicted_judge_ms",
+                      "judged_ms", "judged_in_band", "no_frame_in_band")
+# What a press row's agent_note says when no frame could land in its band:
+# the event's no_frame_in_band, or the player's own when a read end left the
+# band empty (play_chart.retime_from_end).
+NOTE_NO_FRAME_IN_BAND = "no_frame_in_band"
 # The pad the frame probe presses once (design point 2's probe, task IG2).
 FRAME_PROBE_ITEM = "green"
 # The longest frame probe ch_kit_frame_probe accepts: the 5 s the user
@@ -742,15 +750,23 @@ FRAME_PROBE_FILE_PREFIX = "frame_probe-"
 
 def play_entry(seq: int, press: Any, after_seq: Optional[int]) -> dict:
     """One `play` or `retime` entry for a play_chart.Press: its `seq`, its
-    chord, its fire time (Press.at_ms, with no offset: D339 item 5), its
-    last send time, its kit elements at its `axes`, and for a later order
-    group its `after_ms` and the seq of the press it follows."""
+    chord, its judge target (Press.at_ms, with no offset: D339 item 5), its
+    band and its chord's window when it has them, its no_frame_aim_ms when
+    it has one (Press.no_frame_aim_ms), its kit elements at its `axes`, and
+    for a later order group the seq of the group it follows. It sends no
+    send time and no gap: the agent picks the frame."""
     elements = press_message([lane_element(lane) for lane in press.lanes],
                              values=press.axes)["elements"]
-    return {"seq": seq, "index": press.index, "at_ms": press.at_ms,
-            "last_send_ms": press.last_send_ms, "elements": elements,
-            "after_ms": press.after_ms if after_seq is not None else None,
-            "after_seq": after_seq, "end_read_after": press.end_read_after}
+    entry = {"seq": seq, "index": press.index, "at_ms": press.at_ms, "elements": elements,
+             "after_seq": after_seq, "end_read_after": press.end_read_after}
+    if press.band is not None:
+        entry["band"] = dict(press.band)
+        if press.no_frame_aim_ms is not None:
+            entry["no_frame_aim_ms"] = press.no_frame_aim_ms
+    if press.window_from_ms is not None:
+        entry["window_from_ms"] = press.window_from_ms
+        entry["window_to_ms"] = press.window_to_ms
+    return entry
 
 
 def play_message(entries: Sequence[dict], *, clock_addr: int, score_addr: int,

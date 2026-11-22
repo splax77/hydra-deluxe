@@ -33,16 +33,28 @@ _SPACING_MS = 100.0
 _MINUTES = 2 * C.ms_to_s(2 * live.START_LEAD_MS + _CHORDS * _SPACING_MS) / 60
 
 
+def _moved(press, shift_ms):
+    """`press` moved `shift_ms` later: its chord's time, its window's edges
+    and its band's edges move together, so it keeps its own band and window
+    around its chord. Its judge target follows, being the chord's time plus
+    the press's own aim."""
+    band = None if press.band is None else {
+        **press.band, "from_ms": press.band["from_ms"] + shift_ms,
+        "to_ms": press.band["to_ms"] + shift_ms}
+    return replace(press, chart_ms=press.chart_ms + shift_ms, band=band,
+                   window_from_ms=press.window_from_ms + shift_ms,
+                   window_to_ms=press.window_to_ms + shift_ms)
+
+
 def _chords():
     """The first chords of a real schedule, moved 100 ms apart, each press
-    keeping its own room to its last send."""
+    keeping its own band and window around its chord."""
     chords = play_chart.load_schedule(_SCHEDULE).chords[:_CHORDS]
     base = chords[0].ms
     out = []
     for k, chord in enumerate(chords):
         ms = base + k * _SPACING_MS
-        presses = tuple(replace(p, chart_ms=ms, last_send_ms=p.last_send_ms - chord.ms + ms)
-                        for p in chord.presses)
+        presses = tuple(_moved(p, ms - chord.ms) for p in chord.presses)
         out.append(replace(chord, ms=ms, presses=presses))
     return out
 

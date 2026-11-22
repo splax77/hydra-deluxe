@@ -26,7 +26,8 @@ from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments import live  # noqa: E402
 from tools.ch_probe.experiments import play_chart as P  # noqa: E402
 from tools.ch_probe.experiments import score_compare  # noqa: E402
-from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
+    FRAME_PICK_PRESS_COLUMNS, KIT_PRESS_COLUMNS)
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _unit_end_fields  # noqa: E402
 
@@ -38,18 +39,13 @@ _G3 = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1")
 # The addresses a run hands the agent; nothing reads them in a test.
 CLOCK_ADDR, SCORE_ADDR = 0x100, 0x200
 
-# A split chord's later order group goes down this long after its first
-# group: a hand-picked schedule input. It reaches only the play message.
-LATER_GROUP_MS = 5.0
-
-
 def press(index, chart_ms, lanes, **kw):
     """A hand-built Press. One timed from an end read gets
     test_play_chart._unit_end_fields of its aim_end_ms for any end field the
     keywords leave out."""
     fields = dict(index=index, chart_ms=chart_ms, aim_ms=0.0, lanes=list(lanes),
                   dynamics=["none"] * len(lanes), axes=[1.0] * len(lanes), declined=False,
-                  last_send_ms=chart_ms + 50.0, rule="plain")
+                  rule="plain")
     fields.update(kw)
     if fields.get("end_read_after") is not None:
         for key, value in _unit_end_fields(fields["aim_end_ms"]).items():
@@ -63,11 +59,17 @@ def chord(index, ms, *presses):
 
 
 def sent_event(seq, chord_index, clock_ms, score_before, score_after):
-    return {"kind": K.EVENT_SENT, "seq": seq, "index": chord_index,
-            "clock_ms_at_press": clock_ms, "down_frame": 10 + seq,
-            "up_frame": 12 + seq, "down_ms": 1_000_000.0 + seq, "up_ms": 1_000_006.0 + seq,
-            "score_before": score_before, "score_after": score_after,
-            "frame_gap_ms": 3.0, "agent_note": ""}
+    """A sent event in the shape the kit agent sends (K.PRESS_EVENT_FIELDS),
+    the frame-pick fields hand-picked test inputs."""
+    event = {"kind": K.EVENT_SENT, "seq": seq, "index": chord_index,
+             "clock_ms_at_press": clock_ms, "down_frame": 10 + seq,
+             "up_frame": 12 + seq, "down_ms": 1_000_000.0 + seq, "up_ms": 1_000_006.0 + seq,
+             "score_before": score_before, "score_after": score_after,
+             "frame_gap_ms": 3.0, "agent_note": "", "step_ms": 3.0,
+             "predicted_judge_ms": clock_ms, "judged_ms": clock_ms,
+             "judged_in_band": True, "no_frame_in_band": False}
+    assert set(K.PRESS_EVENT_FIELDS) <= set(event)
+    return event
 
 
 def started(seqs=()):
@@ -101,13 +103,47 @@ class FakePlayer:
         return {"ok": True}
 
 
+# The g3 recording predates the agent's frame pick, so its sent and dropped
+# events lack the frame-pick fields K.PRESS_EVENT_FIELDS asks of every press
+# event. These values are the test's own, not the run's: with_frame_pick adds
+# them to a recorded event and leaves every field the run recorded as it was.
+# A press with no frame in its band would change the row's agent_note, a
+# column the run wrote, so no_frame_in_band is False.
+RECORDING_FRAME_PICK = {"step_ms": 3.0, "predicted_judge_ms": 1000.0, "judged_ms": 1001.0,
+                        "judged_in_band": True, "no_frame_in_band": False}
+
+
+def with_frame_pick(event):
+    """A recorded press event with RECORDING_FRAME_PICK's fields added; any
+    other event as recorded."""
+    if event["kind"] not in (K.EVENT_SENT, K.EVENT_DROPPED):
+        return event
+    return {**RECORDING_FRAME_PICK, **event}
+
+
+def assert_rows_are_the_runs(test, written_lines, recorded_lines):
+    """`written_lines`, a press log play_in_game's rows gave, holds the
+    recorded log's rows in every column the run wrote, and in each frame-pick
+    column the run's log lacks, RECORDING_FRAME_PICK's value."""
+    written = list(csv.DictReader(written_lines))
+    recorded = list(csv.DictReader(recorded_lines))
+    recorded_columns = next(csv.reader(recorded_lines[:1]))
+    added = [c for c in next(csv.reader(written_lines[:1])) if c not in recorded_columns]
+    test.assertEqual(added, list(FRAME_PICK_PRESS_COLUMNS))
+    test.assertEqual(len(written), len(recorded))
+    for row, run_row in zip(written, recorded):
+        test.assertEqual({c: row[c] for c in recorded_columns}, run_row)
+        test.assertEqual({c: row[c] for c in added},
+                         {c: str(RECORDING_FRAME_PICK[c]) for c in added})
+
+
 class RecordedPlayer:
     """kit_tools.GamePlayer's three parts over a kit agent's recorded
     messages (a run's kit-N.jsonl). The first play message posted queues
     every play_events event the file holds, in its order, keeping the sent
-    and dropped events of `seqs` only; a later post queues nothing. Once the
-    queue is empty the session reads as gone, so a run that waits for an
-    event the recording lacks ends at once as "lost"."""
+    and dropped events of `seqs` only, each with_frame_pick; a later post
+    queues nothing. Once the queue is empty the session reads as gone, so a
+    run that waits for an event the recording lacks ends at once as "lost"."""
 
     def __init__(self, path, seqs):
         keep = set(seqs)
@@ -118,7 +154,7 @@ class RecordedPlayer:
                 if payload.get("type") != "play_events":
                     continue
                 self.recorded.extend(
-                    e for e in payload["events"]
+                    with_frame_pick(e) for e in payload["events"]
                     if e["kind"] not in (K.EVENT_SENT, K.EVENT_DROPPED) or e["seq"] in keep)
         self.events = queue.Queue()
         self.posted = []
@@ -147,17 +183,17 @@ def recorded_log(name):
 
 def recorded_chords(log_lines):
     """The chords of a recorded press log, at the run's own chart times. A
-    chord's first row is its first order group; a further row of the same
-    index is a later group, LATER_GROUP_MS after it. Lanes reach only the
-    play message, which no row reads."""
+    chord's first row is its first order group, group 0; a further row of
+    the same index is a later group, group 1, which follows group 0 at the
+    same judge target. Lanes reach only the play message, which no row
+    reads."""
     presses = {}
     for r in csv.DictReader(log_lines):
         index, ms = int(r["index"]), float(r["chart_ms"])
         if index not in presses:
             presses[index] = [press(index, ms, [Lane.RED])]
         else:
-            presses[index].append(press(index, ms, [Lane.BLUE], aim_ms=LATER_GROUP_MS,
-                                        after_ms=LATER_GROUP_MS))
+            presses[index].append(press(index, ms, [Lane.BLUE], group=1, follows=0))
     return [chord(index, group[0].chart_ms, *group) for index, group in presses.items()]
 
 
@@ -205,14 +241,14 @@ class PlayInGameTest(unittest.TestCase):
              "start_lead_ms": live.START_LEAD_MS, "hold_frames": K.KIT_HOLD_FRAMES,
              "stall_ms": C.s_to_ms(live.STALL_S), "jump_back_ms": C.s_to_ms(live.JUMP_BACK_S)})
         # One entry per press, in schedule order, each carrying its press's
-        # chord, fire time, last send time and lanes.
+        # chord, judge target and lanes, and no send time.
         presses = [p for c in chords for p in c.presses]
         self.assertEqual(len(message["entries"]), len(presses))
         for seq, (entry, p) in enumerate(zip(message["entries"], presses)):
             self.assertEqual((entry["seq"], entry["index"], entry["at_ms"],
-                              entry["last_send_ms"], entry["after_seq"],
-                              entry["end_read_after"]),
-                             (seq, p.index, p.at_ms, p.last_send_ms, None, None))
+                              entry["after_seq"], entry["end_read_after"]),
+                             (seq, p.index, p.at_ms, None, None))
+            self.assertNotIn("last_send_ms", entry)
             self.assertEqual([e["id"] for e in entry["elements"]],
                              [K.lane_element(lane).id for lane in p.lanes])
 
@@ -267,19 +303,47 @@ class PlayInGameTest(unittest.TestCase):
         written = os.path.join(scratch.name, "press.csv")
         P.write_press_log(written, result.rows)
         with open(written, encoding="utf-8") as f:
-            self.assertEqual(f.read().splitlines(), recorded_log)
+            assert_rows_are_the_runs(self, f.read().splitlines(), recorded_log)
 
-    def test_an_end_read_retimes_the_timed_press_by_the_read_minus_its_planned_end(self):
+    def test_a_press_event_lacking_a_field_stops_the_run_as_reply(self):
+        # No recorded run sent such an event, so it is typed here: a sent
+        # event missing any one of K.PRESS_EVENT_FIELDS ends the run as
+        # reply, naming the field, and writes no row for it.
+        for field in K.PRESS_EVENT_FIELDS:
+            chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
+            event = sent_event(0, 0, 1001.0, 0, 50)
+            del event[field]
+            batch = [started(), event, stopped(K.STOP_REASON_DONE)]
+            player = FakePlayer({K.PLAY_TYPE: [batch]})
+            result = run(chords, player)
+            self.assertEqual(result.stop, "reply", field)
+            self.assertIn(field, result.message)
+            self.assertEqual(result.rows, [], field)
+
+    def test_an_end_read_retimes_the_timed_press_to_the_band_the_read_moves_it_to(self):
         # The agent's side is the g3 run's recorded events of its first three
         # chords (kit-1-head.jsonl); the end read is the end the game stored
         # at that run's first activation (sp_watch-1.csv). The plan's end,
-        # planned_end_ms, is a hand-picked schedule input.
-        planned_end_ms = 104_800.0
+        # planned_end_ms, and the timed press's window, band and own end are
+        # hand-picked schedule inputs: a window side_ms either side of its
+        # chart time, its own end own_offset_ms into it, and a band from the
+        # window's front edge to that end, aimed at its middle. The own end
+        # sits far enough inside the window that the read's move keeps it
+        # there, so the band really moves.
+        planned_end_ms, side_ms, own_offset_ms = 104_800.0, 50.0, 10.0
         (c0, c1, c2) = recorded_chords(recorded_log("press-1-head.csv"))
         _, c0 = repressed(c0, [Lane.RED], planned_end_ms=planned_end_ms)
         other = c1.presses[0]
-        timed, c2 = repressed(c2, [Lane.BLUE], end_read_after=c0.index,
-                              aim_end_ms=planned_end_ms)
+        chart_ms = c2.presses[0].chart_ms
+        window_from, window_to = chart_ms - side_ms, chart_ms + side_ms
+        own_end_ms = chart_ms + own_offset_ms
+        band = P.end_band(window_from, own_end_ms, False)
+        timed, c2 = repressed(
+            c2, [Lane.BLUE], end_read_after=c0.index, aim_end_ms=planned_end_ms,
+            aim_ms=P.band_middle_ms(band) - chart_ms, band=band,
+            window_from_ms=window_from, window_to_ms=window_to, own_end_ms=own_end_ms,
+            read_stored_end_ms=planned_end_ms, own_stored_end_ms=own_end_ms,
+            conversion={"early": 1.0, "late": 1.0}, read_range_ms=None)
         chords = [c0, c1, c2]
         player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(3))
         read_s = watched_sp_end(active=True)
@@ -291,11 +355,17 @@ class PlayInGameTest(unittest.TestCase):
         self.assertEqual(retime["read_after"], c0.index)
         # Every entry not yet reported goes, each under the seq it had in the
         # play message: a press that already fired, whose event is still
-        # unread, is then ignored by the agent, not fired a second time.
+        # unread, is then ignored by the agent, not fired a second time. The
+        # untimed press keeps its judge target; the timed one goes where
+        # play_chart.retime_from_end, the move's owner, puts it for this read,
+        # which is not where the schedule put it.
+        (moved,) = P.retime_from_end([timed], c0.index, read_ms)
+        self.assertNotEqual(moved.at_ms, timed.at_ms)
         play_seqs = {e["index"]: e["seq"] for e in player.posted[0]["entries"]}
         self.assertEqual([(e["seq"], e["at_ms"]) for e in retime["entries"]],
                          [(play_seqs[other.index], other.at_ms),
-                          (play_seqs[timed.index], timed.at_ms + (read_ms - planned_end_ms))])
+                          (play_seqs[timed.index], moved.at_ms)])
+        self.assertEqual(retime["entries"][1]["band"], moved.band)
 
     def test_an_end_read_with_star_power_off_still_posts_a_retime(self):
         # The agent's side is the g3 run's recorded events of its first two
@@ -343,7 +413,7 @@ class PlayInGameTest(unittest.TestCase):
             word = P.STOP_DONE if reason == K.STOP_REASON_DONE else reason
             self.assertEqual(result.stop, word, reason)
 
-    def test_a_split_chords_later_group_names_its_head_and_its_delay(self):
+    def test_a_split_chords_later_group_names_its_head_and_no_delay(self):
         # The g3 run's chord 3 went down in two order groups. Its schedule is
         # press-1-split.csv (press-1.csv's header and first five rows) and the
         # agent's side kit-1-split.jsonl (kit-1.jsonl's lines 4 to 9, the
@@ -355,9 +425,13 @@ class PlayInGameTest(unittest.TestCase):
         entries = player.posted[0]["entries"]
         (split,) = [c for c in chords if len(c.presses) == 2]
         first, later = [e for e in entries if e["index"] == split.index]
-        self.assertEqual((first["after_seq"], first["after_ms"]), (None, None))
-        self.assertEqual((later["after_seq"], later["after_ms"]),
-                         (first["seq"], split.presses[1].after_ms))
+        # The later group names its head's seq and carries no gap: the agent
+        # sends it on the frame after its head (press_schedule.ts).
+        self.assertIsNone(first["after_seq"])
+        self.assertEqual(later["after_seq"], first["seq"])
+        self.assertEqual(later["at_ms"], split.presses[1].at_ms)
+        for entry in (first, later):
+            self.assertNotIn("after_ms", entry)
 
     def test_a_real_split_chords_rows_are_the_rows_that_run_wrote(self):
         # The same g3 files as the test above: a chord played in two order
@@ -372,7 +446,7 @@ class PlayInGameTest(unittest.TestCase):
         written = os.path.join(scratch.name, "press.csv")
         P.write_press_log(written, result.rows)
         with open(written, encoding="utf-8") as f:
-            self.assertEqual(f.read().splitlines(), lines)
+            assert_rows_are_the_runs(self, f.read().splitlines(), lines)
 
 
 if __name__ == "__main__":

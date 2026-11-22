@@ -13,10 +13,11 @@ out, and it wrote no result file.
 
 Nothing here times a press. The schedule (play_chart.load_schedule) times
 every press; this module only moves a probe chord and its presses so the
-schedule's own first press for it fires at the probe's lead, checks that the
-move changed nothing else, and puts the chord's real time back on its press
-row. The move carries each press's `last_send_ms` with it, so play_chords
-never drops a probe press: pressing past the window is the point.
+schedule's own first press for it is judged at the probe's lead, counted from
+the chord's time, checks that the move changed nothing else, and puts the
+chord's real time back on its press row. The move takes each press's band and
+window away, so the press is a judge target alone and play_chords never drops
+it: pressing past the window is the point.
 
 The probes file is a JSON list of {"index": <chord index>, "lead_ms": <ms>}.
 A positive lead presses early, a negative one late, as play_chart's leads do.
@@ -153,12 +154,15 @@ def probe_chords(chords: Sequence[play_chart.Chord],
 
 
 def _moved(chord: play_chart.Chord, shift_ms: float) -> play_chart.Chord:
-    """`chord` and its presses `shift_ms` earlier: the chord's `ms`, and each
-    press's `chart_ms` and `last_send_ms`."""
+    """`chord` and its presses `shift_ms` earlier (the chord's `ms`, and
+    each press's `chart_ms`), each press with no band and no window: a probe
+    press goes to the kit agent as a judge target alone, on the frame whose
+    predicted judge time is nearest it (press_schedule.ts's contract block),
+    and play_chords never drops it."""
     return dataclasses.replace(
         chord, ms=chord.ms - shift_ms,
-        presses=tuple(dataclasses.replace(p, chart_ms=p.chart_ms - shift_ms,
-                                          last_send_ms=p.last_send_ms - shift_ms)
+        presses=tuple(dataclasses.replace(p, chart_ms=p.chart_ms - shift_ms, band=None,
+                                          window_from_ms=None, window_to_ms=None)
                       for p in chord.presses))
 
 

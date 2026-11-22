@@ -104,6 +104,14 @@ RETIMED_INSIDE = "inside"
 RETIMED_PLAIN = "plain"
 RETIMED_RANGE = "range"
 
+# The `action` words of a fallback block, as tools/replay_schedule.cpp writes
+# them: the late gem joins its chord's last inside group, takes an end-band of
+# its own (a squeeze-out with no inside group), or the press goes plain.
+FALLBACK_JOIN = "join_group"
+FALLBACK_END_BAND = "end_band"
+FALLBACK_PLAIN = "plain"
+FALLBACK_ACTIONS = (FALLBACK_JOIN, FALLBACK_END_BAND, FALLBACK_PLAIN)
+
 # The fields every press with an `end_read_after` carries for retime_from_end
 # (design point 3 of
 # `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
@@ -154,8 +162,15 @@ class Press:
     elsewhere; replace() keeps it, so a press retime_from_end moves keeps
     its seq and the agent can tell it from one that already fired.
     `conversion` is the entry's `{early, late}` as a dict and
-    `read_range_ms` its `[low, high]` as a tuple. The other fields are the
-    entry's own, under the same names."""
+    `read_range_ms` its `[low, high]` as a tuple. `band` is the entry's
+    `{from_ms, to_ms, from_strict}` as a dict, or None for a press the
+    player sends with no band (the band is then its window). `group` and
+    `follows` are the entry's order group and the group it follows (None for
+    a head). `no_frame_in_band` is True on a press retime_from_end found no
+    band for: its own end now lies before its window's front edge, so it
+    goes down on the window's first frame (design (c) of the squeeze timing
+    plan, "When no frame can land"). The other fields are the entry's own,
+    under the same names."""
     index: int
     chart_ms: float
     aim_ms: float
@@ -163,9 +178,13 @@ class Press:
     dynamics: List[str]
     axes: Optional[List[float]]
     declined: bool
-    last_send_ms: float
     rule: str
-    after_ms: Optional[float] = None
+    band: Optional[Mapping] = None
+    window_from_ms: Optional[float] = None
+    window_to_ms: Optional[float] = None
+    group: int = 0
+    follows: Optional[int] = None
+    no_frame_in_band: bool = False
     timed_from_end: Optional[int] = None
     end_read_after: Optional[int] = None
     aim_end_ms: Optional[float] = None
@@ -188,8 +207,19 @@ class Press:
 
     @property
     def at_ms(self) -> float:
-        """The song clock the press fires at."""
+        """The song time the press should be judged at: the schedule's
+        judge target, not a send time."""
         return self.chart_ms + self.aim_ms
+
+    @property
+    def no_frame_aim_ms(self) -> Optional[float]:
+        """Where the kit agent aims a banded press when no frame lands in its
+        band: the judge time of the press's `plain` fallback (a squeeze-in
+        is pressed plain, at its chord's time, once its band is lost), None
+        for every other press, which then takes the frame nearest its band."""
+        if self.band is None or self.fallback is None or self.fallback.get("action") != FALLBACK_PLAIN:
+            return None
+        return self.chart_ms + self.fallback["aim_ms"]
 
 
 @dataclass(frozen=True)
@@ -294,7 +324,7 @@ def load_schedule(path: str) -> Schedule:
             if not q["feasible"]:
                 infeasible.append(f"chord {q['chord']} (activation {act['index']}, {q['kind']}, "
                                   f"anchor room {q['anchor_room_ms']:g} ms, squeeze room "
-                                  f"{q['squeeze_room_ms']:g} ms)")
+                                  f"{q['squeeze_room_ms']:g} ms, safe sum {q['safe_ms']:g} ms)")
     if infeasible:
         raise ValueError(f"{path} holds a squeeze the game cannot make at 100% speed: "
                          + "; ".join(infeasible))
@@ -323,8 +353,10 @@ def load_schedule(path: str) -> Schedule:
             index=row["index"], chart_ms=row["ms"], aim_ms=entry["aim_ms"],
             lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in gems],
             dynamics=[gem["dynamic"] for gem in gems], axes=None,
-            declined=row["declined"], last_send_ms=entry["last_send_ms"],
-            rule=entry["rule"], after_ms=entry["after_ms"],
+            declined=row["declined"], rule=entry["rule"],
+            band=_band(entry["band"], path, f"entry {k} of `presses`"),
+            window_from_ms=entry["window_from_ms"], window_to_ms=entry["window_to_ms"],
+            group=entry["group"], follows=entry["follows"],
             timed_from_end=entry["timed_from_end"],
             end_read_after=entry["end_read_after"], aim_end_ms=entry["aim_end_ms"],
             fallback=entry.get("fallback"), **_end_fields(entry, path, k)))
@@ -348,6 +380,25 @@ def load_schedule(path: str) -> Schedule:
     activations = [Activation(act["index"], act["chord"], act["read_end_after"],
                               act["sp_ready_ms"]) for act in acts]
     return Schedule(chords, activations, song_length_ms)
+
+
+def _band(raw, path: str, where: str) -> dict:
+    """A schedule band, `{from_ms, to_ms, from_strict}`, read as written.
+    Raises ValueError naming the key for a band without one."""
+    band = _Fields(raw, path, f"the `band` of {where}")
+    return {"from_ms": band["from_ms"], "to_ms": band["to_ms"],
+            "from_strict": band["from_strict"]}
+
+
+def end_band(from_ms: float, to_ms: float, from_strict: bool) -> dict:
+    """A band in the schedule's shape, for a band the player moves."""
+    return {"from_ms": from_ms, "to_ms": to_ms, "from_strict": from_strict}
+
+
+def band_middle_ms(band: Mapping) -> float:
+    """The middle of `band`: where a banded press is aimed, so it keeps the
+    same room from each edge (design (c) of the squeeze timing plan)."""
+    return (band["from_ms"] + band["to_ms"]) / 2.0
 
 
 def _end_fields(entry: _Fields, path: str, k: int) -> dict:
@@ -414,26 +465,36 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
     says why the move goes through the file's conversion. A moved press carries
     the read as its `aim_end_ms` and its own end now as its `own_end_ms`.
 
+    The move is of the press's band, and the press is aimed at its middle
+    (design (c) of the squeeze timing plan): moved_band says which edge is
+    the end. A press whose end-band the read leaves empty (its own end now
+    before its window's front edge) is sent with no band, aimed at that
+    edge, so the agent puts it on the window's first frame, and is marked
+    Press.no_frame_in_band: the note is hit and paid without Star Power.
+
     A moved press with a `fallback` then does what the block says (design
     point 5 of docs/superpowers/plans/2026-11-08-replay-press-schedule.md),
     and Press.retimed says which. The block's thresholds are in read terms,
     so the read is compared with them as it is. A read end past
-    `if_end_after_ms` makes the late gem `join_group`: it goes down
-    `before_end_ms` before its own end now, in one press with its chord's
-    group of `join_gems` (indexes into the chord's lanes, from `chord_lanes`
-    by chord index) when that names any. A read end before
-    `if_end_before_ms` makes the press `plain`, at the block's `aim_ms`. A
-    read end equal to a threshold keeps the press.
+    `if_end_after_ms` gives up the late gem's own band: `join_group` puts it
+    in one press with its chord's group of `join_gems` (indexes into the
+    chord's lanes, from `chord_lanes` by chord index), which keeps that
+    group's own moved press and band, and `end_band` gives it an end-band
+    of its own, from its window's front edge to its own end now. A read end
+    before `if_end_before_ms` makes the press `plain`, at the block's
+    `aim_ms`, with its window as its band. A read end equal to a threshold
+    keeps the press.
 
     A read outside a press's `read_range_ms` (design point 5 of the
     2026-11-13 plan) moves nothing: the press takes its fallback's action
-    whatever the thresholds say (`plain` at the block's `aim_ms`, or the
-    late gem joining its group), or stays where the schedule put it when it
-    has none, and every such press is RETIMED_RANGE.
+    whatever the thresholds say (`plain` at the block's `aim_ms`, the late
+    gem joining its group, or the block's own end-band), or stays where the
+    schedule put it when it has none, and every such press is
+    RETIMED_RANGE.
 
     Raises ValueError for a moved press without the END_FIELDS the sum
-    reads, a block with another action, or a `join_gems` group no press
-    holds, each a bug in the schedule."""
+    reads or without a band, a block with another action, or a `join_gems`
+    group no press holds, each a bug in the schedule."""
     moved: List[Tuple[Press, Optional[float]]] = []
     for p in presses:
         if p.end_read_after != read_after:
@@ -445,15 +506,18 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
             raise ValueError(f"chord {p.index} is timed from the end read after chord "
                              f"{read_after} but has no {', '.join(missing)}")
         block = p.fallback
-        if block is not None and block.get("action") not in ("join_group", "plain"):
+        if block is not None and block.get("action") not in FALLBACK_ACTIONS:
             raise ValueError(f"chord {p.index}'s fallback has action {block.get('action')!r}, "
                              f"which play_chords does not know")
+        if p.band is None or p.window_from_ms is None or p.window_to_ms is None:
+            raise ValueError(f"chord {p.index} is timed from the end read after chord "
+                             f"{read_after} but has no band or window")
         if not _in_read_range(p, read_end_ms):
             moved.append((replace(p, retimed=RETIMED_RANGE), None))
             continue
         own_now_ms = own_end_now_ms(p, read_end_ms)
-        moved.append((replace(p, aim_ms=p.aim_ms + own_now_ms - p.own_end_ms,
-                              aim_end_ms=read_end_ms, own_end_ms=own_now_ms), own_now_ms))
+        moved.append((replace(moved_band(p, own_now_ms), aim_end_ms=read_end_ms,
+                              own_end_ms=own_now_ms), own_now_ms))
     out: List[Press] = []
     joins: List[Tuple[Press, Mapping]] = []
     for p, own_now_ms in moved:
@@ -462,18 +526,24 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
             out.append(p)
         elif own_now_ms is None:
             # Outside the read's range: the fallback's action, unmoved.
-            if block["action"] == "join_group":
+            if block["action"] == FALLBACK_JOIN:
                 joins.append((p, block))
+            elif block["action"] == FALLBACK_END_BAND:
+                out.append(replace(p, aim_ms=block["aim_ms"], band=dict(block["band"])))
             else:
-                out.append(replace(p, aim_ms=block["aim_ms"]))
-        elif block["action"] == "join_group":
+                out.append(replace(p, aim_ms=block["aim_ms"], band=_window_band(p)))
+        elif block["action"] in (FALLBACK_JOIN, FALLBACK_END_BAND):
             if read_end_ms > block["if_end_after_ms"]:
-                joins.append((replace(p, aim_ms=own_now_ms - block["before_end_ms"] - p.chart_ms,
-                                      retimed=block["retimed"]), block))
+                late = replace(p, retimed=block["retimed"])
+                if block["action"] == FALLBACK_JOIN:
+                    joins.append((late, block))
+                else:
+                    out.append(_ending_at(late, own_now_ms))
             else:
                 out.append(replace(p, retimed=RETIMED_LATE))
         elif read_end_ms < block["if_end_before_ms"]:
-            out.append(replace(p, aim_ms=block["aim_ms"], retimed=block["retimed"]))
+            out.append(replace(p, aim_ms=block["aim_ms"], band=_window_band(p),
+                               no_frame_in_band=False, retimed=block["retimed"]))
         else:
             out.append(p)
     for late, block in joins:
@@ -496,30 +566,67 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
     return sorted(out, key=lambda p: p.at_ms)
 
 
+def _window_band(p: Press) -> dict:
+    """`p`'s chord's window as a band: a plain press's band."""
+    return end_band(p.window_from_ms, p.window_to_ms, False)
+
+
+def _ending_at(p: Press, own_now_ms: float) -> Press:
+    """`p` with an end-band from its window's front edge to `own_now_ms`,
+    which stops at the window's back edge when the end lies past it (as the
+    schedule's own end-band does), aimed at its middle. When `own_now_ms`
+    is before the front edge the band is empty: the press goes with no
+    band, aimed at the front edge so the agent puts it on the window's
+    first frame, and says no_frame_in_band."""
+    if own_now_ms < p.window_from_ms:
+        return replace(p, band=None, aim_ms=p.window_from_ms - p.chart_ms,
+                       no_frame_in_band=True)
+    band = end_band(p.window_from_ms, min(own_now_ms, p.window_to_ms), False)
+    return replace(p, band=band, aim_ms=band_middle_ms(band) - p.chart_ms,
+                   no_frame_in_band=False)
+
+
+def moved_band(p: Press, own_now_ms: float) -> Press:
+    """`p` with its band moved to its own end now, `own_now_ms`, and aimed
+    at the new band's middle. The schedule marks which edge of the band is
+    the end: a strict lower edge is one (a hit on the end's own frame is
+    paid inside, SP-29), so a late gem's band runs from its own end now,
+    strict, to its window's back edge; every other band's upper edge is the
+    end, and _ending_at moves it."""
+    if p.band["from_strict"]:
+        if own_now_ms >= p.window_to_ms:
+            # A strict band that starts at the back edge holds no judge time:
+            # the press goes with no band, aimed at the back edge so the agent
+            # puts it on the window's last frame, and says no_frame_in_band.
+            return replace(p, band=None, aim_ms=p.window_to_ms - p.chart_ms,
+                           no_frame_in_band=True)
+        band = end_band(own_now_ms, p.window_to_ms, True)
+        return replace(p, band=band, aim_ms=band_middle_ms(band) - p.chart_ms)
+    return _ending_at(p, own_now_ms)
+
+
 def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
     """`presses` in firing order as the messages play_chords sends: each a
-    first press and the later order groups (Press.after_ms) that go down
-    with it in one message, in the order their first presses fire. A later
-    group goes with its chord's press that fires `after_ms` before it.
-    Raises ValueError for a later group with no such press, which would be a
-    bug in the schedule."""
+    head press (Press.follows None) and the later order groups of its chord
+    that follow it, in group order, in the order the heads fire. A later
+    group goes with the message that holds the group its `follows` names.
+    Raises ValueError for a later group whose group no press holds, which
+    would be a bug in the schedule."""
     messages: List[Tuple[Press, List[Press]]] = []
+    later = []
     for press in sorted(presses, key=lambda p: p.at_ms):
-        if press.after_ms is None:
+        if press.follows is None:
             messages.append((press, []))
-            continue
-        head = next((m for m in reversed(messages) if m[0].index == press.index
-                     and abs(m[0].at_ms + press.after_ms - press.at_ms) < _SAME_MS), None)
-        if head is None:
-            raise ValueError(f"chord {press.index} has an order group {press.after_ms:g} ms "
-                             f"after no press of its own")
-        head[1].append(press)
+        else:
+            later.append(press)
+    for press in sorted(later, key=lambda p: (p.index, p.group)):
+        message = next((m for m in messages if m[0].index == press.index and any(
+            q.group == press.follows for q in [m[0], *m[1]])), None)
+        if message is None:
+            raise ValueError(f"chord {press.index}'s order group {press.group} follows group "
+                             f"{press.follows}, which no press of it holds")
+        message[1].append(press)
     return messages
-
-
-# How close two press times must be to count as one: the schedule's times are
-# sums of the same numbers, so anything past float rounding is another time.
-_SAME_MS = 1e-6
 
 
 def load_score_times(path: str) -> List[Tuple[int, float]]:
@@ -671,10 +778,14 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     of a press retime_from_end marked says so in `retimed`.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
-    engine's score and `press` sends one chord's keys and their `axes`. A
-    chord split in order groups is one call, with `then=` a list of
-    (lanes, axes, after_ms) for its later groups; every other press is
-    called with the keys and axes alone. With `kit` True, `press` is the kit
+    engine's score and `press` sends one chord's keys and their `axes`. Each
+    press is sent on the first clock read at or past its judge target
+    (Press.at_ms); the keys route adds no judge delay of its own, because
+    nobody has measured when the game judges a key press. On the keys route
+    a chord split in order groups is one call per group, each later group
+    on the first clock read after the group before it was sent. With `kit`
+    True a split chord is one call, with `then=` a list of (lanes, axes)
+    for its later groups, which the kit puts down a frame apart. With `kit` True, `press` is the kit
     press of tools/ch_mcp/kit_tools.py, which only the loop case of
     stall_harness.py hands in, as its control (a kit run uses live_in_game
     instead): each reply must hold what
@@ -690,8 +801,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     `score_before`. The score is read once after the reply, so every row of
     a split chord holds the same `score_after`.
 
-    A message read past its first press's Press.last_send_ms is not sent
-    (design point 5 of
+    A message read past the back edge of its first press's chord window
+    (Press.window_to_ms) is not sent (design point 5 of
     docs/superpowers/plans/2026-11-08-player-freak-fixes.md): it reads no end
     and no score after, and its rows say DROPPED in the send column with the
     clock it was dropped at.
@@ -803,20 +914,31 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             # of docs/superpowers/plans/2026-11-08-player-freak-fixes.md says
             # why raw_ms is the read it is judged from.
             sends = not (chord.declined and not chord.lanes)
-            dropped = sends and raw_ms > chord.last_send_ms
+            # A probe press (edge_probe.py) has no window, so it is never dropped.
+            dropped = (sends and chord.window_to_ms is not None
+                       and raw_ms > chord.window_to_ms)
 
             # Each step's time, None while the step has not run.
             steps_ms: dict = {}
+            # The clock read each later group went out on (keys route only).
+            later_reads_ms: List[float] = []
             # A declined chord in a mode that keeps no gem sends no press.
             if not sends or dropped:
                 pressed = None
             else:
                 began = now()
-                if later:
+                if later and kit:
                     pressed = press(chord.lanes, chord.axes,
-                                    then=[(p.lanes, p.axes, p.after_ms) for p in later])
+                                    then=[(p.lanes, p.axes) for p in later])
                 else:
                     pressed = press(chord.lanes, chord.axes)
+                    # A key press has no frame to wait for, so each later
+                    # group goes out on the first clock read after the
+                    # group before it was sent, never in the same read.
+                    for part in later:
+                        read_s, _est_s = timed_wait.read()
+                        later_reads_ms.append(C.s_to_ms(read_s))
+                        press(part.lanes, part.axes)
                 steps_ms["press_took_ms"] = took_ms(began)
             wall_s_at_reply = wall()
             if reply_gap is not None and sends and not dropped:
@@ -865,9 +987,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 row = {
                     "index": part.index,
                     "chart_ms": part.chart_ms,
-                    # The clock read that sent the message; a later group's
-                    # own moment is its reply's down_ms.
-                    "clock_ms_at_press": raw_ms,
+                    # The clock read that sent the message, or on the keys
+                    # route the read that sent this later group; a kit later
+                    # group's own moment is its reply's down_ms.
+                    "clock_ms_at_press": (later_reads_ms[k - 1] if 0 < k <= len(later_reads_ms)
+                                          else raw_ms),
                     "lead_ms": part.lead_ms,
                     "score_before": score_before,
                     "score_after": score_after,
@@ -1135,7 +1259,12 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         reported.add(seq)
         dropped = kind == K.EVENT_DROPPED
         send = DROPPED if dropped else DECLINED if part.declined else SENT
-        note = event["agent_note"] or ""
+        retime_note = event["agent_note"] or ""
+        # The agent's own no-frame pick, or the player's when a read end left
+        # the press no band (Press.no_frame_in_band), beside retime_missed.
+        no_frame = bool(event["no_frame_in_band"]) or part.no_frame_in_band
+        note = " ".join(n for n in (retime_note, K.NOTE_NO_FRAME_IN_BAND if no_frame else "")
+                        if n)
         row = {
             "index": part.index, "chart_ms": part.chart_ms,
             "clock_ms_at_press": event["clock_ms_at_press"], "lead_ms": part.lead_ms,
@@ -1147,6 +1276,8 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         }
         if event["frame_gap_ms"] is not None:
             row["frame_gap_ms"] = event["frame_gap_ms"]
+        row.update({key: event[key] for key in ("step_ms", "predicted_judge_ms", "judged_ms")
+                    if event[key] is not None})
         if not dropped:
             row.update({key: event[key] for key in ("down_frame", "up_frame",
                                                     "down_ms", "up_ms")
@@ -1156,7 +1287,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 row["wall_s_at_reply"] = C.ms_to_s(event["up_ms"])
         if part.retimed is not None:
             row["retimed"] = part.retimed
-        if part.after_ms is None:
+        if part.follows is None:
             # The first row of a message, as play_chords counts it.
             row["scored_between"] = (0 if last_score is None
                                      else event["score_before"] - last_score)
@@ -1167,7 +1298,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             else:
                 result.sent += 1
         last_score = row["score_after"]
-        if note == K.NOTE_RETIME_MISSED:
+        if retime_note == K.NOTE_RETIME_MISSED:
             missed.append(seq)
         post_failure: Optional[str] = None
         if part.planned_end_ms is not None and read_sp_end is not None and not dropped:
@@ -1293,20 +1424,12 @@ def live_press(driver: InputDriver, hwnd: int) -> Callable[..., object]:
     """A press that focuses the game window, then sends the chord's keys. A
     key has no strength, so `axes` goes unused. This key route needs the game
     window in focus and the user's typed `allow key run`; the kit press does
-    not. A key route has no frame clock to time a later order group by, so
-    each group in `then` is sent once its `after_ms` has passed on this
-    process's clock, counted from the first group's send.
+    not. play_chords sends each order group of a chord in its own call.
     LIVE-ONLY: sends input to the game."""
-    def press(lanes: List[int], axes: Optional[List[float]] = None,
-              then: Sequence[Tuple[List[int], Optional[List[float]], float]] = ()) -> object:
+    def press(lanes: List[int], axes: Optional[List[float]] = None) -> object:
         # Keep Clone Hero focused so SendInput reaches it.
         focus_window(hwnd)
-        start_s = time.perf_counter()
-        sent = driver.press_chord(lanes)
-        for later_lanes, _axes, after_ms in then:
-            time.sleep(max(0.0, start_s + C.ms_to_s(after_ms) - time.perf_counter()))
-            driver.press_chord(later_lanes)
-        return sent
+        return driver.press_chord(lanes)
     return press
 
 

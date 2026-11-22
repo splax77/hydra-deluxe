@@ -44,15 +44,18 @@ _RECORDED_PRESS_LOGS = (
     # hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1/press-1.csv, rows 1-3.
     ("PRESS_COLUMNS_BEFORE_IN_GAME", ("ls-p3-run1", "press-1-rows-1-3.csv")),
     # hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1/press-1.csv, its first rows.
-    ("PRESS_LOG_COLUMNS", ("ls-g3-run1", "press-1-head.csv")),
+    ("PRESS_COLUMNS_BEFORE_FRAME_PICK", ("ls-g3-run1", "press-1-head.csv")),
 )
+# The newest age a real run has left a log of.
+_NEWEST_RECORDED = "PRESS_COLUMNS_BEFORE_FRAME_PICK"
 
 # The press logs' column lists from the oldest to the newest, as the
 # overlay_logs docstring tells their history.
 _PRESS_HISTORY = (
     "KEYS_PRESS_COLUMNS", "PRESS_COLUMNS_WITHOUT_WALL", "PRESS_COLUMNS_WITHOUT_PLAYER",
     "PRESS_COLUMNS_WITHOUT_RETIME", "PRESS_COLUMNS_WITH_HIT",
-    "PRESS_COLUMNS_BEFORE_TIMING", "PRESS_COLUMNS_BEFORE_IN_GAME", "PRESS_LOG_COLUMNS",
+    "PRESS_COLUMNS_BEFORE_TIMING", "PRESS_COLUMNS_BEFORE_IN_GAME",
+    "PRESS_COLUMNS_BEFORE_FRAME_PICK", "PRESS_LOG_COLUMNS",
 )
 
 # A real watch log the current watcher wrote:
@@ -104,10 +107,10 @@ class WatchLogTest(unittest.TestCase):
 
 class PressLogTest(unittest.TestCase):
     def test_a_log_play_chart_writes_reads_back_through_score_compare(self):
-        # play_chart's writer takes the rows of a real current log and writes
+        # play_chart's writer takes the rows of the newest real log and writes
         # a file that score_compare reads to the same presses as the real log,
         # with every column the real log has, in its order.
-        real = _recorded("PRESS_LOG_COLUMNS")
+        real = _recorded(_NEWEST_RECORDED)
         with open(real, encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))
         self.assertTrue(rows, real)
@@ -146,10 +149,12 @@ class PressLogTest(unittest.TestCase):
             self.assertEqual(newer[:len(older)], older, (older_name, newer_name))
 
     def test_score_compare_loads_every_press_header_in_the_history(self):
-        # The two ages no run left a log of load too: a real newer log cut to
-        # that age's columns reads to the same presses as the real log.
+        # The ages no run left a log of load too: a real log written out
+        # under that age's columns (cut to them, or with the columns it lacks
+        # blank) reads to the same presses as the real log.
         sources = {"PRESS_COLUMNS_WITHOUT_WALL": "PRESS_COLUMNS_WITHOUT_PLAYER",
-                   "PRESS_COLUMNS_WITH_HIT": "PRESS_COLUMNS_WITHOUT_RETIME"}
+                   "PRESS_COLUMNS_WITH_HIT": "PRESS_COLUMNS_WITHOUT_RETIME",
+                   "PRESS_LOG_COLUMNS": _NEWEST_RECORDED}
         for name in _PRESS_HISTORY:
             if name in dict(_RECORDED_PRESS_LOGS):
                 continue

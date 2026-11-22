@@ -41,8 +41,13 @@ existed hold PRESS_COLUMNS_WITHOUT_WALL, logs written before the player's
 columns existed hold PRESS_COLUMNS_WITHOUT_PLAYER, logs written before the
 retime column existed hold PRESS_COLUMNS_WITHOUT_RETIME, logs written
 before SEND_COLUMN existed hold PRESS_COLUMNS_WITH_HIT, logs written
-before the timing columns existed hold PRESS_COLUMNS_BEFORE_TIMING, and logs
-written before the in-game columns existed hold PRESS_COLUMNS_BEFORE_IN_GAME.
+before the timing columns existed hold PRESS_COLUMNS_BEFORE_TIMING, logs
+written before the in-game columns existed hold PRESS_COLUMNS_BEFORE_IN_GAME,
+and logs written before the frame pick's columns existed hold
+PRESS_COLUMNS_BEFORE_FRAME_PICK. FRAME_PICK_PRESS_COLUMNS are the kit agent's
+frame step, the judge time it timed the press for and the judge time that
+really followed (press_schedule.ts's contract block); blank on rows
+play_chords wrote.
 """
 
 from __future__ import annotations
@@ -155,4 +160,12 @@ PRESS_COLUMNS_BEFORE_TIMING = tuple(SEND_COLUMN if c == HIT_COLUMN else c
 
 PRESS_COLUMNS_BEFORE_IN_GAME = PRESS_COLUMNS_BEFORE_TIMING + TIMING_PRESS_COLUMNS
 
-PRESS_LOG_COLUMNS = PRESS_COLUMNS_BEFORE_IN_GAME + IN_GAME_PRESS_COLUMNS
+FRAME_PICK_PRESS_COLUMNS = (
+    "step_ms",
+    "predicted_judge_ms",
+    "judged_ms",
+)
+
+PRESS_COLUMNS_BEFORE_FRAME_PICK = PRESS_COLUMNS_BEFORE_IN_GAME + IN_GAME_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = PRESS_COLUMNS_BEFORE_FRAME_PICK + FRAME_PICK_PRESS_COLUMNS

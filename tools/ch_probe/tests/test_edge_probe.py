@@ -137,14 +137,21 @@ class EdgeProbeTest(unittest.TestCase):
         at = self._pressed_at(moved, chords, {early.index, late.index})
         self.assertAlmostEqual(at[early.index], early.ms - 88.72)
         self.assertAlmostEqual(at[late.index], late.ms + 82.72)
-        # A moved press keeps its send window: last_send_ms moves by as much
-        # as the press itself.
+        # A moved press is a judge target alone: it loses its band and its
+        # window, so the player never drops it past the window. Every other
+        # press keeps its band and window as the schedule gave them.
         was = {chord.index: chord for chord in chords}
         for chord in moved:
-            if chord.index in (early.index, late.index):
-                for now, then in zip(chord.presses, was[chord.index].presses):
-                    self.assertAlmostEqual(now.last_send_ms - then.last_send_ms,
-                                           now.chart_ms - then.chart_ms)
+            for now, then in zip(chord.presses, was[chord.index].presses):
+                with self.subTest(chord=chord.index):
+                    if chord.index in (early.index, late.index):
+                        self.assertIsNotNone(then.band)
+                        self.assertIsNotNone(then.window_from_ms)
+                        self.assertEqual((now.band, now.window_from_ms, now.window_to_ms),
+                                         (None, None, None))
+                    else:
+                        self.assertEqual((now.band, now.window_from_ms, now.window_to_ms),
+                                         (then.band, then.window_from_ms, then.window_to_ms))
 
     def test_a_probe_chord_not_in_the_score_file_is_refused_and_only_it_is_named(self):
         chords = _freak_chords()

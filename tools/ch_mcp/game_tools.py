@@ -378,9 +378,9 @@ def squeeze_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
 
 def order_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
     """What the reply says about the chords the schedule `doc` presses in
-    order groups (presses with an `after_ms`): one line naming each such
-    chord, its first press's gems, then each later press's gems and how long
-    after the first it fires. Every time is read off the schedule's presses.
+    order groups (presses that follow another group): one line naming each
+    such chord, its first press's gems, then each later press's gems, each
+    going down the frame after the group before it (press_schedule.ts).
     A timed squeeze-out's presses are the squeeze line's, not this one's.
     Empty when no chord is split."""
     by_index = _presses_by_index(play_chart.press_plan(chords))
@@ -392,8 +392,7 @@ def order_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
         if len(presses) < 2 or chord.index in squeeze_outs:
             continue
         first = presses[0]
-        later = [f"then {_gem_words(p.lanes)} {_ms_text(p.at_ms - first.at_ms)} ms later"
-                 for p in presses[1:]]
+        later = [f"then {_gem_words(p.lanes)} the frame after" for p in presses[1:]]
         items.append(f"{chord.index} ({', '.join([_gem_words(first.lanes)] + later)})")
     if not items:
         return []
@@ -1224,7 +1223,8 @@ class GameTools:
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
             lines.append(f"route: {route} ("
                          + ("presses through the virtual kit inside the game"
-                            if route == ROUTE_KIT else "keys to the focused game window") + ")")
+                            if route == ROUTE_KIT else "keys to the focused game window, each "
+                            "sent at its judge target: no judge delay is applied") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
             lines.extend(plan_lines)
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
