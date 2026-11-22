@@ -317,6 +317,14 @@ class ServerTest(unittest.TestCase):
         self._reaches("ch_start", self.helper.game.ch_start, [{"human": True}])
         self.assertEqual(self.printed, [])
 
+    def test_ch_start_hands_frame_multiplier_to_the_game(self):
+        # A value outside the game's range is refused before the file is read
+        # or anything runs, and the reply names the value it was given, so a
+        # server that dropped the argument would give the quiet check's reply.
+        self._reaches("ch_start", self.helper.game.ch_start, [
+            {"frame_multiplier": 0}, {"frame_multiplier": 26}])
+        self.assertEqual(self.printed, [])
+
     def test_ch_play_chart_hands_its_route_and_path_to_the_game(self):
         # With no kit set up, no route and the kit route are refused with
         # different words, and the keys route reaches the schedule's path
