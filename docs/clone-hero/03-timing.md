@@ -2,7 +2,7 @@
 
 This page covers chart Offset and song.ini delay, the song clock, the hit window, calibration and playback speed.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-22.
 
 ## Offset and delay
 
@@ -167,6 +167,26 @@ Game code (6142): field `#8288+0x100`, the clock the watch file reads (TM-13); t
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
 Found: the run 2026-11-11, session a828b0ca (LS-A2; docs/sessions/2026-11-12-a828b0ca.md); the stalls 2026-11-12, session a09f66ea (docs/sessions/2026-11-12-a09f66ea.md); the numbers above 2026-11-12, session 07d9b035
+
+### TM-54 The song clock follows wall time when the game's frames run long
+
+Rule: When the game's frames take longer than its target, the song clock does not slow down with them: each frame's clock step grows instead, so the clock still moves by the wall time that passed. In LS-P2 run 1 the frames ran long for most of the song (IN-96), and the clock moved 174,928 ms while 174,930 ms of wall time passed.
+Label: Proven in a live run
+Evidence: LS-P2 run 1, 2026-11-22, on CHON - Petal (B), frame multiplier 4, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run1\press-1.csv`. From the first press row to the last, `clock_ms_at_press` rose by 174,928.29 ms, `wall_s_at_read` by 174,930.00 ms and `down_ms` by 174,930 ms, over 162,502 frames by `down_frame`. That is 1.0765 ms of clock a frame on average, against the 0.7576 ms step the same game drew at this multiplier when its frames kept pace (TM-55). The run's frame settings are in `frame-settings.json` there.
+Game code (6142): field `#8288+0x100`, the engine clock (TM-13), which takes `GameManager.songTime` each frame (IN-93); the clock block in `GameManager.Update`, RVA `0xC05A0`, `code/6142/gm_update_C05A0.md`, was not read for how it measures a frame. TM-12's frame-timer clock fits it, and nothing has checked it here.
+Hydra: no owner
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-22, session 1390758e (LS-P2 run 1).
+
+### TM-55 With vsync off, the frame multiplier sets the frame step to one over framerate times the multiplier
+
+Rule: With `vsync = 0` and `framerate = 330` in settings.ini, the game's frame step, read from `GameManager.songTime`, was 1.5166 ms with `simulated_frame_multiplier = 2` and 0.7576 ms with 4. Those are one second over 660 and over 1,320 frames: the target rate is framerate times the multiplier. Whether the game draws only every Nth of those frames was not checked: no run measured the frames drawn. Whether 330 is the game's own default framerate was not checked either; it is the value these runs started with.
+Label: Proven in a live run
+Evidence: LS-S1 run 1, 2026-11-21, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-21\ls-s1-run1\frame_probe-1.json`: 3,273 frames (4870 to 8142) in 5,000 ms of wall time, and the change in `song_time_s` from one frame to the next has median 1.5166 ms over its 3,272 frame pairs (from 1.499 to 2.535 ms). Its `frame-settings.json` records framerate 330, vsync 0 and the multiplier set from 1 to 2. LS-S2 run 1, 2026-11-21, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-21\ls-s2-run1\frame_probe-1.json`: 6,599 frames (2949 to 9547) in 4,999 ms, median step 0.7576 ms over 6,598 pairs (from 0.723 to 0.893 ms); its `frame-settings.json` records framerate 330, vsync 0 and the multiplier set from 2 to 4. The card docs/sessions/2026-11-22-7ff4eef0.md records both runs. The "every Nth frame" reading is the only part of the card docs/sessions/2026-11-22-97245ab7.md that these files do not show.
+Game code (6142): the settings loader reads the key: `code/6142/settings_load_374D50.asm` names 'framerate' at lines 74 and 449 and 'simulated_frame_multiplier' at lines 220 and 1481. Where the game turns the two into a target rate was not read.
+Hydra: no owner: Hydra never reads the running game. The tools set the multiplier with ch_start's frame multiplier option, in tools/ch_mcp.
+Ruling: none needed: no Hydra rule depends on it
+Found: the rule named, 2026-11-22, session 97245ab7 (docs/sessions/2026-11-22-97245ab7.md); LS-S1 and LS-S2 (run folders dated 2026-11-21 local time), session 7ff4eef0 (docs/sessions/2026-11-22-7ff4eef0.md); checked against the run files 2026-11-22, session 1390758e.
 
 ### TM-13 The engine's song clock is the double at engine+0x100, in seconds
 
