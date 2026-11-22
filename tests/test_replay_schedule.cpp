@@ -284,24 +284,58 @@ TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is o
 }
 
 TEST_CASE("schedule: the window constants are written") {
-    // The constants the file writes are the ones its presses use: the
-    // window's edges are core/note_window.h's, the game judges a press one
-    // frame after it is sent, a plain press aims press_lead_ms early, and a
-    // press's last send is its chord's side less one frame.
+    // The constants the file writes are the game's window edges and formula
+    // constants, core/note_window.h's, and nothing of the schedule's own.
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
     const json s = schedule::schedule_json(song, {}, r, core::default_rules());
     const json& c = s["constants"];
     CHECK(c["window_front_ms"].get<double>() == kWindowFrontMs);
     CHECK(c["window_back_ms"].get<double>() == kWindowBackMs);
-    CHECK(c["judge_early_ms"].get<double>() == c["frame_ms"].get<double>());
-    CHECK_FALSE(c.contains("judge_late_ms"));
+    CHECK(c["formula_linear"].get<double>() == kFormulaLinear);
+    CHECK(c["formula_square"].get<double>() == kFormulaSquare);
+    CHECK(c["formula_scale"].get<double>() == kFormulaScale);
+    CHECK(c["formula_offset_ms"].get<double>() == kFormulaOffsetMs);
+    CHECK(c.size() == 6);
+}
+
+TEST_CASE("schedule: the constants hold no frame, judge delay, lead, lag, gap or margin") {
+    // The schedule keeps no millisecond value of its own: the frame length
+    // and the judge delay are the player's, from the frame step it measures,
+    // and every press time is worked out from a chord's time, its window or
+    // a Star Power end. Fails if any of the seven keys comes back.
+    const Song song = plain_song({0, 768});
+    const ReplayResult r = replay_path(song, {});
+    const json c = schedule::schedule_json(song, {}, r, core::default_rules())["constants"];
+    for (const char* key : {"frame_ms", "judge_early_ms", "sp_out_lag_ms", "room_margin_ms", "press_lead_ms",
+                            "sp_end_lead_ms", "chord_order_gap_ms", "judge_late_ms"}) {
+        INFO(key);
+        CHECK_FALSE(c.contains(key));
+    }
+}
+
+TEST_CASE("schedule: a plain press is judged at its chord's own time, banded by its window") {
+    // A plain press's judge target is its chord's time (aim 0), and its band
+    // is the chord's whole window: from first_judge_ms to last_judge_ms, both
+    // edges inside. No row holds a send time.
+    const Song song = plain_song({0, 768, 960});
+    const ReplayResult r = replay_path(song, {});
+    const json s = schedule::schedule_json(song, {}, r, core::default_rules());
     REQUIRE(s["presses"].size() == song.sequence.size());
     for (const json& p : s["presses"]) {
         const json& row = s["chords"][p["chord"].get<size_t>()];
-        CHECK(p["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
-        CHECK(p["last_send_ms"].get<double>() ==
-              doctest::Approx(row["ms"].get<double>() + row["side_ms"].get<double>() - c["frame_ms"].get<double>()));
+        const double ms = row["ms"].get<double>();
+        const double side = row["side_ms"].get<double>();
+        CHECK(p["rule"].get<std::string>() == "plain");
+        CHECK(p["aim_ms"].get<double>() == 0.0);
+        CHECK(p["band"]["from_ms"].get<double>() == doctest::Approx(ms - side));
+        CHECK(p["band"]["to_ms"].get<double>() == doctest::Approx(ms + side));
+        CHECK_FALSE(p["band"]["from_strict"].get<bool>());
+        CHECK(p["window_from_ms"].get<double>() == doctest::Approx(ms - side));
+        CHECK(p["window_to_ms"].get<double>() == doctest::Approx(ms + side));
+        CHECK(p["room_ms"].get<double>() == doctest::Approx(side));
+        CHECK_FALSE(p.contains("last_send_ms"));
+        CHECK_FALSE(p.contains("after_ms"));
     }
 }
 
@@ -372,7 +406,7 @@ TEST_CASE("schedule: nothing under src/ reads the schedule") {
         if (rel == "src/core/model.h") saw_model_h = true;
         std::ifstream in(path, std::ios::binary);
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        for (const char* name : {"replay_schedule.h", "kFrameMs", "kRoomMarginMs"})
+        for (const char* name : {"replay_schedule.h", "far_press_refusal", "band_json"})
             if (text.find(name) != std::string::npos && first_hit.empty())
                 first_hit = rel + " names " + name;
     });
@@ -422,38 +456,37 @@ std::vector<size_t> places_but_activation_note(const json& row, const Chord& cho
     return out;
 }
 
-// The player's constants as the file writes them (its "constants" object),
-// read off the schedule of a plain two-chord chart.
-json schedule_constants() {
-    const Song song = plain_song({0, 768});
-    return schedule::schedule_json(song, {}, replay_path(song, {}), core::default_rules())["constants"];
-}
-
 // The equal-room split's rule on one squeeze's two presses `s`, worked from
-// geometry `g` with the file's constants `c`: the anchor goes the way its
-// press says by the equal-room lead, each room is press_room_ms of its own aim
-// and side, the two rooms are equal, the squeeze press is timed off the end
-// the anchor plans (sp_out_lag_ms after it for a squeeze-out's late gem,
-// sp_end_lead_ms before it for a squeeze-in), that end moves the way the
-// anchor goes, and the squeeze is feasible exactly when both rooms clear
-// room_margin_ms.
-void check_equal_room_split(const schedule::SqueezeGeometry& g, const schedule::SqueezeSplit& s, const json& c) {
+// geometry `g`: the anchor goes the way its press says by the equal-room
+// lead, its room is press_room_ms of its aim, the squeeze press's room is
+// press_room_ms at the end it must clear, the two rooms are equal, the
+// squeeze press's band runs from that end (a squeeze-out's late gem, strict,
+// up to the window's back edge) or to it (a squeeze-in, from the window's
+// front edge), its aim is the band's middle, and that end moves the way the
+// anchor goes.
+void check_equal_room_split(const schedule::SqueezeGeometry& g, const schedule::SqueezeSplit& s) {
     const bool early = g.anchor_press == Press::Early;
     const double lead = schedule::equal_room_lead_ms(g);
     CHECK(s.anchor_aim_ms == doctest::Approx(early ? -lead : lead));
     CHECK(s.anchor_room_ms == doctest::Approx(schedule::press_room_ms(s.anchor_aim_ms, g.anchor_side_ms)));
-    CHECK(s.squeeze_room_ms == doctest::Approx(schedule::press_room_ms(s.squeeze_aim_ms, g.squeeze_side_ms)));
+    CHECK(s.squeeze_room_ms ==
+          doctest::Approx(schedule::press_room_ms(s.aim_end_ms - g.squeeze_ms, g.squeeze_side_ms)));
     CHECK(s.anchor_room_ms == doctest::Approx(s.squeeze_room_ms));
     CHECK(s.aim_end_ms == s.planned_end_ms);
-    const double from_end = early ? c["sp_out_lag_ms"].get<double>() : -c["sp_end_lead_ms"].get<double>();
-    CHECK(g.squeeze_ms + s.squeeze_aim_ms == doctest::Approx(s.aim_end_ms + from_end));
     if (early) {
+        CHECK(s.squeeze_band.from_ms == s.aim_end_ms);
+        CHECK(s.squeeze_band.from_strict);
+        CHECK(s.squeeze_band.to_ms == schedule::last_judge_ms(g.squeeze_ms, g.squeeze_side_ms));
         CHECK(s.planned_end_ms < g.end_ms);
     } else {
+        CHECK(s.squeeze_band.from_ms == schedule::first_judge_ms(g.squeeze_ms, g.squeeze_side_ms));
+        CHECK_FALSE(s.squeeze_band.from_strict);
+        CHECK(s.squeeze_band.to_ms == s.aim_end_ms);
         CHECK(s.planned_end_ms > g.end_ms);
     }
-    const double margin = c["room_margin_ms"].get<double>();
-    CHECK(s.feasible == (s.anchor_room_ms >= margin && s.squeeze_room_ms >= margin));
+    CHECK(g.squeeze_ms + s.squeeze_aim_ms == doctest::Approx(schedule::band_middle_ms(s.squeeze_band)));
+    CHECK(g.squeeze_ms + s.squeeze_aim_ms - s.squeeze_band.from_ms ==
+          doctest::Approx(s.squeeze_band.to_ms - (g.squeeze_ms + s.squeeze_aim_ms)));
 }
 
 // One chord alone on the kick pad at `ms` with side `side_ms`, for the
@@ -468,10 +501,10 @@ std::vector<schedule::PadChord> lone_kick_chord(double ms, double side_ms) {
     return one;
 }
 
-// Whether a press of the lone chord `one` sent at `send_ms` stays in its
+// Whether a press of the lone chord `one` judged at `judge_ms` stays in its
 // window (far_press_refusal gives no line).
-bool lone_press_inside(const std::vector<schedule::PadChord>& one, double send_ms) {
-    return !schedule::far_press_refusal(one, 0, send_ms, one[0].chart_pads).has_value();
+bool lone_press_inside(const std::vector<schedule::PadChord>& one, double judge_ms) {
+    return !schedule::far_press_refusal(one, 0, judge_ms, judge_ms, one[0].chart_pads).has_value();
 }
 
 // Freak's overfill shape on a hand-built chart (120 BPM, 2.604 ms a tick):
@@ -503,14 +536,12 @@ Overfill overfill() {
 TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
     // A squeeze-out whose anchor side is narrower than the squeeze chord's
     // side: the split keeps the rule (check_equal_room_split), the anchor
-    // goes early, and both presses clear the margin.
-    const json c = schedule_constants();
+    // goes early, and both presses keep room inside their windows.
     const schedule::SqueezeGeometry g = sqout(48.15, 60545.26, 53.59, 60573.35, 1.0);
     const schedule::SqueezeSplit s = schedule::split_squeeze(g);
-    check_equal_room_split(g, s, c);
+    check_equal_room_split(g, s);
     CHECK(s.anchor_aim_ms < 0.0);
-    CHECK(s.feasible);
-    CHECK(s.squeeze_room_ms >= c["room_margin_ms"].get<double>());
+    CHECK(s.squeeze_room_ms > 0.0);
     // The lead reads the anchor's side: a wider anchor side takes a longer
     // lead, so the anchor keeps the extra room and gives part of it over.
     const schedule::SqueezeSplit wider = schedule::split_squeeze(sqout(85.72, 60545.26, 53.59, 60573.35, 1.0));
@@ -528,7 +559,7 @@ TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
     CHECK(anchor[0]["aim_ms"].get<double>() < 0.0);
     CHECK(presses_of(sch, 1, "anchor").empty());
     REQUIRE(presses_of(sch, 1, "plain").size() == 1);
-    CHECK(presses_of(sch, 1, "plain")[0]["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
+    CHECK(presses_of(sch, 1, "plain")[0]["aim_ms"].get<double>() == 0.0);
     // The read after chord 2 sees the clamped end (the step on chord 2, whose
     // end tick is 3082), planned where the squeeze's split plans it.
     const json& q = sch["activations"][0]["squeezes"][0];
@@ -537,26 +568,68 @@ TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
     CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(o.song.timecode(o.act.sp_end_steps.back().end_tick).ms()));
     CHECK(reads[0]["planned_end_ms"].get<double>() == doctest::Approx(q["planned_end_ms"].get<double>()));
     CHECK(reads[0]["planned_end_ms"].get<double>() < reads[0]["stored_end_ms"].get<double>());
-    // The squeeze-out chord: the late gem (place 0) goes sp_out_lag_ms after
-    // the end the read plans, retimed from the read after chord 2.
+    // The squeeze-out chord: the late gem (place 0) is banded after the end
+    // the read plans, retimed from the read after chord 2.
     const std::vector<json> late = presses_of(sch, 4, "squeeze_out_late");
     REQUIRE(late.size() == 1);
     CHECK(late[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{0});
     CHECK(late[0]["aim_end_ms"].get<double>() == doctest::Approx(reads[0]["planned_end_ms"].get<double>()));
-    CHECK(sch["chords"][4]["ms"].get<double>() + late[0]["aim_ms"].get<double>() ==
-          doctest::Approx(late[0]["aim_end_ms"].get<double>() + c["sp_out_lag_ms"].get<double>()));
+    CHECK(late[0]["band"]["from_ms"].get<double>() == doctest::Approx(late[0]["aim_end_ms"].get<double>()));
     CHECK(late[0]["end_read_after"].get<int>() == 2);
     CHECK(late[0]["timed_from_end"].get<size_t>() == 0);
-    CHECK(q["feasible"].get<bool>());
     CHECK(q["anchor_room_ms"].get<double>() == doctest::Approx(q["squeeze_room_ms"].get<double>()));
-    CHECK(q["anchor_room_ms"].get<double>() >= c["room_margin_ms"].get<double>());
+    // Feasible is Hydra's safe sum for this squeeze.
+    const std::optional<WindowEnds> ends = squeeze_window_ends(o.act, 0, chord_times(o.song));
+    REQUIRE(ends.has_value());
+    CHECK(q["safe_ms"].get<double>() == ends->safe_ms);
+    CHECK(q["feasible"].get<bool>() == !ends->is_short());
+}
+
+TEST_CASE("schedule: feasible is Hydra's safe sum, short below zero") {
+    // Two squeeze-outs on the overfill shape, one whose safe sum is small and
+    // positive and one whose sum is below zero. The test moves the squeezed
+    // chord against its end until squeeze_window_ends reads each, and checks
+    // the file's "feasible" is !is_short() for that same activation; it works
+    // out no sum of its own.
+    bool saw_safe = false;
+    bool saw_short = false;
+    // One tick is 2.604 ms, finer than the 5 ms band the small sum is looked
+    // for in, so the walk cannot step over it.
+    for (int64_t chord_tick = 3000; chord_tick >= 2310; --chord_tick) {
+        Overfill o{plain_song({0, 768, 1536, 2304, chord_tick, 3840}), Activation{}};
+        o.song.sequence[4].chord.add_note(NoteColor::Kick);
+        o.act.timecode = o.song.timecode(768);
+        o.act.bank_rise_ticks = {0, 768};
+        o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, 3082, SpEndKind::Clamped}};
+        SPSqueeze out{};
+        out.kind = SqueezeKind::SqOut;
+        out.offset_ms = offset_from_sp_end(o.song.timecode(chord_tick).ms(), o.song.timecode(3082).ms());
+        o.act.sqinouts.push_back(out);
+        o.act.sqout_tick = chord_tick;
+        o.act.transfer_post = TransferScale{1.0, 1.0};
+        const std::optional<WindowEnds> ends = squeeze_window_ends(o.act, 0, chord_times(o.song));
+        if (!ends) continue;
+        const bool small_safe = !ends->is_short() && ends->safe_ms < 5.0;
+        if (!(small_safe && !saw_safe) && !(ends->is_short() && !saw_short)) continue;
+        const json sch = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules());
+        const json& q = sch["activations"][0]["squeezes"][0];
+        if (!q.contains("anchor_room_ms")) continue;  // the split was refused for another reason
+        INFO("chord tick " << chord_tick << " safe " << ends->safe_ms);
+        CHECK(q["feasible"].get<bool>() == !ends->is_short());
+        CHECK(q["safe_ms"].get<double>() == ends->safe_ms);
+        if (small_safe) saw_safe = true;
+        else saw_short = true;
+        if (saw_safe && saw_short) break;
+    }
+    CHECK(saw_safe);
+    CHECK(saw_short);
 }
 
 TEST_CASE("schedule: the equal-room split holds on far squeeze-outs with uneven sides and ratios") {
     // Four squeeze-outs 84 to 110 ms inside their end, each with a wider
     // anchor side than squeeze side and an early ratio at or above 1: the
     // split keeps its rule on each (check_equal_room_split), and the rooms
-    // it leaves clear the margin, so each is feasible.
+    // it leaves are inside both windows.
     struct Shape {
         double anchor_side, squeeze_side, gap, ratio;
     };
@@ -566,16 +639,15 @@ TEST_CASE("schedule: the equal-room split holds on far squeeze-outs with uneven 
         {76.49, 61.94, 100.00, 1.0045},
         {78.75, 66.34, 109.25, 1.0133},
     };
-    const json c = schedule_constants();
     for (const Shape& shape : shapes) {
         INFO("gap " << shape.gap << " ratio " << shape.ratio);
         const double end = 100000.0;
         const schedule::SqueezeGeometry g =
             sqout(shape.anchor_side, end - shape.gap, shape.squeeze_side, end, shape.ratio);
         const schedule::SqueezeSplit s = schedule::split_squeeze(g);
-        check_equal_room_split(g, s, c);
+        check_equal_room_split(g, s);
         CHECK(s.anchor_aim_ms < 0.0);
-        CHECK(s.feasible);
+        CHECK(s.anchor_room_ms > 0.0);
     }
 }
 
@@ -601,71 +673,60 @@ TEST_CASE("schedule: a squeeze that needs no timing is pressed plain") {
     CHECK(q["feasible"].get<bool>());
     const std::vector<json> p = presses_of(s, 4, "needs_no_timing");
     REQUIRE(p.size() == 1);
-    // Pressed as a plain chord is: press_lead_ms early.
-    CHECK(p[0]["aim_ms"].get<double>() == -s["constants"]["press_lead_ms"].get<double>());
+    // Pressed as a plain chord is: judged at its own time.
+    CHECK(p[0]["aim_ms"].get<double>() == 0.0);
     CHECK_FALSE(p[0].contains("fallback"));
     CHECK(presses_of(s, 1, "plain").size() == 1);  // no lead on the activation
 }
 
 TEST_CASE("schedule: a squeeze the game cannot make is not feasible") {
     // A 200 ms gap against two 53.59 ms sides: both rooms negative, and that
-    // is a feasibility, not a refusal.
+    // is a feasibility, not a refusal. Whether the file calls it feasible is
+    // the safe-sum test's ("feasible is Hydra's safe sum").
     const schedule::SqueezeGeometry too_wide = sqout(53.59, 1000.0, 53.59, 1200.0, 1.0);
     const schedule::SqueezeSplit s = schedule::split_squeeze(too_wide);
-    CHECK_FALSE(s.feasible);
     CHECK(s.anchor_room_ms < 0.0);
     CHECK(s.squeeze_room_ms < 0.0);
     std::vector<std::string> refusals;
     CHECK(schedule::anchor_lead_ms({too_wide}, refusals).has_value());
     CHECK(refusals.empty());
-    // The margin's edge (room_margin_ms in the file's constants). With equal
-    // sides the lead does not read the sides, so both rooms move one for one
-    // with them: sides set to leave exactly the margin are feasible, and a
-    // tenth of a ms narrower are not.
-    const double margin = schedule_constants()["room_margin_ms"].get<double>();
-    const double base_side = 40.0;
-    const schedule::SqueezeSplit base = schedule::split_squeeze(sqout(base_side, 1000.0, base_side, 1025.0, 1.0));
-    const double edge_side = base_side + (margin - base.anchor_room_ms);
-    const schedule::SqueezeSplit at_margin =
-        schedule::split_squeeze(sqout(edge_side, 1000.0, edge_side, 1025.0, 1.0));
-    CHECK(at_margin.anchor_room_ms == doctest::Approx(margin));
-    CHECK(at_margin.squeeze_room_ms == doctest::Approx(margin));
-    // Equal is enough (feasible is room >= margin); built by a sum, the room
-    // may land a rounding step under, so the edge itself is not pinned.
-    const schedule::SqueezeSplit inside =
-        schedule::split_squeeze(sqout(edge_side + 0.1, 1000.0, edge_side + 0.1, 1025.0, 1.0));
-    CHECK(inside.feasible);
-    const schedule::SqueezeSplit short_room =
-        schedule::split_squeeze(sqout(edge_side - 0.1, 1000.0, edge_side - 0.1, 1025.0, 1.0));
-    CHECK(short_room.anchor_room_ms == doctest::Approx(margin - 0.1));
-    CHECK(short_room.squeeze_room_ms < margin);
-    CHECK_FALSE(short_room.feasible);
+    // With equal sides the lead does not read the sides, so both rooms move
+    // one for one with them, and no margin of the schedule's own sits between.
+    const schedule::SqueezeSplit base = schedule::split_squeeze(sqout(40.0, 1000.0, 40.0, 1025.0, 1.0));
+    const schedule::SqueezeSplit wider = schedule::split_squeeze(sqout(41.0, 1000.0, 41.0, 1025.0, 1.0));
+    CHECK(wider.anchor_room_ms == doctest::Approx(base.anchor_room_ms + 1.0));
+    CHECK(wider.squeeze_room_ms == doctest::Approx(base.squeeze_room_ms + 1.0));
+}
+
+TEST_CASE("schedule: a split that would press the anchor the other way is refused") {
+    // A lead at or below zero would judge the anchor on or past its own time
+    // the other way. A squeeze-out whose squeeze side outreaches the anchor
+    // side by more than the gap gives a lead below zero.
+    const schedule::SqueezeGeometry g = sqout(20.0, 1000.0, 60.0, 1010.0, 1.0);
+    REQUIRE(schedule::equal_room_lead_ms(g) <= 0.0);
+    std::vector<std::string> refusals;
+    CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("the other way") != std::string::npos);
 }
 
 TEST_CASE("schedule: the fallback block") {
-    // Each threshold, as the press it guards is judged. One chord at 1,000 ms
-    // with a 50 ms side, alone on its pad (whole numbers, so each edge is
-    // exact in a double).
-    const json c = schedule_constants();
-    const double judge = c["judge_early_ms"].get<double>();
+    // Each threshold is an edge of the chord's window, where the press's band
+    // runs out. One chord at 1,000 ms with a 50 ms side, alone on its pad
+    // (whole numbers, so each edge is exact in a double).
     const std::vector<schedule::PadChord> one = lone_kick_chord(1000.0, 50.0);
-    // A squeeze-out's late gem goes sp_out_lag_ms after its end. With the end
-    // at the threshold it is sent at the chord's last send and stays in its
-    // window; with the end 1 ms later it leaves it.
+    // A squeeze-out's late gem is judged after its end. At the threshold the
+    // end sits on the window's back edge, the last judge time still inside.
     const double after = schedule::sqout_fallback_after_ms(one[0].ms, one[0].side_ms);
-    const double late_send = after + c["sp_out_lag_ms"].get<double>();
-    CHECK(late_send == schedule::last_send_ms(one[0].ms, one[0].side_ms));
-    CHECK(lone_press_inside(one, late_send));
-    CHECK_FALSE(lone_press_inside(one, late_send + 1.0));
-    // A squeeze-in's press goes sp_end_lead_ms before its end. With the end at
-    // the threshold it is judged two frames inside the window's front edge:
-    // sent two frames earlier it sits on the edge, and 1 ms earlier still it
-    // leaves the window.
+    CHECK(after == schedule::last_judge_ms(one[0].ms, one[0].side_ms));
+    CHECK(lone_press_inside(one, after));
+    CHECK_FALSE(lone_press_inside(one, after + 1.0));
+    // A squeeze-in is judged by its end. At the threshold the end sits on the
+    // window's front edge, the first judge time inside.
     const double before = schedule::sqin_fallback_before_ms(one[0].ms, one[0].side_ms);
-    const double in_send = before - c["sp_end_lead_ms"].get<double>();
-    CHECK(lone_press_inside(one, in_send));
-    CHECK(lone_press_inside(one, in_send - 2 * judge));
-    CHECK_FALSE(lone_press_inside(one, in_send - 2 * judge - 1.0));
+    CHECK(before == schedule::first_judge_ms(one[0].ms, one[0].side_ms));
+    CHECK(lone_press_inside(one, before));
+    CHECK_FALSE(lone_press_inside(one, before - 1.0));
 
     // The overfill shape's two-gem squeeze-out: the late press's block names
     // the last inside group's gems.
@@ -681,6 +742,7 @@ TEST_CASE("schedule: the fallback block") {
         CHECK(fb["action"] == "join_group");
         CHECK(fb["retimed"] == "inside");
         CHECK(fb["join_gems"] == inside[0]["gems"]);
+        CHECK_FALSE(fb.contains("before_end_ms"));
         const json& row = s["chords"][4];
         CHECK(fb["if_end_after_ms"].get<double>() ==
               doctest::Approx(schedule::sqout_fallback_after_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
@@ -710,25 +772,37 @@ TEST_CASE("schedule: the fallback block") {
         const json& fb = p[0]["fallback"];
         CHECK(fb["action"] == "plain");
         CHECK(fb["retimed"] == "plain");
-        CHECK(fb["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
+        CHECK(fb["aim_ms"].get<double>() == 0.0);
         const json& row = s["chords"][4];
         CHECK(fb["if_end_before_ms"].get<double>() ==
               doctest::Approx(schedule::sqin_fallback_before_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
+        // Its band runs from its window's front edge to its own end, and it
+        // aims at the middle.
+        const json& band = p[0]["band"];
+        CHECK(band["from_ms"].get<double>() == doctest::Approx(p[0]["window_from_ms"].get<double>()));
+        CHECK(band["to_ms"].get<double>() == doctest::Approx(p[0]["own_end_ms"].get<double>()));
+        CHECK(row["ms"].get<double>() + p[0]["aim_ms"].get<double>() ==
+              doctest::Approx((band["from_ms"].get<double>() + band["to_ms"].get<double>()) / 2.0));
         // The activation leads it late.
         REQUIRE(presses_of(s, 1, "anchor").size() == 1);
         CHECK(presses_of(s, 1, "anchor")[0]["aim_ms"].get<double>() > 0.0);
     }
 }
 
-TEST_CASE("schedule: last_send_ms is the side less one frame") {
-    // The last send is the latest a press may go and still be judged in its
-    // chord's window: sent then it stays in, 1 ms later it leaves.
+TEST_CASE("schedule: every press row carries its chord's window edges") {
+    // The last judge time is the window's back edge, the latest a press may
+    // be judged and still hit: judged then it stays in, 1 ms later it leaves.
+    // The first is the front edge, the same side the other way.
     const std::vector<schedule::PadChord> one = lone_kick_chord(1000.0, 50.0);
-    const double last = schedule::last_send_ms(one[0].ms, one[0].side_ms);
+    const double last = schedule::last_judge_ms(one[0].ms, one[0].side_ms);
     CHECK(lone_press_inside(one, last));
     CHECK_FALSE(lone_press_inside(one, last + 1.0));
-    // Every press in the file carries its chord's last send, and every chord
-    // of the overfill shape is pressed.
+    const double first = schedule::first_judge_ms(one[0].ms, one[0].side_ms);
+    CHECK(lone_press_inside(one, first));
+    CHECK_FALSE(lone_press_inside(one, first - 1.0));
+    CHECK(one[0].ms - first == doctest::Approx(last - one[0].ms));
+    // Every press in the file carries its chord's two edges and a band inside
+    // them, and every chord of the overfill shape is pressed.
     const Overfill o = overfill();
     const ReplayResult r = replay_path(o.song, {});
     const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules());
@@ -737,9 +811,60 @@ TEST_CASE("schedule: last_send_ms is the side less one frame") {
     CHECK(pressed.size() == o.song.sequence.size());
     for (const json& p : s["presses"]) {
         const json& row = s["chords"][p["chord"].get<size_t>()];
-        CHECK(p["last_send_ms"].get<double>() ==
-              doctest::Approx(schedule::last_send_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
+        const double ms = row["ms"].get<double>();
+        const double side = row["side_ms"].get<double>();
+        CHECK(p["window_from_ms"].get<double>() == doctest::Approx(schedule::first_judge_ms(ms, side)));
+        CHECK(p["window_to_ms"].get<double>() == doctest::Approx(schedule::last_judge_ms(ms, side)));
+        CHECK(p["band"]["from_ms"].get<double>() >= p["window_from_ms"].get<double>() - 1e-9);
+        CHECK(p["band"]["to_ms"].get<double>() <= p["window_to_ms"].get<double>() + 1e-9);
+        CHECK_FALSE(p.contains("last_send_ms"));
     }
+}
+
+TEST_CASE("schedule: a squeeze-in's threshold moves with its window and nothing else") {
+    // The threshold holds no fixed lead and no frame: moving the chord moves
+    // it by the same amount, widening the side moves it earlier by the same
+    // amount, and it is the window's front edge itself.
+    const double base = schedule::sqin_fallback_before_ms(1000.0, 50.0);
+    CHECK(schedule::sqin_fallback_before_ms(1037.5, 50.0) == doctest::Approx(base + 37.5));
+    CHECK(schedule::sqin_fallback_before_ms(1000.0, 61.25) == doctest::Approx(base - 11.25));
+    CHECK(schedule::sqin_fallback_before_ms(1037.5, 61.25) == doctest::Approx(base + 37.5 - 11.25));
+    CHECK(base == schedule::first_judge_ms(1000.0, 50.0));
+    // The squeeze-out's threshold the same way, at the back edge.
+    const double out = schedule::sqout_fallback_after_ms(1000.0, 50.0);
+    CHECK(schedule::sqout_fallback_after_ms(1037.5, 61.25) == doctest::Approx(out + 37.5 + 11.25));
+    CHECK(out == schedule::last_judge_ms(1000.0, 50.0));
+}
+
+TEST_CASE("schedule: the far-press check covers a press's whole band") {
+    // Two Snare chords: chord 0 at 1,000 ms with a 50 ms side, and chord 1 at
+    // 1,080 ms with a 50 ms side. Chord 0 gets no press on the pad, so its
+    // note stays unhit. A press of chord 1 aimed at 1,080 ms is clear of chord
+    // 0's window (which ends at 1,050 ms), but a band reaching back to
+    // 1,040 ms has its far edge inside it, so it is refused. The test fails
+    // if the check reads only the target.
+    const schedule::Pad snare{NoteColor::Red, false};
+    std::vector<schedule::PadChord> two(2);
+    two[0].index = 0;
+    two[0].ms = 1000.0;
+    two[0].side_ms = 50.0;
+    two[0].chart_pads = {snare};
+    two[1].index = 1;
+    two[1].ms = 1080.0;
+    two[1].side_ms = 50.0;
+    two[1].chart_pads = {snare};
+    CHECK_FALSE(schedule::far_press_refusal(two, 1, 1080.0, 1080.0, {snare}).has_value());
+    const std::optional<std::string> r = schedule::far_press_refusal(two, 1, 1040.0, 1080.0, {snare});
+    REQUIRE(r.has_value());
+    CHECK(r->find("chord 0") != std::string::npos);
+    // Once chord 0's own press on the pad is surely judged before the band
+    // starts, the band is clear.
+    two[0].sends = {schedule::PadSend{snare, 1000.0, 1000.0}};
+    CHECK_FALSE(schedule::far_press_refusal(two, 1, 1040.0, 1080.0, {snare}).has_value());
+    // A press of chord 0 that may still be judged as late as the band's
+    // start leaves the earlier note unhit then.
+    two[0].sends = {schedule::PadSend{snare, 990.0, 1040.0}};
+    CHECK(schedule::far_press_refusal(two, 1, 1040.0, 1080.0, {snare}).has_value());
 }
 
 TEST_CASE("schedule: an activation that needs both directions is refused naming both chords") {
@@ -793,15 +918,15 @@ TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused nami
         pair[i].chart_pads = {kick_pad};
     }
     const std::vector<schedule::Pad> kick = {kick_pad};
-    // The first chord pressed 2 ms early: the second pressed 60 ms early
+    // The first chord judged at its own time: the second judged 60 ms early
     // lands inside the first's window after the first is hit, so it passes.
-    pair[0].sends = {{kick_pad, pair[0].ms - 2.0}};
-    const double early_send = pair[1].ms - 60.0;
-    CHECK_FALSE(schedule::far_press_refusal(pair, 1, early_send, kick).has_value());
+    pair[0].sends = {{kick_pad, pair[0].ms, pair[0].ms}};
+    const double early_judge = pair[1].ms - 60.0;
+    CHECK_FALSE(schedule::far_press_refusal(pair, 1, early_judge, early_judge, kick).has_value());
     // The first chord not pressed: the second's press would take it. Refused,
     // naming both chords.
     pair[0].sends.clear();
-    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, early_send, kick);
+    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, early_judge, early_judge, kick);
     REQUIRE(r.has_value());
     CHECK(r->find("chord " + std::to_string(pair[1].index)) != std::string::npos);
     CHECK(r->find("chord " + std::to_string(pair[0].index)) != std::string::npos);
@@ -840,31 +965,38 @@ TEST_CASE("schedule: press groups") {
     CHECK(schedule::press_groups({1, 1}, {}, std::nullopt) == std::vector<std::vector<size_t>>(1));
 
     // In the file: an activation chord of Red, Green and Kick at one
-    // multiplier presses Green (its activation note) first, then the rest
-    // chord_order_gap_ms after.
+    // multiplier presses Green (its activation note) first, then the rest the
+    // frame after. The later group's row names the group it follows and
+    // carries no gap in ms: the same aim and band as its head.
     Overfill o = overfill();
     o.song.sequence[1].chord.add_note(NoteColor::Green);
     o.song.sequence[1].chord.add_note(NoteColor::Kick);
     const ReplayResult r = replay_path(o.song, {});
     const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules());
-    const json& c = s["constants"];
-    const double gap = c["chord_order_gap_ms"].get<double>();
     const std::vector<json> act = presses_of(s, 1, "plain");
     REQUIRE(act.size() == 2);
     const json& gems = s["chords"][1]["gems"];
     CHECK(gems[act[0]["gems"][0].get<size_t>()]["color"] == "Green");
-    CHECK(act[0]["after_ms"].is_null());
-    CHECK(act[0]["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
-    CHECK(act[1]["after_ms"].get<double>() == gap);
-    CHECK(act[1]["aim_ms"].get<double>() == doctest::Approx(act[0]["aim_ms"].get<double>() + gap));
-    // The two-gem squeeze-out: the inside gem sp_end_lead_ms before the end
-    // the late gem's aim assumes, the late gem last.
+    CHECK(act[0]["group"].get<size_t>() == 0);
+    CHECK(act[0]["follows"].is_null());
+    CHECK(act[0]["aim_ms"].get<double>() == 0.0);
+    CHECK(act[1]["group"].get<size_t>() == 1);
+    CHECK(act[1]["follows"].get<size_t>() == 0);
+    CHECK(act[1]["aim_ms"].get<double>() == act[0]["aim_ms"].get<double>());
+    CHECK(act[1]["band"] == act[0]["band"]);
+    CHECK_FALSE(act[1].contains("after_ms"));
+    // The two-gem squeeze-out: the inside gem judged by the end the late
+    // gem's band starts at, aimed at the middle of its end-band, the late gem
+    // last.
     const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
     const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
     REQUIRE(inside.size() == 1);
     REQUIRE(late.size() == 1);
+    CHECK(inside[0]["band"]["to_ms"].get<double>() == doctest::Approx(late[0]["aim_end_ms"].get<double>()));
+    CHECK(inside[0]["band"]["from_ms"].get<double>() == doctest::Approx(inside[0]["window_from_ms"].get<double>()));
     CHECK(s["chords"][4]["ms"].get<double>() + inside[0]["aim_ms"].get<double>() ==
-          doctest::Approx(late[0]["aim_end_ms"].get<double>() - c["sp_end_lead_ms"].get<double>()));
+          doctest::Approx((inside[0]["band"]["from_ms"].get<double>() + inside[0]["band"]["to_ms"].get<double>()) /
+                          2.0));
     size_t inside_at = 0, late_at = 0;
     for (size_t k = 0; k < s["presses"].size(); ++k) {
         const json& p = s["presses"][k];
@@ -874,10 +1006,10 @@ TEST_CASE("schedule: press groups") {
     CHECK(inside_at < late_at);
 }
 
-TEST_CASE("schedule: the planned end counts one frame") {
+TEST_CASE("schedule: a plain press plans the end as stored") {
     // A plain activation: the read after its chord is the step's stored end
-    // (tick 3000), planned later by the step's late scale times one frame
-    // (judge_early_ms) less the plain press's lead (press_lead_ms).
+    // (tick 3000). The press is judged at its chord's own time, so the end is
+    // planned where it is stored, with no frame or lead in it.
     const Song song = plain_song({0, 768, 1536});
     Activation act;
     act.timecode = song.timecode(768);
@@ -885,14 +1017,10 @@ TEST_CASE("schedule: the planned end counts one frame") {
     act.transfer_post = TransferScale{1.0, 1.0};
     const ReplayResult r = replay_path(song, {});
     const json s = schedule::schedule_json(song, {&act}, r, core::default_rules());
-    const json& c = s["constants"];
     const json& reads = s["chords"][1]["reads"];
     REQUIRE(reads.size() == 1);
-    const std::optional<TransferScale> scale = step_transfer_scale(act, 0, song.timing());
-    REQUIRE(scale.has_value());
     CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(song.timecode(act.sp_end_steps.front().end_tick).ms()));
-    CHECK(reads[0]["planned_end_ms"].get<double>() - reads[0]["stored_end_ms"].get<double>() ==
-          doctest::Approx(scale->late * (c["judge_early_ms"].get<double>() - c["press_lead_ms"].get<double>())));
+    CHECK(reads[0]["planned_end_ms"].get<double>() == reads[0]["stored_end_ms"].get<double>());
 }
 
 namespace {
@@ -922,17 +1050,16 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     // moving later. Its squeeze-out mirror, the same sides and gap on the
     // other side of the end, goes early. Pitch Dark's own squeeze-ins are
     // checked the same way in its test further down.
-    const json c = schedule_constants();
     const schedule::SqueezeGeometry g = hand_built_squeeze_in();
     const schedule::SqueezeSplit s = schedule::split_squeeze(g);
-    check_equal_room_split(g, s, c);
+    check_equal_room_split(g, s);
     CHECK(s.anchor_aim_ms > 0.0);
-    CHECK(s.feasible);
+    CHECK(s.anchor_room_ms > 0.0);
     schedule::SqueezeGeometry mirror = g;
     mirror.anchor_press = Press::Early;
     mirror.squeeze_ms = g.end_ms - (g.squeeze_ms - g.end_ms);
     const schedule::SqueezeSplit m = schedule::split_squeeze(mirror);
-    check_equal_room_split(mirror, m, c);
+    check_equal_room_split(mirror, m);
     CHECK(m.anchor_aim_ms < 0.0);
 }
 
@@ -1102,7 +1229,7 @@ TEST_CASE("schedule: the late press holds sqout_late_notes") {
     CHECK(late_whole[0]["aim_ms"] == late_first[0]["aim_ms"]);
 }
 
-TEST_CASE("schedule: a whole_chord chord with no inside group has an empty inside list and an empty join_gems") {
+TEST_CASE("schedule: a squeeze-out with no inside group gives its late gem an end-band fallback") {
     // Under whole_chord, the overfill's two-gem chord 4 ...
     const Overfill o = overfill();
     const json whole = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}),
@@ -1118,10 +1245,18 @@ TEST_CASE("schedule: a whole_chord chord with no inside group has an empty insid
         CHECK(presses_of(*s, 4, "squeeze_out_inside").empty());
         const std::vector<json> late = presses_of(*s, 4, "squeeze_out_late");
         REQUIRE(late.size() == 1);
+        // With nothing to join, the late gem's fallback is an end-band of its
+        // own: from its window's front edge to its own end, aimed at the
+        // middle, paid inside. It holds no before_end_ms.
         const json& fb = late[0]["fallback"];
-        CHECK(fb["action"] == "join_group");
-        CHECK(fb["join_gems"].is_array());
-        CHECK(fb["join_gems"].empty());
+        CHECK(fb["action"] == "end_band");
+        CHECK(fb["retimed"] == "inside");
+        CHECK_FALSE(fb.contains("join_gems"));
+        CHECK_FALSE(fb.contains("before_end_ms"));
+        CHECK(fb["band"]["from_ms"].get<double>() == doctest::Approx(late[0]["window_from_ms"].get<double>()));
+        CHECK(fb["band"]["to_ms"].get<double>() == doctest::Approx(late[0]["own_end_ms"].get<double>()));
+        CHECK((*s)["chords"][4]["ms"].get<double>() + fb["aim_ms"].get<double>() ==
+              doctest::Approx((fb["band"]["from_ms"].get<double>() + fb["band"]["to_ms"].get<double>()) / 2.0));
     }
     CHECK(presses_of(one_gem, 4, "squeeze_out_late")[0]["gems"].get<std::vector<size_t>>() ==
           std::vector<size_t>{0});
@@ -1217,46 +1352,43 @@ std::vector<schedule::PadChord> pad_row(const std::vector<double>& ms, const sch
 
 }  // namespace
 
-TEST_CASE("schedule: one frame everywhere") {
-    // The file's constants: a press is judged one frame after it is sent
-    // (judge_early_ms is one frame_ms), and every rule below reads that one
-    // frame.
-    const json c = schedule_constants();
-    const double frame = c["frame_ms"].get<double>();
-    const double judge = c["judge_early_ms"].get<double>();
-    REQUIRE(judge == frame);
-    const double sp_out_lag = c["sp_out_lag_ms"].get<double>();
-    const double sp_end_lead = c["sp_end_lead_ms"].get<double>();
+TEST_CASE("schedule: every rule reads judge times, with no frame in them") {
     // One chord at chord_ms with a side of side_ms.
     const double chord_ms = 1000.0;
     const double side_ms = 50.0;
-
-    // The latest send is the side's edge less the frame it is judged after.
-    const double latest = chord_ms + side_ms - judge;
-    CHECK(schedule::last_send_ms(chord_ms, side_ms) == doctest::Approx(latest));
-    // A press aimed one frame inside the edge is judged on it: no room left;
-    // one ms earlier leaves one ms.
-    CHECK(schedule::press_room_ms(side_ms - judge, side_ms) == doctest::Approx(0.0));
-    CHECK(schedule::press_room_ms(side_ms - judge - 1.0, side_ms) == doctest::Approx(1.0));
-    // An early aim is measured from the aim itself: one on the early edge
-    // leaves none.
+    // A press aimed on the back edge is judged on it: no room left; one ms
+    // inside leaves one ms. The same on the front edge.
+    CHECK(schedule::press_room_ms(side_ms, side_ms) == doctest::Approx(0.0));
+    CHECK(schedule::press_room_ms(side_ms - 1.0, side_ms) == doctest::Approx(1.0));
     CHECK(schedule::press_room_ms(-side_ms, side_ms) == doctest::Approx(0.0));
-    // The far-press check: sent at the latest send it is judged on the edge,
-    // inside (TM-27: equal is inside); half a ms later it leaves its window.
+    // The far-press check: judged on the back edge it is inside (TM-27:
+    // equal is inside); half a ms later it leaves its window, and a band
+    // whose upper edge leaves it is refused the same way.
+    const double latest = schedule::last_judge_ms(chord_ms, side_ms);
     const std::vector<schedule::PadChord> one = lone_kick_chord(chord_ms, side_ms);
     CHECK(lone_press_inside(one, latest));
-    const std::optional<std::string> out = schedule::far_press_refusal(one, 0, latest + 0.5, one[0].chart_pads);
+    const std::optional<std::string> out =
+        schedule::far_press_refusal(one, 0, latest + 0.5, latest + 0.5, one[0].chart_pads);
     REQUIRE(out.has_value());
     CHECK(out->find("leaves its own window") != std::string::npos);
-    // The squeeze-out fallback: the late press goes sp_out_lag_ms after its
-    // end and is judged one frame later, so the latest end is the edge less
-    // both.
-    CHECK(schedule::sqout_fallback_after_ms(chord_ms, side_ms) ==
-          doctest::Approx(chord_ms + side_ms - sp_out_lag - judge));
-    // The squeeze-in fallback: the press goes sp_end_lead_ms before its end,
-    // held one frame further inside the early edge.
-    CHECK(schedule::sqin_fallback_before_ms(chord_ms, side_ms) ==
-          doctest::Approx(chord_ms - side_ms + sp_end_lead + judge));
+    CHECK(schedule::far_press_refusal(one, 0, chord_ms, latest + 0.5, one[0].chart_pads).has_value());
+    // The three bands: a window band is the whole window, an end-band runs
+    // from the front edge to the end with the end inside, and the late gem's
+    // runs from its end, strict, to the back edge.
+    const schedule::Band w = schedule::window_band(chord_ms, side_ms);
+    CHECK(w.from_ms == chord_ms - side_ms);
+    CHECK(w.to_ms == chord_ms + side_ms);
+    CHECK_FALSE(w.from_strict);
+    const schedule::Band e = schedule::end_band(chord_ms, side_ms, 1010.0);
+    CHECK(e.from_ms == chord_ms - side_ms);
+    CHECK(e.to_ms == 1010.0);
+    CHECK_FALSE(e.from_strict);
+    CHECK(schedule::band_middle_ms(e) == doctest::Approx(980.0));
+    const schedule::Band l = schedule::late_gem_band(chord_ms, side_ms, 1010.0);
+    CHECK(l.from_ms == 1010.0);
+    CHECK(l.to_ms == chord_ms + side_ms);
+    CHECK(l.from_strict);
+    CHECK(schedule::band_middle_ms(l) == doctest::Approx(1030.0));
 }
 
 TEST_CASE("schedule: far press follows TM-50") {
@@ -1264,31 +1396,33 @@ TEST_CASE("schedule: far press follows TM-50") {
     const schedule::Pad snare{NoteColor::Red, false};
     std::vector<schedule::PadChord> two = pad_row({1000.0, 1100.0}, snare, 20);
 
-    // Chord 20 sent 20 ms late (1,020), chord 21 sent 50 ms early (1,050),
-    // inside chord 20's window: 20 is hit first, so neither is refused.
-    two[0].sends = {{snare, 1020.0}};
-    two[1].sends = {{snare, 1050.0}};
-    CHECK_FALSE(schedule::far_press_refusal(two, 0, 1020.0, {snare}).has_value());
-    CHECK_FALSE(schedule::far_press_refusal(two, 1, 1050.0, {snare}).has_value());
+    // Chord 20 judged 20 ms late (1,020), chord 21 judged 50 ms early
+    // (1,050), inside chord 20's window: 20 is hit first, so neither is
+    // refused.
+    two[0].sends = {{snare, 1020.0, 1020.0}};
+    two[1].sends = {{snare, 1050.0, 1050.0}};
+    CHECK_FALSE(schedule::far_press_refusal(two, 0, 1020.0, 1020.0, {snare}).has_value());
+    CHECK_FALSE(schedule::far_press_refusal(two, 1, 1050.0, 1050.0, {snare}).has_value());
 
-    // The same with chord 20's press sent after chord 21's: 21's press lands
-    // while 20 is unhit, and the game gives it to 20. Refused, naming both.
-    two[0].sends = {{snare, 1060.0}};
-    const std::optional<std::string> later = schedule::far_press_refusal(two, 1, 1050.0, {snare});
+    // The same with chord 20's press judged after chord 21's: 21's press
+    // lands while 20 is unhit, and the game gives it to 20. Refused, naming
+    // both.
+    two[0].sends = {{snare, 1060.0, 1060.0}};
+    const std::optional<std::string> later = schedule::far_press_refusal(two, 1, 1050.0, 1050.0, {snare});
     REQUIRE(later.has_value());
     CHECK(later->find("chord 21") != std::string::npos);
     CHECK(later->find("chord 20") != std::string::npos);
     CHECK(later->find("still unhit") != std::string::npos);
 
-    // Sent at the same clock, 20 is still unhit when 21's press lands.
-    two[0].sends = {{snare, 1050.0}};
-    CHECK(schedule::far_press_refusal(two, 1, 1050.0, {snare}).has_value());
+    // Judged at the same time, 20 is still unhit when 21's press lands.
+    two[0].sends = {{snare, 1050.0, 1050.0}};
+    CHECK(schedule::far_press_refusal(two, 1, 1050.0, 1050.0, {snare}).has_value());
 
     // A press inside a later same-pad note's window when that note gets no
-    // press: chord 20 sent at 1,060 is judged at 1,063, inside chord 21's
-    // window (from 1,023.43). No refusal: the later-note branch is gone.
+    // press: chord 20 judged at 1,063, inside chord 21's window (from
+    // 1,023.43). No refusal: the later-note branch is gone.
     two[1].sends.clear();
-    CHECK_FALSE(schedule::far_press_refusal(two, 0, 1060.0, {snare}).has_value());
+    CHECK_FALSE(schedule::far_press_refusal(two, 0, 1063.0, 1063.0, {snare}).has_value());
 }
 
 // Each skip the schedule can make has its own test case below, so a failure
@@ -1593,7 +1727,7 @@ TEST_CASE("schedule: the first press group is the activation note") {
         const json& gem = s["chords"][1]["gems"][act[0]["gems"][0].get<size_t>()];
         CHECK(gem["color"] == "Blue");
         CHECK(gem["cymbal"].get<bool>());
-        CHECK(act[0]["after_ms"].is_null());
+        CHECK(act[0]["follows"].is_null());
     }
 
     // On every corpus path: each activation chord's first press holds its
@@ -1745,13 +1879,10 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
     const json& sch = pd.sch;
     INFO(sch["refusals"].dump());
     const SongTiming& timing = pd.song->timing();
-    const json& c = sch["constants"];
-    const double plain_judged = c["judge_early_ms"].get<double>() - c["press_lead_ms"].get<double>();
 
     // Every read is priced at its own step's scale (step_transfer_scale of
-    // the step it names), and a read after a plain-pressed chord is planned
-    // that scale's late side times one frame less the plain lead later than
-    // its stored end.
+    // the step it names), and a read after a plain-pressed chord, judged at
+    // its own time, is planned at its stored end.
     std::set<int> led;
     for (const json& p : sch["presses"])
         if (p["rule"] == "anchor") led.insert(p["chord"].get<int>());
@@ -1767,8 +1898,7 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
             CHECK(r["stored_end_ms"].get<double>() ==
                   doctest::Approx(timing.timecode(act.sp_end_steps.at(step).end_tick).ms()));
             if (led.count(static_cast<int>(x)) == 0) {
-                CHECK(r["planned_end_ms"].get<double>() - r["stored_end_ms"].get<double>() ==
-                      doctest::Approx(own->late * plain_judged));
+                CHECK(r["planned_end_ms"].get<double>() == r["stored_end_ms"].get<double>());
             }
         }
     }
@@ -1812,17 +1942,19 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
 
     // Pitch Dark's timed squeezes keep the equal-room split: where an anchor
     // leads one squeeze alone, both rooms are equal, each is press_room_ms of
-    // its aim and chord side, a squeeze-in's anchor goes late and a
-    // squeeze-out's early, and the squeeze is feasible exactly when both
-    // rooms clear room_margin_ms.
+    // its aim (the squeeze press's at the end it must clear) and chord side,
+    // a squeeze-in's anchor goes late and a squeeze-out's early, and the
+    // squeeze is feasible exactly when Hydra's safe sum for it is not short.
     std::map<int, int> squeezes_on;
     for (const json& a : sch["activations"])
         for (const json& q : a["squeezes"])
             if (q.contains("anchor_room_ms")) ++squeezes_on[q["anchor_chord"].get<int>()];
-    const double margin = c["room_margin_ms"].get<double>();
+    const ChordTimes pd_chords = chord_times(*pd.song);
     int squeeze_ins = 0;
-    for (const json& a : sch["activations"]) {
-        for (const json& q : a["squeezes"]) {
+    for (size_t ai = 0; ai < sch["activations"].size(); ++ai) {
+        const json& a = sch["activations"][ai];
+        for (size_t k = 0; k < a["squeezes"].size(); ++k) {
+            const json& q = a["squeezes"][k];
             if (!q.contains("anchor_room_ms") || squeezes_on[q["anchor_chord"].get<int>()] != 1) continue;
             INFO("the squeeze on chord " << q["chord"].dump());
             const bool is_in = q["kind"] == "SqIn";
@@ -1834,9 +1966,13 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
             const double squeeze_room = q["squeeze_room_ms"].get<double>();
             CHECK((is_in ? anchor_aim > 0.0 : anchor_aim < 0.0));
             CHECK(anchor_room == doctest::Approx(schedule::press_room_ms(anchor_aim, anchor_side)));
-            CHECK(squeeze_room == doctest::Approx(schedule::press_room_ms(q["squeeze_aim_ms"].get<double>(), squeeze_side)));
+            const double squeeze_ms = sch["chords"][q["chord"].get<size_t>()]["ms"].get<double>();
+            CHECK(squeeze_room == doctest::Approx(schedule::press_room_ms(q["aim_end_ms"].get<double>() - squeeze_ms,
+                                                                         squeeze_side)));
             CHECK(anchor_room == doctest::Approx(squeeze_room));
-            CHECK(q["feasible"].get<bool>() == (anchor_room >= margin && squeeze_room >= margin));
+            const std::optional<WindowEnds> ends = squeeze_window_ends(*pd.acts.at(ai), k, pd_chords);
+            REQUIRE(ends.has_value());
+            CHECK(q["feasible"].get<bool>() == !ends->is_short());
         }
     }
     CHECK(squeeze_ins > 0);
