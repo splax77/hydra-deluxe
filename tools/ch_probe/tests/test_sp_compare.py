@@ -880,11 +880,22 @@ class PressReachTest(unittest.TestCase):
         rises = sp_compare.phrase_rises(rows, AMOUNT)
         self.assertEqual(len(rises), 1, rises)
         rise = rises[0]
-        # The rise shows after the chord's ms and after its last press.
         chord = next(c for c in _fixture_chords(_MOUTHS[0]) if c["index"] == 740)
         self.assertTrue(chord["is_sp_phrase_end"])
         self.assertGreater(rise.ms, chord["ms"])
-        self.assertGreater(rise.ms, reach[740].latest_ms)
+        # The run played an older schedule of the chart, so its presses are
+        # not at this schedule's judge targets. What both share is the bands:
+        # the first press lands in a band that closes at the end, the second
+        # in one that opens there. The rise shows past the first band and
+        # inside the second, so the second press is the one credited.
+        first, second = [p for p in play_chart.press_plan(
+            play_chart.load_schedule(_MOUTHS[1]).chords) if p.index == 740]
+        self.assertEqual(first.band["to_ms"], second.band["from_ms"])
+        self.assertTrue(second.band["from_strict"])
+        self.assertGreater(rise.ms, second.band["from_ms"])
+        self.assertLess(rise.ms, second.band["to_ms"])
+        # And it lies in the stretch sp_compare searches for chord 740.
+        self.assertGreaterEqual(rise.ms, reach[740].earliest_ms)
         self.assertLess(rise.ms, max(chord["ms"], reach[740].latest_ms)
                         + sp_compare.EVENT_WINDOW_MS)
         risen = next(r for r in rows if sp_compare._ms(r) == rise.ms)
