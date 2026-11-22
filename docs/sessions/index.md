@@ -1,6 +1,6 @@
 # Session index
 
-10 sessions are kept locally and have no line here.
+11 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -205,7 +205,7 @@
 - 2026-10-06 f2df533b Hydra GitHub release (2026-10-06) | release, installer, review, docs, hooks | Published v2.1.0 on GitHub as the Latest release, with HydraDeluxe-2.1.0-setup.exe (33 MB) attached.
 - 2026-10-06 6dce3c94 Chart scanning/analysis optimization research (2026-10-06) | performance, scan, analyze, library, agents | Ended with a full report and a handoff, no real code changed, and the scratchpad cleaned up.
 - 2026-10-06 fa048da4 Chart scanning/analysis optimization research (fork) (2026-10-06) | performance, scan, analyze, path, agents | Ended with the assistant's question unanswered: it asked whether to resume the four experiment agents that had stopped before reporting.
-- 2026-10-07 a71a472f C++ optimization best practices (2026-10-07) | performance, docs, agents | Ended with the findings written as a handoff and a message sent to the other perf session. No code was changed.
+- 2026-10-07 a71a472f C++ optimization best practices (2026-10-07) | performance, docs, agents | Ended with the findings written as a handoff, and a message sent to the other perf session. No code was changed.
 - 2026-10-07 b610ce91 C++ optimization research leads (2026-10-07) | performance, library, scan | Ended after the findings reached the perf session and the scratch folders were deleted. Nothing in the repo was changed.
 - 2026-10-07 7e187b36 Performance exploration handoff continuation (2026-10-07) | performance, planning, docs, agents | Ended with a written plan and a handoff for the next session, both committed on main as docs only; nothing was built or run.
 - 2026-10-07 e26f30dd Performance speedups plan workflow (2026-10-07) | performance, agents, scan, tests, docs | The session ended after wave 1 was merged to main as 92bd322 (not pushed), and a handoff for wave 2 and the follow-ups was written as f3882e7.
@@ -217,7 +217,7 @@
 - 2026-10-07 6a1d6612 Stop stale link state breaking Hydra builds (2026-10-07) | performance, installer, tests, docs, agents | The session ended with the fix committed on branch claude/ltcg-repro (commits 522be91 and 0fbc280), not yet merged to main.
 - 2026-10-07 3ea87589 Find why the panel-split UI test flakes (2026-10-07) | tests, review, agents, analyze, docs | The session ended with the panel-split flake fixed and committed to main as 0a74091, not pushed. A fresh Sonnet reviewer checked it for derive-once and found nothing.
 - 2026-10-07 c0ecc13a Storage open items handoff (2026-10-07) | library, report-table, scan, review, tests | The session ended with every leftover finding from the handoff merged to main, and the full suite passing on the merged result. Nothing was pushed.
-- 2026-10-07 7f79ddc1 Find what a whole-library --redo waits on (2026-10-07) | performance, library, analyze | Ended while writing the report: the transcript stops at the line that says the report's write-up is starting, so whether the report file was written is not known.
+- 2026-10-07 7f79ddc1 Find what a whole-library --redo waits on (2026-10-07) | performance, library, analyze | Ended while writing the report: the transcript stops at the line that says the write-up of the redo-bottleneck report is starting, so whether that file was written is not known.
 - 2026-10-07 04f776a5 Memory audit continuation (2026-10-07) | memory, performance, library, preview, agents | The session ended when the user asked it to stop, with a handoff committed on main as 6795a07.
 - 2026-10-07 0acc8de6 test_search.cpp's combo walk reads the chord table (2026-10-07) | tests, review, squeeze | Merged the change to main as 2460cc0. Not pushed.
 - 2026-10-07 d1d2500a Global rules: limit library testing (2026-10-07) | tests, agents, docs, memory | The session ended with the rule written into the project rules, the agent preamble, the main-session posture file and memory. None of it was committed.
@@ -235,7 +235,7 @@
 - 2026-10-08 e40fb55d Windows Wave 2 report handoff (2026-10-08) | report-table, text-sort-order, batch-counts, agents, tests, review | The session ended on 2026-10-09 at 02:24 UTC, with wave 3 merged into main, a handoff committed as c21acc56, and nothing pushed.
 - 2026-10-09 6c19d0ef Note shuffle mechanics in Clone Hero (2026-10-09) | clone-hero, chart, lane, video, agents | The session ended with a private artifact that explains the Note Shuffle algorithm, republished after the user asked where its numbers came from.
 - 2026-10-09 cfb6f1fa Plan Note Shuffle support in Hydra (2026-10-09) | clone-hero, planning, docs, agents | The session ended with the design plan and a handoff both committed on main, and no code changed.
-- 2026-10-09 57484e36 Windows Wave 3 handoff note (2026-10-09) | report-table, performance, review, docs | The session stopped at 02:51 UTC when the user asked for a handoff. The new handoff was committed as 12360f92.
+- 2026-10-09 57484e36 Windows Wave 3 handoff note (2026-10-09) | report-table, performance, review, docs | The session stopped at 02:51 UTC when the user asked for a handoff. The new handoff is committed as 12360f92.
 - 2026-10-09 3a5029e4 AI-generated document quality issues (2026-10-09) | docs, review, planning, agents, clone-hero | The session ended with all ten review findings fixed on the Note Shuffle page and republished at the same link, after a fresh reviewer re-checked the fixes. The page's Python still matches the video on 22 of 22 ticks.
 - 2026-10-09 5ecb5b0e Plan the fresh-review gate for published documents (2026-10-09) | review, planning, docs, hooks | Ended with the gate plan written to docs/superpowers/plans/2026-10-08-doc-review-gate.md, after a manual trial review; nothing was built and nothing was committed.
 - 2026-10-09 987caf72 Doc review gate plan (2026-10-09) | hooks, review, docs, agents, planning | Ended with the doc-review gate live on main: the gate landed as 1521aa2b, and the plan update and research doc landed as 6dadf0de, both pushed.
@@ -567,8 +567,14 @@
 - 2026-11-21 c9413f4f Wave17 handoff test fix (2026-11-21) | agents, review, tests, hooks, planning | The session ended after wave 17 with 19 of its 20 chunks merged, and C271 carried over to wave 18.
 - 2026-11-21 d7762ae5 Script-first recheck T3 handoff (2026-11-21) | tests, planning, review, agents, docs | The session ended with the update-check rewrite plan reviewed and committed on `claude/real-inputs-plan`, and a start handoff written on `claude/real-inputs-start-handoff`, with no build started.
 - 2026-11-21 b7badf92 Wave18 handoff test fix (2026-11-21) | tests, planning, docs, review, agents | The session ended with C271's last row finished and reviewed, and both handoffs written and committed; nothing was pushed.
-- 2026-11-21 16950a03 Real inputs start handoff (2026-11-21) | tests, agents, review, planning | The session ended with all three waves of the real-inputs update plan merged into local `main` (last merge d6510f8), and nothing pushed.
+- 2026-11-21 16950a03 Real inputs start handoff (2026-11-21) | tests, agents, review, planning | The session ended with all three waves of the real-inputs update plan merged into local `main` (last merge d6510f8), and nothing pushed. [stale]
 - 2026-11-21 069082c4 Wave 18 start handoff test (2026-11-21) | tests, agents, review, planning, docs | The session ended with wave 18 merged, the user's three test answers merged, and a handoff written to close the test-fix plan; nothing was pushed.
+- 2026-11-21 e3d99f2b Plan other work handoff test (2026-11-21) | tests, planning, agents, review, hooks, path-builder | The session ended with the test-fix plan closed out: its work is on main and its plan files left the repo in one merge (c38f6c898), but exits.md is still unsigned.
+- 2026-11-21 63088e3d Test fix plan close handoff (2026-11-21) | clone-hero, generated-fill, planning, review, tests, release | The session ended with the 1.0 fill change merged into main at d9010e129, with the follow-up work merged, and with a handoff written for what remained.
+- 2026-11-21 5bdf9eef CI runs failing (2026-11-21) | ci, tests, review, agents, hooks | The session ended with both fixes merged into local main, and the question of pushing main to GitHub still unanswered.
+- 2026-11-21 9f61bc5c Chapter 10 fills and followups handoff (2026-11-21) | docs, agents, hooks, review, tests | The session ended with main pushed to GitHub, with the handoff rule, the pointer check and the citation cleanup all in.
+- 2026-11-21 76ea2f48 Understanding the 569 number (2026-11-21) | docs, tests, review, planning | The session ended with the audit JSON removed from main, and nothing pushed to GitHub.
+- 2026-11-21 02ed5228 Release 3.2.0 (2026-11-21) | release, installer, tests, review, agents | The 3.2.0 release was merged, built, signed and published, and the build-step fix was pushed, all in one session.
 
 ## Proposed tags
 
