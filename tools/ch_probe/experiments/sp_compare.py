@@ -621,7 +621,13 @@ def _check_multipliers(report: Report, rows: list, chords: list,
         report.note(f"Multiplier not compared on {skipped_before} chords with no "
                     f"watcher row between them and the next chord")
     if stopped_at is not None:
+        parted = _landed_chord(chords, [c["ms"] for c in chords], parted_ms, reach)
+        where = (f"chord {parted['index']}" if parted is not None
+                 else "no chord")
         report.note(f"Multiplier not compared from chord {stopped_at['index']} on: "
+                    f"each chord's multiplier is read at the next chord's time, and "
+                    f"from chord {stopped_at['index']}'s reading on, the game is off "
+                    f"the path. It parts at {where}: "
                     f"the game's activations part from the path at {format_ms(parted_ms)}")
 
 
