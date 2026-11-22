@@ -1298,6 +1298,14 @@ class FrameProbeTest(Rig):
         self.assertTrue(self.line(lines, "mark order").startswith("mark order: not stated, 1 "))
         self.assertIn("mark order (1 running numbers held twice)", lines[-1])
 
+    def test_a_mark_on_an_earlier_frame_than_the_mark_before_it_gives_no_order(self):
+        reply = self.probe_reply()
+        reply["engine"][5]["frame"] = reply["engine"][2]["frame"]
+        lines = self.probe(reply)
+        self.assertTrue(self.line(lines, "mark order").startswith(
+            "mark order: not stated, 1 marks sit on an earlier frame"))
+        self.assertIn("mark order (1 marks out of frame order)", lines[-1])
+
     def test_a_frame_with_two_engine_marks_is_said_and_is_not_one_order(self):
         two = (self.EVENT, self.ENGINE, self.ENGINE, self.UPDATE)
         lines = self.probe(self.probe_reply(orders={4: two}))

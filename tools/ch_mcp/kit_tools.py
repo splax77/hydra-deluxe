@@ -972,6 +972,11 @@ def frame_probe_mark_lines(reply: dict, write_at: str, down: Any,
     marks = _probe_marks(reply)
     seqs = [seq for seq, _f, _k, _r in marks]
     twice = sorted({s for s in seqs if seqs.count(s) > 1})
+    # The running number counts up through the run, so by it the frames never
+    # go back; a mark that does has a wrong frame or a wrong number.
+    by_seq = sorted(marks, key=lambda m: m[0])
+    backwards = [later[0] for earlier, later in zip(by_seq, by_seq[1:])
+                 if later[1] < earlier[1]]
     by_frame: Dict[Any, List[tuple]] = {}
     for mark in marks:
         by_frame.setdefault(mark[1], []).append(mark)
@@ -990,6 +995,11 @@ def frame_probe_mark_lines(reply: dict, write_at: str, down: Any,
         lines.append(f"mark order: not stated, {len(twice)} running numbers are held by "
                      f"more than one mark (first: {twice[0]})")
         failed.append(f"mark order ({len(twice)} running numbers held twice)")
+    elif backwards:
+        lines.append(f"mark order: not stated, {len(backwards)} marks sit on an earlier frame "
+                     f"than the mark before them by running number (first: running number "
+                     f"{backwards[0]})")
+        failed.append(f"mark order ({len(backwards)} marks out of frame order)")
     elif lacking:
         f, kind = lacking[0]
         lines.append(f"mark order: not stated, {len(lacking)} of {len(frames)} frames lack "
