@@ -481,9 +481,22 @@ For each fill the path passes over it sends every gem but the fill's
 activation note. It replays the path the way `score` does and writes one JSON
 file. For every chord the file gives its window side: the game's own hit window for that note at
 100% speed, which the gaps to the chords either side set
-(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). For every press it
-gives the aim, how far early or late, the latest song clock at which it may
-still be sent, and the Star Power end it assumes. Each read the player makes
+(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). Every press time in
+the file is the time the game should judge the press, not the time to send
+it. When to send a press so the game judges it then is the player's job,
+from the frame step it measures in the run, because the frame length is a
+game setting. For every press the file gives its aim (how far early or late
+of its chord the press should be judged), its `band` (where it may be judged,
+`from_ms` to `to_ms`), its chord's window edges (`window_from_ms`,
+`window_to_ms`), its `group` and the group it `follows`, and the Star Power
+end it assumes. A plain press aims at its chord's own time, and its band is
+its whole window. A press that must beat a Star Power end (a chord on a
+final end, a squeeze-out's inside groups, a chord paid inside before an end
+that moved earlier, and a squeeze-in) has a band from its window's front
+edge to that end, and aims at the middle. A squeeze-out's late gem has a
+band from just after its own end to its window's back edge, and aims at the
+middle too. A later group of one chord shares its head's aim and band and
+goes down the frame after the group it follows. Each read the player makes
 of the game's end, after a chord the file names, says which SP-end step it
 sees (`step`), that step's ratio (`ratio`, ms of end moved per ms of press,
 from `step_transfer_scale` in src/core/squeeze_rating.cpp) and the end
@@ -499,14 +512,18 @@ src/core/squeeze_rating.cpp (a side with no tempo or time signature change
 past it is null). A press with no end carries null in each. The schedule
 refuses an anchor lead that would move the read end out of its steady span,
 as it already refuses one that moves the anchor or the own end out of
-theirs. For every squeeze it names the chord whose press moves the end, splits the room between the two presses,
-says whether the game can make it at 100% speed, and writes what the player
-should do if the end the game really stores crosses a threshold. Each
+theirs. For every squeeze it names the chord whose press moves the end, splits the room equally between the two presses,
+writes Hydra's safe sum for it (`safe_ms`, from `squeeze_window_ends` in
+src/core/note_window.cpp, the same sum the Dynamic Hit Window row prints) and
+says it is `feasible` exactly when that sum is not short. It also writes what
+the player should do if the end the game really stores crosses a threshold:
+the edge of the chord's window where the press's band runs out. Each
 threshold is written as a read, the read at which the own end reaches it. A path it
 cannot plan comes back as a list of refusals in the file, each in plain words.
-The window formula and every timing constant the plan uses live once, in
-tools/replay_schedule.cpp. No screen reads that code: Hydra's own judging keeps
-the fixed 85 ms window (`kHitWindowMs`).
+The schedule keeps no millisecond constant of its own; its `constants` are
+the game's window constants from src/core/note_window.h. No screen reads the
+schedule's code: Hydra's own judging keeps the fixed 85 ms window
+(`kHitWindowMs`).
 `hydra_replay selfcheck` is what keeps the numbers honest: it re-analyzes
 every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single
