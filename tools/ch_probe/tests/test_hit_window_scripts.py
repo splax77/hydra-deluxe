@@ -1,8 +1,8 @@
 """Tests for the pure parts of watch_window.py and live.py.
 
 No game needed: real watcher and press logs copied from earlier Clone Hero
-runs under testdata/ch_runs, read back on the real timer where a clock is
-needed, the real probe-song layout from probe_songs.py, and synthetic samples
+runs under testdata/ch_runs, read back one row per read on the recording's
+own timer where a clock is needed, the real probe-song layout from probe_songs.py, and synthetic samples
 where no real run recorded the field.
 """
 
@@ -61,10 +61,11 @@ def recorded_notes(path: str) -> list[dict]:
 
 def recorded_song_clock(path: str):
     """A live.SongClock over the song clock a real watcher logged, read back
-    at the recording's own pace on the real timer (test_play_chart's
-    _RecordedGame). A read past the recording's end fails the test at once."""
+    one row per read on the recording's own timer (test_play_chart's
+    _RecordedGame, whose `now` and `sleep` a wait on it takes). A read past
+    the recording's end fails the test at once."""
     game = _play_chart_tests._RecordedGame(path)
-    return live.SongClock(lambda: game.read()[0]), game
+    return live.SongClock(lambda: game.read()[0], now=game.now), game
 
 
 def window_map_notes() -> list[dict]:
@@ -111,9 +112,9 @@ class LiveHelpersTest(unittest.TestCase):
         # end of the song, so a wait for a moment the clock never reached
         # must stop with ClockFrozen before the recording runs out. The wait
         # reads the recorded clock raw: SongClock's fill-in would carry the
-        # estimate past a target this close. The target sits inside
-        # wait_until's spin range, so it reads without sleeping and sees the
-        # last move as soon as the recording makes it.
+        # estimate past a target this close. Each read is the next recorded
+        # row, on the recording's own wall times, so the wait sees the last
+        # move at the time the watcher logged it.
         rows = load_watch_rows(FROZEN_TAIL_CSV)
         last_move = max(i for i in range(1, len(rows))
                         if rows[i]["clock_s"] != rows[i - 1]["clock_s"])
@@ -122,7 +123,7 @@ class LiveHelpersTest(unittest.TestCase):
         game = _play_chart_tests._RecordedGame(FROZEN_TAIL_CSV)
         never_reached_ms = C.s_to_ms(game.last_clock_s) + 1.0
         with self.assertRaises(live.ClockFrozen):
-            live.wait_until(game, never_reached_ms)
+            live.wait_until(game, never_reached_ms, now=game.now, sleep=game.sleep)
 
     def test_wait_until_does_not_stop_while_a_real_clock_moves(self):
         # The real lane-end watch moves its clock every frame through a 1.6 s
@@ -132,7 +133,7 @@ class LiveHelpersTest(unittest.TestCase):
         gaps = [b["time_ms"] - a["time_ms"] for a, b in zip(notes, notes[1:])]
         after_gap = notes[gaps.index(max(gaps)) + 1]["time_ms"]
         clock, game = recorded_song_clock(LANE_END_CSV)
-        raw_ms, est_ms = live.wait_until(clock, after_gap)
+        raw_ms, est_ms = live.wait_until(clock, after_gap, now=game.now, sleep=game.sleep)
         self.assertGreaterEqual(est_ms, after_gap)
         self.assertLessEqual(raw_ms, C.s_to_ms(game.last_clock_s))
 
@@ -224,8 +225,11 @@ class SongClockTest(unittest.TestCase):
         # unread, so a whole recorded frame passes and the change the next
         # read sees is not fresh: every read until the clock moves again
         # gives the raw clock with nothing filled in. A read past the
-        # recording's end fails the test at once.
-        clock, game = recorded_song_clock(LANE_END_CSV)
+        # recording's end fails the test at once. It needs several reads
+        # within one recorded row, which a row-per-read replay cannot give,
+        # so it alone keeps the real timer.
+        game = _play_chart_tests._RecordedGame(LANE_END_CSV, real_timer=True)
+        clock = live.SongClock(lambda: game.read()[0])
         seen_raw, _ = clock.read()
         unread_moves = 0
         while unread_moves < 2:
