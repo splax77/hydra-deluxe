@@ -136,8 +136,14 @@ class LoadScheduleTest(unittest.TestCase):
             self.assertEqual(len(chord.presses), len(entries), chord.index)
             for press, entry in zip(chord.presses, entries):
                 self.assertEqual(press.aim_ms, entry["aim_ms"])
-                self.assertEqual(press.after_ms, entry["after_ms"])
-                self.assertEqual(press.last_send_ms, entry["last_send_ms"])
+                # The judge target, the band and the window edges are read
+                # as written; a later group names the group it follows.
+                self.assertEqual(press.at_ms, chord.ms + entry["aim_ms"])
+                self.assertEqual(press.band, entry["band"])
+                self.assertEqual(press.window_from_ms, entry["window_from_ms"])
+                self.assertEqual(press.window_to_ms, entry["window_to_ms"])
+                self.assertEqual(press.group, entry["group"])
+                self.assertEqual(press.follows, entry["follows"])
                 self.assertEqual(press.fallback, entry.get("fallback"))
                 self.assertEqual(press.timed_from_end, entry["timed_from_end"])
                 self.assertEqual(press.end_read_after, entry["end_read_after"])
@@ -325,7 +331,7 @@ class _FakeGame:
 
     def press(self, lanes, _axes=None, then=()) -> None:
         self.presses.append(list(lanes))
-        self.messages.append([list(lanes)] + [list(group) for group, _axes, _after in then])
+        self.messages.append([list(lanes)] + [list(group) for group, _axes in then])
         if len(self.presses) not in self.misses:
             self.score += 100 * (1 + len(then))
 
@@ -375,9 +381,9 @@ class PressLogTest(unittest.TestCase):
             self.assertIn(int(r["score_before"]), scores, r)
             self.assertIn(int(r["score_after"]), scores, r)
             self.assertLessEqual(int(r["score_before"]), int(r["score_after"]), r)
-            # A row is sent unless its clock read came after its press's last
-            # send, the file's limit, so no press is sent past it.
-            late = float(r["clock_ms_at_press"]) > press.last_send_ms
+            # A row is sent unless its clock read came after the back edge
+            # of its chord's window, so no press is sent past it.
+            late = float(r["clock_ms_at_press"]) > press.window_to_ms
             self.assertEqual(r[play_chart.SEND_COLUMN],
                              play_chart.DROPPED if late
                              else play_chart.DECLINED if press.declined else play_chart.SENT, r)
@@ -867,10 +873,10 @@ class WallColumnsTest(unittest.TestCase):
         def press(lanes, _axes=None, then=()):
             pressed.append(list(lanes))
 
-        # The cap ends the run once the recording's clock passes chord 134's
-        # last send, which comes before the recording ends.
+        # The cap ends the run once the recording's clock passes the back
+        # edge of chord 134's window, which comes before the recording ends.
         from tools.ch_probe import constants as C
-        last_send_s = C.ms_to_s(next(p.last_send_ms for p in _presses_of(_freak_chords())
+        last_send_s = C.ms_to_s(next(p.window_to_ms for p in _presses_of(_freak_chords())
                                      if p.index == 134))
         with open(_F1_DECLINED, encoding="utf-8", newline="") as f:
             recorded = [(float(r["wall_s"]), float(r["clock_s"])) for r in csv.DictReader(f)]
@@ -1064,10 +1070,14 @@ class _SplitReplyPress:
 
     def __call__(self, lanes, axes=None, then=()):
         self.calls.append((list(lanes), list(then)))
+        # Each later group is (lanes, axes): the kit puts it down a frame
+        # after the group before, so the message names no gap.
+        for group in then:
+            if len(group) != 2:
+                raise AssertionError(f"a later group is sent as {group!r}, not (lanes, axes)")
         return fakes.kit_reply(
-            [(500 + 3 * k, 502 + 3 * k, _SPLIT_DOWN_MS + 9 * k, _SPLIT_DOWN_MS + 6 + 9 * k)
-             for k in range(1 + len(then))],
-            after_ms=[0.0] + [after for _lanes, _axes, after in then])
+            [(500 + k, 502 + k, _SPLIT_DOWN_MS + 3 * k, _SPLIT_DOWN_MS + 6 + 3 * k)
+             for k in range(1 + len(then))])
 
 
 # The first group's down on the agent's clock in _SplitReplyPress's replies.
@@ -1085,21 +1095,22 @@ class SplitSendTest(unittest.TestCase):
         calls = []
 
         def press(lanes, _axes=None, then=()):
-            calls.append((list(lanes), [(list(g), after) for g, _axes, after in then]))
+            calls.append((list(lanes), [list(g) for g, _axes in then]))
             return _p3_two_group_reply() if then else _recorded_reply(_e_replies()[0])
 
         result, chords, head, _later = _play_mouths_split_chord(press)
         self.assertEqual(result.stop, "cap")
         chord = next(c for c in chords if c.index == head.index)
         entries = sorted((e for e in _read_json(_MOUTHS_SCHEDULE)["presses"]
-                          if e["chord"] == head.index), key=lambda e: e["aim_ms"])
+                          if e["chord"] == head.index), key=lambda e: e["group"])
         first, *later = entries
-        self.assertIsNone(first["after_ms"])
-        # One press call carries the chord, its later groups in `then` with
-        # the file's gap after the first.
+        self.assertIsNone(first["follows"])
+        # One press call carries the chord, its later groups in `then` as
+        # (lanes, axes) in group order, with no gap: the kit puts each down
+        # a frame after the one before.
         lanes_of = lambda e: [chord.lanes[g] for g in e["gems"]]  # noqa: E731
         self.assertEqual([c for c in calls if c[1]],
-                         [(lanes_of(first), [(lanes_of(e), e["after_ms"]) for e in later])])
+                         [(lanes_of(first), [lanes_of(e) for e in later])])
         rows = _rows_of(result, head.index)
         self.assertEqual(len(rows), len(entries))
         # Each row keeps its own group's frames and times from the reply.
@@ -1141,11 +1152,12 @@ class SplitSendTest(unittest.TestCase):
     def test_the_mouths_fixture_sends_one_message_per_split_chord(self):
         # The Mouths schedule on the recorded clock that passes its first
         # split chord. The messages expected come from the file's presses: a
-        # press with `after_ms` goes with the earlier press of its chord.
+        # press whose `follows` names a group goes with the press of its
+        # chord that holds that group.
         calls = []
 
         def press(lanes, _axes=None, then=()):
-            calls.append([list(lanes)] + [list(g) for g, _axes, _after in then])
+            calls.append([list(lanes)] + [list(g) for g, _axes in then])
             return _p3_two_group_reply() if then else _recorded_reply(_e_replies()[0])
 
         result, chords, _head, _later = _play_mouths_split_chord(press)
@@ -1154,15 +1166,18 @@ class SplitSendTest(unittest.TestCase):
         declined = {c.index for c in chords if c.declined}
         # (chord, first press's aim) -> the gems of each group of its message.
         messages = {}
+        # (chord, group) -> the key of the message that holds that group.
+        holder = {}
         for entry in sorted(_read_json(_MOUTHS_SCHEDULE)["presses"],
-                            key=lambda e: (e["chord"], e["aim_ms"])):
+                            key=lambda e: (e["chord"], e["group"])):
             groups = [lanes[entry["chord"]][g] for g in entry["gems"]]
-            if entry["after_ms"] is None:
+            if entry["follows"] is None:
                 key = (entry["chord"], entry["aim_ms"])
                 messages[key] = [groups]
             else:
-                self.assertEqual(key[0], entry["chord"], entry)
+                key = holder[(entry["chord"], entry["follows"])]
                 messages[key].append(groups)
+            holder[(entry["chord"], entry["group"])] = key
         self.assertTrue(any(len(m) > 1 for m in messages.values()))
         # Each message the run reached: its first row leads by its first
         # press's aim. It went as one call with all its groups, unless it
@@ -1187,16 +1202,16 @@ class SplitSendTest(unittest.TestCase):
         # The mouths fixture's plan with one split chord's first press taken
         # out: its later group is left with no press to go down with.
         plan = play_chart.press_plan(play_chart.load_schedule(_MOUTHS_SCHEDULE).chords)
-        later = next(p for p in plan if p.after_ms is not None)
-        heads = [p for p in plan if p.index == later.index and p.after_ms is None]
+        later = next(p for p in plan if p.follows is not None)
+        heads = [p for p in plan if p.index == later.index and p.follows is None]
         self.assertTrue(heads)
         kept = [p for p in plan if p not in heads]
         with self.assertRaises(ValueError) as caught:
             play_chart.press_messages(kept)
-        # The message names the chord and the group's gap, from the press.
+        # The message names the chord and the group it follows, from the press.
         said = str(caught.exception)
-        self.assertRegex(said, rf"\b{later.index}\b")
-        self.assertRegex(said, rf"\b{re.escape(f'{later.after_ms:g}')} ms\b")
+        self.assertRegex(said, rf"chord {later.index}\b")
+        self.assertRegex(said, rf"follows group {later.follows}\b")
         # The whole plan has a press for every later group, so it raises nothing.
         play_chart.press_messages(plan)
 
@@ -1228,7 +1243,7 @@ class ScoredBetweenTest(unittest.TestCase):
     and stops once the clock passes chord 135's last send."""
 
     def _run(self):
-        last_send_ms = next(p.last_send_ms for p in _presses_of(_freak_chords())
+        last_send_ms = next(p.window_to_ms for p in _presses_of(_freak_chords())
                             if p.index == 135)
         result, _sent, _out, _took, _chords = _play_recorded(
             _F1_DECLINED, cap_s=_cap_until_clock_passes(_F1_DECLINED, last_send_ms))
@@ -1311,8 +1326,9 @@ class ReadEndTest(unittest.TestCase):
         for index, ms in reads.items():
             self.assertAlmostEqual(ms, read_ms[index], delta=0.01, msg=index)
         # Each row leads by its press's aim with the sign turned. A press
-        # timed from a read first moves by how far its own end moved, which
-        # play_chart.own_end_now_ms works out from the file's fields.
+        # timed from a read has its band moved to its own end now, which
+        # play_chart.own_end_now_ms works out from the file's fields, and is
+        # aimed at the band's middle.
         plan = {(p.index, p.aim_ms): p for p in play_chart.press_plan(chords)}
         entries = {}
         for entry in doc["presses"]:
@@ -1325,16 +1341,17 @@ class ReadEndTest(unittest.TestCase):
                 if e["end_read_after"] is not None:
                     timed += 1
                     read = read_ms[e["end_read_after"]]
-                    # A join_group fallback acts only on a read past its
+                    # A late gem's fallback acts only on a read past its
                     # if_end_after_ms; below that the press keeps its move.
                     block = e.get("fallback")
                     if block is not None:
-                        self.assertEqual(block["action"], "join_group", index)
+                        self.assertIn(block["action"], ("join_group", "end_band"), index)
                         self.assertLessEqual(read, block["if_end_after_ms"], index)
                     low, high = e["read_range_ms"] or (None, None)
                     self.assertTrue((low is None or low <= read) and (high is None or read <= high))
                     press = plan[(index, e["aim_ms"])]
-                    aim += play_chart.own_end_now_ms(press, read) - press.own_end_ms
+                    band = _band_for(press, play_chart.own_end_now_ms(press, read))
+                    aim = (band["from_ms"] + band["to_ms"]) / 2 - press.chart_ms
                 leads.append(-aim)
             got = [r["lead_ms"] for r in _rows_of(result, index)]
             self.assertEqual(len(got), len(leads), index)
@@ -1353,10 +1370,10 @@ class ReadEndTest(unittest.TestCase):
         own = [p for p in moved if p.end_read_after == 263]
         self.assertTrue(own)
         # The presses timed from that read carry it and fire at a new time.
-        before = {(p.index, p.after_ms): p for p in plan}
+        before = {(p.index, p.group): p for p in plan}
         for p in own:
             self.assertEqual(p.aim_end_ms, read_ms)
-            self.assertNotEqual(p.at_ms, before[(p.index, p.after_ms)].at_ms)
+            self.assertNotEqual(p.at_ms, before[(p.index, p.group)].at_ms)
         # Every other press, those of the other activations among them, is
         # the plan's own.
         others = [p for p in moved if p.end_read_after != 263]
@@ -1423,7 +1440,7 @@ class FrozenClockDropTest(unittest.TestCase):
         (cls.next_press,) = [p for p in plan if p.index == cls._DROPPED_INDEX + 1]
         cls.lanes = {p.index: list(p.lanes) for p in plan}
         cls.result, cls.sent, cls.out, _took, _chords = _play_recorded(
-            _F1_STALL, cap_s=_cap_until_clock_passes(_F1_STALL, cls.next_press.last_send_ms))
+            _F1_STALL, cap_s=_cap_until_clock_passes(_F1_STALL, cls.next_press.window_to_ms))
 
     def test_the_late_chord_is_dropped_and_the_next_is_sent(self):
         # The case the test stands on: two recorded reads in a row, the first
@@ -1432,12 +1449,12 @@ class FrozenClockDropTest(unittest.TestCase):
         with open(_F1_STALL, encoding="utf-8", newline="") as f:
             clocks = [C.s_to_ms(float(r["clock_s"])) for r in csv.DictReader(f)]
         self.assertTrue([1 for a, b in zip(clocks, clocks[1:])
-                         if a < self.late.at_ms and b > self.late.last_send_ms])
+                         if a < self.late.at_ms and b > self.late.window_to_ms])
         result = self.result
         self.assertEqual(result.stop, "cap")
         (row,) = _rows_of(result, self.late.index)
         # The read that would send it is past its last send.
-        self.assertGreater(row["clock_ms_at_press"], self.late.last_send_ms)
+        self.assertGreater(row["clock_ms_at_press"], self.late.window_to_ms)
         self.assertEqual(row[play_chart.SEND_COLUMN], play_chart.DROPPED)
         # Nothing was pressed, so no second score read moved the score.
         self.assertEqual(row["score_before"], row["score_after"])
@@ -1496,6 +1513,35 @@ def _press_of(chords, index, rule=None):
     return found[0]
 
 
+def _band_for(press, own_now_ms):
+    """The band design (c) of the squeeze timing plan gives `press`, timed
+    from an end, once its own end is `own_now_ms`. A late gem (the schedule
+    marks its lower edge strict) runs from its own end to its window's back
+    edge; every other press runs from its window's front edge to its own
+    end, stopped at the back edge. None when that band is empty."""
+    if press.band["from_strict"]:
+        return {"from_ms": own_now_ms, "to_ms": press.window_to_ms, "from_strict": True}
+    if own_now_ms < press.window_from_ms:
+        return None
+    return {"from_ms": press.window_from_ms, "to_ms": min(own_now_ms, press.window_to_ms),
+            "from_strict": False}
+
+
+def _assert_aimed_in_band(test, press, moved, own_now_ms):
+    """`moved`, `press` after a read put its own end at `own_now_ms`,
+    carries _band_for's band and is aimed at its middle; with no band it
+    is aimed at its window's front edge and says no_frame_in_band."""
+    band = _band_for(press, own_now_ms)
+    test.assertEqual(moved.band, band, press.index)
+    if band is None:
+        test.assertEqual(moved.at_ms, press.window_from_ms, press.index)
+        test.assertTrue(moved.no_frame_in_band, press.index)
+    else:
+        test.assertAlmostEqual(moved.at_ms, (band["from_ms"] + band["to_ms"]) / 2,
+                               delta=1e-9, msg=press.index)
+        test.assertFalse(moved.no_frame_in_band, press.index)
+
+
 def _reads(chords, overrides):
     """A read_sp_end for a run of `chords`: each read gives the planned end
     of the chord it is read after, in seconds, except the chords in
@@ -1551,9 +1597,11 @@ class ReadAfterAnchorTest(unittest.TestCase):
         self.assertEqual(set(reads), planned)
         for index, read_ms in recorded.items():
             self.assertAlmostEqual(reads[index], read_ms, delta=1e-6, msg=index)
-        # 387 moves by its own end at the anchor's read, not the start's.
+        # 387's band moves to its own end at the anchor's read, not the
+        # start's, and the press is aimed at the band's middle.
         def lead_at(read_ms):
-            return -(late.aim_ms + play_chart.own_end_now_ms(late, read_ms) - late.own_end_ms)
+            band = _band_for(late, play_chart.own_end_now_ms(late, read_ms))
+            return late.chart_ms - (band["from_ms"] + band["to_ms"]) / 2
         (row,) = _rows_of(result, 387)
         self.assertAlmostEqual(row["lead_ms"], lead_at(recorded[anchor]), places=6)
         self.assertNotAlmostEqual(row["lead_ms"], lead_at(recorded[start]), delta=1.0)
@@ -1575,8 +1623,8 @@ class ReadAfterAnchorTest(unittest.TestCase):
         # timed from the read after 340, each with its own end fields in the
         # file. The read is the real run ls-r1-run1's end after 340. Each
         # press's own end moves from the file's stored own end by the file's
-        # ratio for the read's side of the stored read end, and the press
-        # moves with its own end.
+        # ratio for the read's side of the stored read end, and the press's
+        # band moves with its own end, the press aimed at its middle.
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         squeeze, sp_end = _press_of(chords, 431), _press_of(chords, 465)
         after = squeeze.end_read_after
@@ -1596,8 +1644,7 @@ class ReadAfterAnchorTest(unittest.TestCase):
                                    file["conversion"][side] * (read_ms - file["read_stored_end_ms"]),
                                    delta=1e-9, msg=press.index)
             shifts[press.index] = now.at_ms - press.at_ms
-            self.assertAlmostEqual(shifts[press.index], now.own_end_ms - file["own_end_ms"],
-                                   delta=1e-9, msg=press.index)
+            _assert_aimed_in_band(self, press, now, now.own_end_ms)
         # Each press moved by its own end, not the other press's.
         self.assertNotAlmostEqual(shifts[squeeze.index], shifts[sp_end.index], delta=1e-6)
 
@@ -1613,7 +1660,7 @@ class ReadAfterAnchorTest(unittest.TestCase):
         self.assertIsNone(_recorded_end_ms(_F1_NO_READ_1302, reader_ms))
         result, _sent, _out, _took, _chords = _play_recorded(
             _F1_NO_READ_1302, chords=chords, read_end=True,
-            cap_s=_cap_until_clock_passes(_F1_NO_READ_1302, late.last_send_ms))
+            cap_s=_cap_until_clock_passes(_F1_NO_READ_1302, late.window_to_ms))
         self.assertEqual(result.stop, "cap")
         self.assertEqual([r["end_read_ms"] for r in _rows_of(result, 1302) if "end_read_ms" in r],
                          [play_chart.NO_ACTIVATION_READ])
@@ -1657,33 +1704,34 @@ class FallbackTest(unittest.TestCase):
         (moved,) = [p for p in play_chart.retime_from_end(play_chart.press_plan(chords), 263,
                                                           read_ms) if p.index == 387]
         self.assertEqual(moved.retimed, play_chart.RETIMED_LATE)
-        self.assertAlmostEqual(moved.at_ms - late.at_ms,
-                               play_chart.own_end_now_ms(late, read_ms) - late.own_end_ms,
-                               delta=1e-9)
+        _assert_aimed_in_band(self, late, moved, play_chart.own_end_now_ms(late, read_ms))
         self.assertGreater(moved.at_ms, late.at_ms)
 
-    def test_a_read_end_past_the_threshold_joins_the_inside_group(self):
-        # The real run ls-f1-run1's end after Freak chord 1062, which chord
-        # 1144's late gem is timed from: past the gem's threshold. Its block
-        # names no gems to join, so the gem goes down alone, the block's
-        # before_end_ms before its own end as the read moved it, and its row
-        # carries the block's word. (A read before a threshold is the two
+    def test_a_read_end_past_the_threshold_gives_a_lone_late_gem_an_end_band(self):
+        # A read after Freak chord 1062, which chord 1144's late gem is
+        # timed from, 5 ms past the gem's threshold (a hand-picked input:
+        # the end the real run ls-f1-run1 read there is before the
+        # judge-time schedule's threshold). Its chord
+        # has no inside group, so its block is `end_band`: the gem goes down
+        # alone, on a band from its window's front edge to its own end as
+        # the read moved it, aimed at the band's middle, and its row carries
+        # the block's word. (A read before a threshold is the two
         # recorded-read tests' case.)
         chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
         late = _press_of(chords, 1144)
         block = late.fallback
-        self.assertEqual(block["action"], "join_group")
-        self.assertEqual(block["join_gems"], [])
-        (reader_ms,) = [c.ms for c in chords if c.index == late.end_read_after]
-        read_ms = _recorded_end_ms(_F1_READ_1062, reader_ms)
-        self.assertGreater(read_ms, block["if_end_after_ms"])
+        self.assertEqual(block["action"], play_chart.FALLBACK_END_BAND)
+        self.assertNotIn("before_end_ms", block)
+        read_ms = block["if_end_after_ms"] + 5.0
+        self.assertTrue(play_chart._in_read_range(late, read_ms))
         _c, past, _g = self._run(_FREAK_SCHEDULE, {late.end_read_after: read_ms})
         (row,) = _rows_of(past, 1144)
         self.assertEqual(row["retimed"], block["retimed"])
         own_now_ms = play_chart.own_end_now_ms(late, read_ms)
         self.assertNotAlmostEqual(own_now_ms, late.own_end_ms, delta=1.0)
+        to_ms = min(own_now_ms, late.window_to_ms)
         self.assertAlmostEqual(row["lead_ms"],
-                               late.chart_ms - (own_now_ms - block["before_end_ms"]), delta=1e-6)
+                               late.chart_ms - (late.window_from_ms + to_ms) / 2, delta=1e-6)
 
     def test_a_recorded_read_before_the_threshold_keeps_the_late_gem_apart(self):
         # The real run ls-r1-run1's end after Mouths chord 704, which chord
@@ -1699,16 +1747,16 @@ class FallbackTest(unittest.TestCase):
         moved = {p.rule: p for p in play_chart.retime_from_end([inside, late], 704, read_ms)}
         self.assertEqual(moved[late.rule].retimed, play_chart.RETIMED_LATE)
         self.assertEqual(moved[late.rule].lanes, late.lanes)
-        self.assertAlmostEqual(moved[late.rule].at_ms - late.at_ms,
-                               play_chart.own_end_now_ms(late, read_ms) - late.own_end_ms,
-                               delta=1e-9)
+        _assert_aimed_in_band(self, late, moved[late.rule],
+                              play_chart.own_end_now_ms(late, read_ms))
         self.assertIsNone(moved[inside.rule].retimed)
         self.assertEqual(moved[inside.rule].lanes, inside.lanes)
 
     def test_a_squeeze_in_with_a_recorded_read_past_its_threshold_stays_timed(self):
         # The real run ls-r1-run1's end after Mouths chord 340, which chord
         # 431's squeeze-in is timed from: not before the threshold its plain
-        # fallback names, so it moves by its own end and is not pressed plain.
+        # fallback names, so its band moves to its own end and it is not
+        # pressed plain.
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         squeeze = _press_of(chords, 431)
         self.assertEqual(squeeze.end_read_after, 340)
@@ -1717,9 +1765,7 @@ class FallbackTest(unittest.TestCase):
         self.assertGreaterEqual(read_ms, squeeze.fallback["if_end_before_ms"])
         (moved,) = play_chart.retime_from_end([squeeze], 340, read_ms)
         self.assertIsNone(moved.retimed)
-        self.assertAlmostEqual(moved.at_ms - squeeze.at_ms,
-                               play_chart.own_end_now_ms(squeeze, read_ms) - squeeze.own_end_ms,
-                               delta=1e-9)
+        _assert_aimed_in_band(self, squeeze, moved, play_chart.own_end_now_ms(squeeze, read_ms))
 
     def test_a_block_with_another_action_is_refused(self):
         # A test input: an action name the schedule writer never writes.
@@ -1734,15 +1780,21 @@ class FallbackTest(unittest.TestCase):
         self.assertRegex(said, rf"\b{late.index}\b")
         self.assertIn(repr(action), said)
 
-def _timed_press(index=5, chart_ms=3000.0, aim_ms=-15.0, lanes=(Lane.RED,), read_after=4,
-                 **fields):
-    """A hand-built press timed from the read after chord `read_after`, with
-    hand-picked test inputs. `fields` gives its END_FIELDS, `aim_end_ms` and
-    `fallback`."""
+def _timed_press(index=5, chart_ms=1010.0, lanes=(Lane.RED,), read_after=4, side_ms=50.0,
+                 rule="sp_end", **fields):
+    """A hand-built end-band press timed from the read after chord
+    `read_after`, with hand-picked test inputs: a window `side_ms` either
+    side of `chart_ms`, and a band from the window's front edge to the
+    press's `own_end_ms`, aimed at its middle. `fields` gives its
+    END_FIELDS, `aim_end_ms` and `fallback`."""
+    window_from, window_to = chart_ms - side_ms, chart_ms + side_ms
+    band = {"from_ms": window_from, "to_ms": min(fields["own_end_ms"], window_to),
+            "from_strict": False}
     return play_chart.Press(
-        index=index, chart_ms=chart_ms, aim_ms=aim_ms, lanes=list(lanes),
-        dynamics=["none"] * len(lanes), axes=None, declined=False,
-        last_send_ms=chart_ms + 50.0, rule="plain", end_read_after=read_after, **fields)
+        index=index, chart_ms=chart_ms, aim_ms=(band["from_ms"] + band["to_ms"]) / 2 - chart_ms,
+        lanes=list(lanes), dynamics=["none"] * len(lanes), axes=None, declined=False,
+        rule=rule, band=band, window_from_ms=window_from, window_to_ms=window_to,
+        end_read_after=read_after, **fields)
 
 
 class ConversionRetimeTest(unittest.TestCase):
@@ -1771,25 +1823,31 @@ class ConversionRetimeTest(unittest.TestCase):
         self.assertAlmostEqual(moved.own_end_ms - file["own_stored_end_ms"],
                                file["conversion"][side] * (read_ms - file["read_stored_end_ms"]),
                                delta=1e-9)
-        shift_ms = moved.at_ms - press.at_ms
-        self.assertAlmostEqual(shift_ms, moved.own_end_ms - file["own_end_ms"], delta=1e-9)
-        # Not one for one with the read: that would move it by the read
-        # minus the planned read.
-        self.assertNotAlmostEqual(shift_ms, read_ms - file["aim_end_ms"], delta=0.1)
+        _assert_aimed_in_band(self, press, moved, moved.own_end_ms)
+        # Not one for one with the read: that would move its own end by the
+        # read minus the planned read.
+        self.assertNotAlmostEqual(moved.own_end_ms - file["own_end_ms"],
+                                  read_ms - file["aim_end_ms"], delta=0.1)
 
     def _sided(self, **more):
-        return _timed_press(aim_end_ms=1000.0, own_end_ms=2000.0, read_stored_end_ms=1000.0,
-                            own_stored_end_ms=2000.0, conversion={"early": 0.5, "late": 2.0},
+        # The press's own end, 1000 ms, sits inside its window (960 to
+        # 1060 ms), so a read either side moves the band's upper edge.
+        return _timed_press(aim_end_ms=500.0, own_end_ms=1000.0, read_stored_end_ms=500.0,
+                            own_stored_end_ms=1000.0, conversion={"early": 0.5, "late": 2.0},
                             read_range_ms=None, **more)
 
     def test_a_read_before_the_stored_end_takes_early_and_after_takes_late(self):
         press = self._sided()
-        (early,) = play_chart.retime_from_end([press], 4, 990.0)
-        self.assertAlmostEqual(early.at_ms - press.at_ms, -5.0, delta=1e-9)
-        (late,) = play_chart.retime_from_end([press], 4, 1010.0)
-        self.assertAlmostEqual(late.at_ms - press.at_ms, 20.0, delta=1e-9)
-        (at,) = play_chart.retime_from_end([press], 4, 1000.0)
-        self.assertEqual(at.at_ms, press.at_ms)
+        # 10 ms early at 0.5 puts the own end 5 ms earlier; 10 ms late at 2
+        # puts it 20 ms later. The band's upper edge is the own end.
+        (early,) = play_chart.retime_from_end([press], 4, 490.0)
+        self.assertAlmostEqual(early.band["to_ms"], 995.0, delta=1e-9)
+        _assert_aimed_in_band(self, press, early, 995.0)
+        (late,) = play_chart.retime_from_end([press], 4, 510.0)
+        self.assertAlmostEqual(late.band["to_ms"], 1020.0, delta=1e-9)
+        _assert_aimed_in_band(self, press, late, 1020.0)
+        (at,) = play_chart.retime_from_end([press], 4, 500.0)
+        self.assertEqual((at.at_ms, at.band), (press.at_ms, press.band))
 
 
 
@@ -1814,7 +1872,10 @@ class ReadRangeTest(unittest.TestCase):
         for read_ms in self.RANGE:
             with self.subTest(read_ms):
                 (moved,) = play_chart.retime_from_end([press], 4, read_ms)
-                self.assertAlmostEqual(moved.at_ms - press.at_ms, read_ms - 1000.0, delta=1e-9)
+                # Conversion 1: the own end moves with the read, and the
+                # band's upper edge with it.
+                _assert_aimed_in_band(self, press, moved, read_ms)
+                self.assertNotEqual(moved.at_ms, press.at_ms)
                 self.assertIsNone(moved.retimed)
 
     def test_a_null_side_is_open(self):
@@ -1898,8 +1959,7 @@ class EndFieldsLoadTest(unittest.TestCase):
         def own_end_after(read_ms):
             (moved,) = play_chart.retime_from_end([press], after, read_ms)
             self.assertIsNone(moved.retimed)
-            self.assertAlmostEqual(moved.at_ms - press.at_ms,
-                                   moved.own_end_ms - raw["own_end_ms"], delta=1e-9)
+            _assert_aimed_in_band(self, press, moved, moved.own_end_ms)
             return moved.own_end_ms
 
         stored = raw["read_stored_end_ms"]
@@ -1963,14 +2023,16 @@ class RetimedColumnTest(unittest.TestCase):
     marked, and on no other row."""
 
     def test_only_the_marked_rows_carry_it(self):
-        # The Freak run on the real run ls-f1-run1's ends after chords 263
-        # and 1062, and the plan's ends after the rest. The rows marked are
-        # those of the file's presses with a fallback block, each with the
-        # word for its read's side of the block's threshold.
+        # The Freak run on the real run ls-f1-run1's end after chord 263, a
+        # read 5 ms past chord 1144's threshold after chord 1062 (a
+        # hand-picked input, so both sides of a threshold are in the run),
+        # and the plan's ends after the rest. The rows marked are those of
+        # the file's presses with a fallback block, each with the word for
+        # its read's side of the block's threshold.
         chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
         chord_ms = {c.index: c.ms for c in chords}
         recorded = {263: _recorded_end_ms(_F1_READ_263, chord_ms[263]),
-                    1062: _recorded_end_ms(_F1_READ_1062, chord_ms[1062])}
+                    1062: _press_of(chords, 1144).fallback["if_end_after_ms"] + 5.0}
         read_ms = {p.index: p.planned_end_ms for p in play_chart.press_plan(chords)
                    if p.planned_end_ms is not None}
         read_ms.update(recorded)
@@ -1980,7 +2042,7 @@ class RetimedColumnTest(unittest.TestCase):
             block = entry.get("fallback")
             if block is None:
                 continue
-            self.assertEqual(block["action"], "join_group", entry["chord"])
+            self.assertIn(block["action"], ("join_group", "end_band"), entry["chord"])
             past = read_ms[entry["end_read_after"]] > block["if_end_after_ms"]
             want[entry["chord"]] = block["retimed"] if past else play_chart.RETIMED_LATE
         # Both sides of a threshold are in the run.
@@ -2045,7 +2107,7 @@ class ReplyStopTest(unittest.TestCase):
         calls = []
         result, _sent, out, _took, _chords = _play_recorded(
             _F1_SPLIT_CHORD, chords=chords, press=_replying(reply, calls), kit=True,
-            cap_s=_cap_until_clock_passes(_F1_SPLIT_CHORD, head.last_send_ms))
+            cap_s=_cap_until_clock_passes(_F1_SPLIT_CHORD, head.window_to_ms))
         self.assertEqual(result.stop, "reply")
         self.assertRegex(result.message, rf"\bchord {head.index}\b")
         self.assertIn(reply_gap(reply, 1 + len(later)), result.message)
@@ -2246,7 +2308,7 @@ class MainExitTest(unittest.TestCase):
 
         def song_end(chords):
             window = [c for c in chords if c.ms > mid_ms
-                      if all(p.last_send_ms < last_ms for p in c.presses)]
+                      if all(p.window_to_ms < last_ms for p in c.presses)]
             self.assertTrue(window)
             return on(_F1_MID_SONG, window, cap_s=play_chart.RUN_CAP_S)
 
@@ -2271,7 +2333,7 @@ class StartLineTest(unittest.TestCase):
         with open(_F1_MID_SONG, encoding="utf-8", newline="") as f:
             first_ms = C.s_to_ms(float(next(csv.DictReader(f))["clock_s"]))
         chords = [c for c in _freak_chords()
-                  if all(p.last_send_ms < last_ms for p in c.presses)]
+                  if all(p.window_to_ms < last_ms for p in c.presses)]
         result, _sent, out, _took, _chords = _play_recorded(_F1_MID_SONG, chords=chords)
         self.assertEqual(result.stop, play_chart.STOP_DONE)
         # The chords passed over are the ones with a press and no row, every
@@ -2349,7 +2411,7 @@ class FakeReplyShapeTest(unittest.TestCase):
         self.assertTrue(set(overlay_logs.KIT_PRESS_COLUMNS) <= set(one) & group_keys)
         press = _SplitReplyPress()
         replies = [(press([Lane.KICK]), 1, one),
-                   (press([Lane.KICK], None, [([Lane.GREEN_CYMBAL], None, 8.0)]), 2, two),
+                   (press([Lane.KICK], None, [([Lane.GREEN_CYMBAL], None)]), 2, two),
                    (fakes.kit_reply([(1, 3, 10, 20)] * 2), 2, two)]
         for reply, groups, real in replies:
             with self.subTest(groups=groups):
@@ -2371,7 +2433,7 @@ def _play_mouths_split_chord(press):
         play_chart.press_plan(chords)) if l)
     result, _sent, _out, _took, _chords = _play_recorded(
         _F1_SPLIT_CHORD, chords=chords, press=press, kit=True,
-        cap_s=_cap_until_clock_passes(_F1_SPLIT_CHORD, head.last_send_ms))
+        cap_s=_cap_until_clock_passes(_F1_SPLIT_CHORD, head.window_to_ms))
     return result, chords, head, later
 
 
