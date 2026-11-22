@@ -1097,49 +1097,279 @@ class WatchTest(Rig):
 
 class FrameProbeTest(Rig):
     """ch_kit_frame_probe, the probe of live step LS-G1 in
-    docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)."""
+    docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md),
+    with the marks of task T1 in
+    docs/superpowers/plans/2026-11-22-squeeze-frame-cost.md."""
+
+    UPDATE = K.FRAME_PROBE_WRITE_AT_UPDATE
+    EVENT = K.FRAME_PROBE_WRITE_AT_INPUT_EVENT
+    ENGINE = K.FRAME_PROBE_MARK_ENGINE
+    # One order a frame's marks could run in; the order tests try others.
+    ORDER = (EVENT, ENGINE, UPDATE)
 
     @staticmethod
     def probe_reply(frames=11, ms_per_frame=3, skip_at=None, green=True, any_button=True,
-                    hook_out=True, failure=None):
-        """A fake frame_probe reply in kit.ts's shape: `frames` rows from
-        frame 1000, `ms_per_frame` apart on the wall clock, the Green pad
-        down on the first row and up two frames later. Green's read-back
-        and any_button read pressed from the second row on (when `green` and
-        `any_button` say so), and the engine clock runs 1, 2 then 3 ms ahead
-        of songTime in turn. `skip_at` makes that row's frame jump by 2."""
-        rows = []
+                    hook_out=True, failure=None, write_at=K.FRAME_PROBE_WRITE_AT_UPDATE,
+                    order=ORDER, orders=None, wrote_at=None, clock_known=False,
+                    hooks_out=None, engine_green=None):
+        """A fake frame_probe reply in kit.ts's shape: `frames` frames from
+        frame 1000, `ms_per_frame` apart on the wall clock and the song
+        clock. Each frame holds one mark of each kind in `order` (or, for
+        the frame index a key of `orders` names, that order instead), with
+        running numbers counting up across the reply in that order. The
+        Green pad is written down on the first frame and up two frames
+        later, at the marks of the kind `wrote_at` names (write_at when not
+        given). Green's read-back and any_button read pressed at the Update
+        mark from the second frame on (when `green` and `any_button` say
+        so), and Green reads pressed at the engine mark on the same frames
+        (when `engine_green`, `green` when not given, says so). The engine
+        clock runs 1, 2 then 3 ms ahead of songTime in turn. The engine
+        mark is handed the frame's songTime; the input event reads the
+        frame before's songTime, or the frame's own when `clock_known`.
+        `skip_at` makes that frame's number jump by 2."""
+        wrote_at = write_at if wrote_at is None else wrote_at
+        engine_green = green if engine_green is None else engine_green
+        lists = {K.FRAME_PROBE_WRITE_AT_UPDATE: [], K.FRAME_PROBE_WRITE_AT_INPUT_EVENT: [],
+                 K.FRAME_PROBE_MARK_ENGINE: []}
         frame = 1000
+        seq = 0
         for i in range(frames):
             if i and i == skip_at:
                 frame += 1
             song = 10.0 + ms_to_s(i * ms_per_frame)
-            rows.append({"frame": frame, "engine_clock_s": song + ms_to_s(1 + i % 3),
-                         "song_time_s": song, "wall_ms": 50_000 + i * ms_per_frame,
-                         "wrote": "down" if i == 0 else ("up" if i == 2 else None),
-                         "any_button": any_button and 1 <= i <= 3,
-                         "read": [green and 1 <= i <= 3]})
+            wall = 50_000 + i * ms_per_frame
+            pressed = 1 <= i <= 3
+            for kind in (orders or {}).get(i, order):
+                seq += 1
+                wrote = ("down" if i == 0 else ("up" if i == 2 else None)) \
+                    if kind == wrote_at else None
+                if kind == K.FRAME_PROBE_WRITE_AT_UPDATE:
+                    row = {"seq": seq, "frame": frame,
+                           "engine_clock_s": song + ms_to_s(1 + i % 3),
+                           "song_time_s": song, "wall_ms": wall, "thread": 7,
+                           "wrote": wrote, "any_button": any_button and pressed,
+                           "read": [green and pressed]}
+                elif kind == K.FRAME_PROBE_WRITE_AT_INPUT_EVENT:
+                    seen = song if clock_known else song - ms_to_s(ms_per_frame)
+                    row = {"seq": seq, "frame": frame, "engine_clock_s": seen,
+                           "song_time_s": seen, "wall_ms": wall, "thread": 7, "wrote": wrote}
+                else:
+                    row = {"seq": seq, "frame": frame, "engine": "1d2e3f40", "time_s": song,
+                           "wall_ms": wall, "thread": 7, "read": [engine_green and pressed]}
+                lists[kind].append(row)
             frame += 1
-        return {"seconds": 5, "wall_ms": 5003, "hold_frames": 2, "down_frame": 1000,
-                "up_frame": 1002, "read": ["Green"], "failure": failure,
-                "hook_out": hook_out, "managers": 1, "frames": rows}
+        if hooks_out is None:
+            hooks_out = {"update": hook_out, "engine": hook_out, "input_event": hook_out}
+        return {"seconds": 5, "wall_ms": 5003, "write_at": write_at, "hold_frames": 2,
+                "down_frame": 1000, "up_frame": 1002, "read": ["Green"], "failure": failure,
+                "unhook_error": None, "hook_out": hook_out, "hooks_out": hooks_out,
+                "install_frame": 999, "end_frame": frame, "managers": 1,
+                "frames": lists[K.FRAME_PROBE_WRITE_AT_UPDATE],
+                "events": lists[K.FRAME_PROBE_WRITE_AT_INPUT_EVENT],
+                "engine": lists[K.FRAME_PROBE_MARK_ENGINE]}
 
-    def probe(self, reply):
+    def probe(self, reply, write_at=K.FRAME_PROBE_WRITE_AT_UPDATE):
         tools = self.set_up([reply])
-        return tools.ch_kit_frame_probe(5).splitlines()
+        return tools.ch_kit_frame_probe(5, write_at).splitlines()
+
+    @staticmethod
+    def line(lines, start):
+        """The one line that starts with `start`."""
+        found = [line for line in lines if line.startswith(start)]
+        assert len(found) == 1, (start, lines)
+        return found[0]
 
     def test_the_probe_cap_is_the_users_five_seconds(self):
         # D339 item 3: the frame probe of LS-G1 runs 5 s.
         self.assertEqual(K.FRAME_PROBE_SECONDS, 5.0)
 
     def test_the_probe_sends_frame_probe_with_the_engines_clock_address(self):
-        tools = self.set_up([self.probe_reply()])
-        tools.ch_kit_frame_probe(5)
-        self.assertEqual(self.posted()[-1], {
-            "type": "frame_probe", "seconds": 5, "clock_addr": self.CLOCK_ADDR,
-            "elements": [{"id": 3, "value": 1.0}], "read": ["Green"], "hold_frames": 2,
-            "cap_s": 6})
-        self.assertEqual(self.events.count("find clock"), 1)
+        for write_at in K.FRAME_PROBE_WRITE_ATS:
+            with self.subTest(write_at=write_at):
+                tools = self.set_up([self.probe_reply(write_at=write_at)])
+                self.events.clear()
+                tools.ch_kit_frame_probe(5, write_at)
+                self.assertEqual(self.posted()[-1], {
+                    "type": "frame_probe", "seconds": 5, "clock_addr": self.CLOCK_ADDR,
+                    "elements": [{"id": 3, "value": 1.0}], "read": ["Green"],
+                    "write_at": write_at, "hold_frames": 2, "cap_s": 6})
+                self.assertEqual(self.events.count("find clock"), 1)
+
+    def test_the_place_to_write_is_required_and_has_no_default(self):
+        tools = self.set_up()
+        sent = len(self.posted())
+        for bad in (None, "", "Update", "engine", 1):
+            with self.subTest(write_at=bad):
+                reply = (tools.ch_kit_frame_probe(5) if bad is None
+                         else tools.ch_kit_frame_probe(5, bad))
+                self.assertEqual(reply, "write_at is required, 'update' or 'input_event' "
+                                        f"(where the probe writes its press), not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+        self.assertNotIn("find clock", self.events)
+
+    # ---- the marks of task T1 ------------------------------------------------
+
+    def test_a_clean_probe_from_each_place_passes(self):
+        for write_at in K.FRAME_PROBE_WRITE_ATS:
+            with self.subTest(write_at=write_at):
+                lines = self.probe(self.probe_reply(write_at=write_at), write_at)
+                self.assertTrue(lines[-1].startswith("PASS "), lines)
+                label = dict((k, lab) for k, _key, lab in K.FRAME_PROBE_MARKS)[write_at]
+                self.assertEqual(self.line(lines, "press written at:"),
+                                 f"press written at: asked for {label}; made at {label}")
+
+    def test_a_write_from_the_update_when_the_event_was_asked_fails(self):
+        reply = self.probe_reply(write_at=self.EVENT, wrote_at=self.UPDATE)
+        lines = self.probe(reply, self.EVENT)
+        self.assertEqual(self.line(lines, "press written at:"),
+                         "press written at: asked for the input event; "
+                         "made at GameManager.Update")
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: write place "
+                                    "(made at GameManager.Update, not only at the input event)")
+
+    def test_a_write_at_both_marks_fails(self):
+        reply = self.probe_reply(write_at=self.EVENT)
+        for row in reply["frames"]:
+            if row["frame"] == 1000:
+                row["wrote"] = "down"
+        lines = self.probe(reply, self.EVENT)
+        self.assertTrue(lines[-1].startswith("FAIL "), lines)
+        self.assertIn("write place (made at GameManager.Update, the input event, "
+                      "not only at the input event)", lines[-1])
+
+    def test_a_reply_that_names_another_place_fails(self):
+        reply = self.probe_reply(write_at=self.UPDATE)
+        lines = self.probe(reply, self.EVENT)
+        self.assertIn("write place (the reply says write_at 'update', the probe asked for "
+                      "'input_event')", lines[-1])
+
+    def test_each_order_is_stated_from_the_running_numbers(self):
+        # Three replies, one per order. Each list is in the same row order
+        # in all three; only the running numbers differ.
+        stated = set()
+        for order in ((self.EVENT, self.ENGINE, self.UPDATE),
+                      (self.ENGINE, self.UPDATE, self.EVENT),
+                      (self.UPDATE, self.EVENT, self.ENGINE)):
+            with self.subTest(order=order):
+                lines = self.probe(self.probe_reply(order=order))
+                line = self.line(lines, "mark order")
+                labels = dict((k, lab) for k, _key, lab in K.FRAME_PROBE_MARKS)
+                self.assertEqual(line, "mark order on all 11 frames: "
+                                       + ", then ".join(labels[k] for k in order))
+                self.assertTrue(lines[-1].startswith("PASS "), lines)
+                stated.add(line)
+        self.assertEqual(len(stated), 3)
+
+    def test_the_order_comes_from_the_running_numbers_not_the_list_order(self):
+        # The same marks with each list shuffled give the same order.
+        reply = self.probe_reply(order=(self.ENGINE, self.UPDATE, self.EVENT))
+        for key in ("frames", "events", "engine"):
+            reply[key] = list(reversed(reply[key]))
+        lines = self.probe(reply)
+        self.assertEqual(self.line(lines, "mark order"),
+                         "mark order on all 11 frames: the engine update, then "
+                         "GameManager.Update, then the input event")
+
+    def test_a_missing_mark_in_any_frame_gives_a_failure_not_an_order(self):
+        for kind in (self.EVENT, self.ENGINE, self.UPDATE):
+            with self.subTest(missing=kind):
+                order = tuple(k for k in self.ORDER if k != kind)
+                lines = self.probe(self.probe_reply(orders={6: order}))
+                label = dict((k, lab) for k, _key, lab in K.FRAME_PROBE_MARKS)[kind]
+                self.assertEqual(self.line(lines, "mark order"),
+                                 "mark order: not stated, 1 of 11 frames lack a mark "
+                                 f"(first: frame 1006 has no mark at {label})")
+                self.assertTrue(lines[-1].startswith("FAIL "), lines)
+                self.assertIn("mark order (1 of 11 frames lack a mark)", lines[-1])
+
+    def test_a_reply_with_no_marks_fails(self):
+        reply = {**self.probe_reply(), "events": [], "engine": []}
+        for row in reply["frames"]:
+            del row["seq"]
+        lines = self.probe(reply)
+        self.assertEqual(self.line(lines, "mark order"),
+                         "mark order: not stated, the reply holds no marks")
+        self.assertIn("mark order (no marks)", lines[-1])
+
+    def test_a_running_number_held_twice_gives_no_order(self):
+        reply = self.probe_reply()
+        reply["events"][3]["seq"] = reply["engine"][3]["seq"]
+        lines = self.probe(reply)
+        self.assertTrue(self.line(lines, "mark order").startswith("mark order: not stated, 1 "))
+        self.assertIn("mark order (1 running numbers held twice)", lines[-1])
+
+    def test_a_frame_with_two_engine_marks_is_said_and_is_not_one_order(self):
+        two = (self.EVENT, self.ENGINE, self.ENGINE, self.UPDATE)
+        lines = self.probe(self.probe_reply(orders={4: two}))
+        self.assertEqual(self.line(lines, "engine marks per frame:"),
+                         "engine marks per frame: 1 on 10 frames (first: frame 1000), "
+                         "2 on 1 frames (first: frame 1004); from 1 engines")
+        order = self.line(lines, "mark order")
+        self.assertTrue(order.startswith("mark order: 2 different orders over 11 frames: "),
+                        order)
+        self.assertIn("the input event, then the engine update, then the engine update, "
+                      "then GameManager.Update on 1 frames (first: frame 1004)", order)
+        self.assertIn("mark order (2 different orders, not one on every frame)", lines[-1])
+
+    def test_one_engine_mark_a_frame_is_said(self):
+        lines = self.probe(self.probe_reply())
+        self.assertEqual(self.line(lines, "engine marks per frame:"),
+                         "engine marks per frame: 1 on 11 frames; from 1 engines")
+
+    def test_the_frame_the_pad_first_read_pressed_at_the_engine_mark(self):
+        lines = self.probe(self.probe_reply())
+        self.assertEqual(self.line(lines, "Green at the engine mark:"),
+                         "Green at the engine mark: first read pressed on frame 1001 "
+                         "(frames after the down frame: 1)")
+        lines = self.probe(self.probe_reply(engine_green=False))
+        self.assertEqual(self.line(lines, "Green at the engine mark:"),
+                         "Green at the engine mark: never read pressed")
+        self.assertIn("engine read-back (Green never read pressed at the engine mark)",
+                      lines[-1])
+
+    def test_whether_the_engine_time_was_known_at_the_input_event(self):
+        lines = self.probe(self.probe_reply(clock_known=True))
+        self.assertEqual(self.line(lines, "engine time equal"),
+                         "engine time equal to the songTime read at the input event: on "
+                         "11 of 11 frames; on frame 1001, where Green first read pressed: yes")
+        lines = self.probe(self.probe_reply(clock_known=False))
+        self.assertEqual(self.line(lines, "engine time equal"),
+                         "engine time equal to the songTime read at the input event: on "
+                         "0 of 11 frames; on frame 1001, where Green first read pressed: no")
+        # Neither answer decides the pass line: it is the probe's finding.
+        self.assertTrue(lines[-1].startswith("PASS "), lines)
+
+    def test_the_threads_are_said(self):
+        lines = self.probe(self.probe_reply())
+        self.assertEqual(self.line(lines, "threads:"), "threads: every mark ran on thread 7")
+        reply = self.probe_reply()
+        for row in reply["events"]:
+            row["thread"] = 9
+        lines = self.probe(reply)
+        self.assertEqual(self.line(lines, "threads:"),
+                         "threads: GameManager.Update on 7; the input event on 9; "
+                         "the engine update on 7")
+
+    def test_hook_out_covers_all_three(self):
+        lines = self.probe(self.probe_reply())
+        self.assertEqual(self.line(lines, "hook_out:"),
+                         "hook_out: True (GameManager.Update out, the input event out, "
+                         "the engine update out)")
+        for kind in (self.UPDATE, self.EVENT, self.ENGINE):
+            with self.subTest(left_in=kind):
+                hooks = {"update": True, "engine": True, "input_event": True, kind: False}
+                lines = self.probe(self.probe_reply(hooks_out=hooks))
+                label = dict((k, lab) for k, _key, lab in K.FRAME_PROBE_MARKS)[kind]
+                self.assertIn(f"{label} still in", self.line(lines, "hook_out:"))
+                self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
+                                            f"hook (not out after the probe: {label} still in)")
+
+    def test_a_failed_unhook_fails(self):
+        reply = {**self.probe_reply(), "unhook_error": "Error: remove failed"}
+        lines = self.probe(reply)
+        self.assertIn("taking the hooks out failed: Error: remove failed", lines)
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
+                                    "unhook (Error: remove failed)")
 
     # The frame probe's reply from the real LS-G1 run, its first 12 of 1649
     # rows (hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/frame_probe-1.json).
@@ -1150,9 +1380,13 @@ class FrameProbeTest(Rig):
     def numbers(text):
         return [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
 
-    def test_a_clean_probe_prints_each_number_and_passes(self):
+    def test_an_ls_g1_reply_prints_each_number_and_fails_for_lacking_the_marks(self):
+        # LS-G1's probe ran before the marks of task T1: it logged the Update
+        # mark alone, with no running number, no write_at and no hooks_out.
         with open(self.REAL_PROBE, encoding="utf-8") as f:
             reply = json.load(f)
+        self.assertNotIn("write_at", reply)
+        self.assertNotIn("seq", reply["frames"][0])
         rows = reply["frames"]
         frames = [r["frame"] for r in rows]
         down = reply["down_frame"]
@@ -1182,15 +1416,22 @@ class FrameProbeTest(Rig):
         self.assertEqual(self.numbers(lines[7]), [len(rows)] + [
             float(f"{g:.3f}") for g in (gaps[0], median, gaps[-1])])
         self.assertEqual(self.numbers(lines[10]), [reply["managers"], reply["wall_ms"]])
-        # The verdict is the clean one, because no part of the reply failed.
-        self.assertTrue(lines[-1].startswith("PASS "), lines[-1])
-        self.assertFalse(any("FAIL" in line for line in lines), lines)
+        # Every part LS-G1 judged passes; only the parts its reply lacks fail.
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
+                                    "hook (not out after the probe: GameManager.Update not "
+                                    "reported, the input event not reported, the engine "
+                                    "update not reported); "
+                                    "write place (the reply says write_at None, the probe "
+                                    "asked for 'update'); "
+                                    "mark order (no marks); "
+                                    "engine read-back (Green never read pressed at the "
+                                    "engine mark)")
 
     def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
         reply = self.probe_reply()
         tools = self.set_up([reply, reply])
-        tools.ch_kit_frame_probe(5)
-        lines = tools.ch_kit_frame_probe(5).splitlines()
+        tools.ch_kit_frame_probe(5, self.UPDATE)
+        lines = tools.ch_kit_frame_probe(5, self.UPDATE).splitlines()
         second = os.path.join(self.tmp, "frame_probe-2.json")
         self.assertIn(f"rows saved to {second}", lines[1])
         with open(os.path.join(self.tmp, "frame_probe-1.json"), encoding="utf-8") as f:
@@ -1200,7 +1441,7 @@ class FrameProbeTest(Rig):
         lines = self.probe(self.probe_reply(skip_at=5))
         self.assertEqual(lines[2], "frame steps: 1 of 10 did not rise by exactly 1 "
                                    "(frame 1004 to 1006)")
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
                                     "frame steps (1 of 10 did not rise by exactly 1)")
 
     def test_any_frame_rate_passes(self):
@@ -1212,9 +1453,9 @@ class FrameProbeTest(Rig):
         self.assertTrue(lines[-1].startswith("PASS"))
 
     def test_a_read_back_that_never_reads_pressed_fails(self):
-        lines = self.probe(self.probe_reply(green=False))
+        lines = self.probe(self.probe_reply(green=False, engine_green=True))
         self.assertIn("Green read-back: never read pressed", lines)
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
                                     "read-back (Green never read pressed)")
 
     def test_any_button_alone_does_not_pass_the_read_back(self):
@@ -1225,30 +1466,46 @@ class FrameProbeTest(Rig):
 
     def test_a_hook_left_in_fails(self):
         lines = self.probe(self.probe_reply(hook_out=False))
-        self.assertIn("hook_out: False", lines)
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
-                                    "hook (still in after the probe)")
+        self.assertIn("hook_out: False (GameManager.Update still in, the input event still "
+                      "in, the engine update still in)", lines)
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
+                                    "hook (not out after the probe: GameManager.Update still "
+                                    "in, the input event still in, the engine update still in)")
+
+    def test_a_hook_out_that_is_not_true_fails_even_with_each_out(self):
+        hooks = {"update": True, "engine": True, "input_event": True}
+        lines = self.probe(self.probe_reply(hook_out=False, hooks_out=hooks))
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
+                                    "hook (not out after the probe: hook_out is not true)")
 
     def test_a_failure_fails_and_is_printed(self):
         lines = self.probe(self.probe_reply(failure="after 7 frames: Error: access violation"))
         self.assertIn("failure: after 7 frames: Error: access violation", lines)
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
                                     "fault (after 7 frames: Error: access violation)")
 
     def test_every_failed_part_is_named(self):
         lines = self.probe(self.probe_reply(skip_at=5, green=False, hook_out=False,
                                             failure="boom"))
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
                                     "frame steps (1 of 10 did not rise by exactly 1); "
                                     "read-back (Green never read pressed); "
-                                    "hook (still in after the probe); fault (boom)")
+                                    "hook (not out after the probe: GameManager.Update still "
+                                    "in, the input event still in, the engine update still "
+                                    "in); fault (boom); "
+                                    "engine read-back (Green never read pressed at the "
+                                    "engine mark)")
 
     def test_a_reply_with_no_rows_fails(self):
-        reply = {**self.probe_reply(), "frames": [], "down_frame": None, "up_frame": None}
+        reply = {**self.probe_reply(), "frames": [], "events": [], "engine": [],
+                 "down_frame": None, "up_frame": None}
         lines = self.probe(reply)
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+        self.assertEqual(lines[-1], "FAIL against the frame probe's pass line: "
                                     "too few rows to check the frame steps; "
-                                    "read-back (the press was never written)")
+                                    "read-back (the press was never written); "
+                                    "write place (made at no mark, not only at "
+                                    "GameManager.Update); "
+                                    "mark order (no marks)")
 
     def test_more_than_five_seconds_is_refused_before_anything_is_sent(self):
         tools = self.set_up()
@@ -1265,11 +1522,11 @@ class FrameProbeTest(Rig):
 
     def test_refused_before_setup_and_while_a_play_session_runs(self):
         tools = self.tools()
-        self.assertEqual(tools.ch_kit_frame_probe(5), K.NOT_SET_UP)
+        self.assertEqual(tools.ch_kit_frame_probe(5, self.UPDATE), K.NOT_SET_UP)
         tools = self.set_up()
         sent = len(self.posted())
         self.game.play = {"last_row": None, "press_count": 0, "stop": None}
-        self.assertEqual(tools.ch_kit_frame_probe(5), K.PLAY_RUNNING)
+        self.assertEqual(tools.ch_kit_frame_probe(5, self.UPDATE), K.PLAY_RUNNING)
         self.assertEqual(len(self.posted()), sent)
         self.assertNotIn("find clock", self.events)
 
@@ -1281,13 +1538,13 @@ class FrameProbeTest(Rig):
             raise RuntimeError("no song is playing")
 
         tools._find_clock = no_engine
-        self.assertEqual(tools.ch_kit_frame_probe(5),
+        self.assertEqual(tools.ch_kit_frame_probe(5, self.UPDATE),
                          "frame probe: no engine found: RuntimeError: no song is playing")
         self.assertEqual(len(self.posted()), sent)
 
     def test_a_probe_with_no_reply_ends_at_its_cap(self):
         tools = self.set_up([None])
-        self.assertEqual(tools.ch_kit_frame_probe(2.5),
+        self.assertEqual(tools.ch_kit_frame_probe(2.5, self.UPDATE),
                          "frame probe failed: no reply to the frame_probe request within the "
                          "cap of 3.5 s (seconds plus KIT_PRESS_CAP_S)")
 

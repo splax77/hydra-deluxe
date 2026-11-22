@@ -280,12 +280,24 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(passed.content[0].text, left_out.content[0].text)
         self.assertEqual(self.printed, [])
 
-    def test_ch_kit_frame_probe_hands_its_seconds_to_the_kit(self):
+    def test_ch_kit_frame_probe_hands_its_seconds_and_write_at_to_the_kit(self):
         # Seconds over the kit's cap are refused before any kit is needed,
-        # naming the seconds given.
+        # naming the seconds given, and so is a write_at the kit does not
+        # know, naming the word given.
         cap = KT.FRAME_PROBE_SECONDS
+        first, second = KT.FRAME_PROBE_WRITE_ATS
         self._reaches("ch_kit_frame_probe", self.helper.kit.ch_kit_frame_probe,
-                      [{"seconds": cap * 2}, {"seconds": cap * 3}])
+                      [{"seconds": cap * 2, "write_at": first},
+                       {"seconds": cap * 3, "write_at": second},
+                       {"seconds": cap, "write_at": "nowhere"}])
+
+    def test_ch_kit_frame_probe_has_no_default_write_at(self):
+        # The schema makes write_at required: a call without it is refused,
+        # naming the word.
+        self.assertNotIn("default", self._schema("ch_kit_frame_probe")["write_at"])
+        with self.assertRaisesRegex(Exception, "write_at"):
+            asyncio.run(S.build_server(self.helper).call_tool(
+                "ch_kit_frame_probe", {"seconds": KT.FRAME_PROBE_SECONDS}))
 
     def test_the_helper_hands_ch_run_chart_its_three_parts(self):
         parts = self.helper.game._run_parts

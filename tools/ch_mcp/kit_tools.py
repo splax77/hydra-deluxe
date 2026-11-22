@@ -683,7 +683,8 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #               yet fired; one goes after every end read, even one that moves
 #               nothing, because its arrival clears retime_missed for it)
 #   stop_play   (no fields)
-#   frame_probe seconds, clock_addr, elements, read, hold_frames, cap_s
+#   frame_probe seconds, clock_addr, elements, read, hold_frames, cap_s,
+#               write_at (FRAME_PROBE_WRITE_ATS; required, no default)
 # An entry: seq, index (the chord), at_ms (the time it should be judged at),
 # band ({from_ms, to_ms, from_strict}, or left out: the band is the window),
 # window_from_ms and window_to_ms, no_frame_aim_ms (only with a band; left out
@@ -746,6 +747,23 @@ FRAME_PROBE_SECONDS = 5.0
 # The file the probe's whole reply is saved to in the session folder, with
 # a number that makes it new.
 FRAME_PROBE_FILE_PREFIX = "frame_probe-"
+# Where the probe writes its one press, the message's required write_at
+# (task T1 of docs/superpowers/plans/2026-11-22-squeeze-frame-cost.md): as
+# GameManager.Update returns, or inside Rewired's InputSourceUpdateEvent
+# (docs/clone-hero/07-internals.md, IN-94). kit.ts's frameProbe holds the
+# same two words.
+FRAME_PROBE_WRITE_AT_UPDATE = "update"
+FRAME_PROBE_WRITE_AT_INPUT_EVENT = "input_event"
+FRAME_PROBE_WRITE_ATS = (FRAME_PROBE_WRITE_AT_UPDATE, FRAME_PROBE_WRITE_AT_INPUT_EVENT)
+# The probe's three marks in a frame: each kind's key in the reply's
+# `hooks_out`, the reply list that holds its rows, and its name in the
+# report. A write can sit only on the first two (FRAME_PROBE_WRITE_ATS).
+FRAME_PROBE_MARK_ENGINE = "engine"
+FRAME_PROBE_MARKS = (
+    (FRAME_PROBE_WRITE_AT_UPDATE, "frames", "GameManager.Update"),
+    (FRAME_PROBE_WRITE_AT_INPUT_EVENT, "events", "the input event"),
+    (FRAME_PROBE_MARK_ENGINE, "engine", "the engine update"),
+)
 
 
 def play_entry(seq: int, press: Any, after_seq: Optional[int]) -> dict:
@@ -800,15 +818,16 @@ def frame_probe_action() -> str:
     return KIT_BINDINGS[KIT_ELEMENTS[FRAME_PROBE_ITEM].id][1]
 
 
-def frame_probe_message(seconds: float, clock_addr: int) -> dict:
-    """The `frame_probe` message for LS-G1: log every frame for `seconds`,
-    pressing FRAME_PROBE_ITEM once for the kit's hold. `read` names that
-    pad's own game action (KIT_BINDINGS), so each frame's row also holds
-    that action's read-back beside the any-button one."""
+def frame_probe_message(seconds: float, clock_addr: int, write_at: str) -> dict:
+    """The `frame_probe` message: log every frame's marks for `seconds`,
+    pressing FRAME_PROBE_ITEM once for the kit's hold, written at the mark
+    `write_at` names (FRAME_PROBE_WRITE_ATS). `read` names that pad's own
+    game action (KIT_BINDINGS), so each Update and engine mark also holds
+    that action's read-back."""
     element = KIT_ELEMENTS[FRAME_PROBE_ITEM]
     return {"type": FRAME_PROBE_TYPE, "seconds": seconds, "clock_addr": clock_addr,
             "elements": press_message([element])["elements"],
-            "read": [frame_probe_action()],
+            "read": [frame_probe_action()], "write_at": write_at,
             "hold_frames": KIT_HOLD_FRAMES, "cap_s": watch_cap_s(seconds)}
 
 
@@ -898,15 +917,174 @@ def save_frame_probe(reply: dict, folder: str) -> str:
     return f"rows saved to {path}"
 
 
-def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str]:
-    """The frame probe's reply judged against LS-G1's pass line
-    (docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)): the
-    frame steps, the frame rate, the frame the press read back on, the gap
-    between the engine clock and songTime, hook_out and failure, then one
-    PASS or FAIL line naming each part that failed. The frame rate is
-    printed for information and never decides PASS or FAIL (D341).
-    kit.ts's frame_probe owns what the reply holds; `saved_line` is
-    save_frame_probe's line."""
+def _probe_marks(reply: dict) -> List[tuple]:
+    """Every mark in the probe's reply as (seq, frame, kind, row), for the
+    rows whose seq and frame are numbers, in FRAME_PROBE_MARKS' kinds."""
+    marks = []
+    for kind, key, _label in FRAME_PROBE_MARKS:
+        for row in reply.get(key) or []:
+            if (isinstance(row, dict) and _is_number(row.get("seq"))
+                    and _is_number(row.get("frame"))):
+                marks.append((row["seq"], row["frame"], kind, row))
+    return marks
+
+
+def _mark_label(kind: str) -> str:
+    return next(label for k, _key, label in FRAME_PROBE_MARKS if k == kind)
+
+
+def _order_text(order: Sequence[str]) -> str:
+    return ", then ".join(_mark_label(kind) for kind in order)
+
+
+def frame_probe_mark_lines(reply: dict, write_at: str, down: Any,
+                           action: str) -> "tuple[List[str], List[str]]":
+    """The probe's marks judged (task T1 of
+    docs/superpowers/plans/2026-11-22-squeeze-frame-cost.md): where the
+    press was written against `write_at`, the order of the marks in each
+    frame from their running numbers alone, how many engine marks each
+    frame held, the frame `action` first read pressed at the engine mark
+    after the `down` frame, whether the engine mark's time equalled the
+    songTime read at the input event, and the threads the marks ran on.
+    Returns the lines and the failed parts."""
+    lines: List[str] = []
+    failed: List[str] = []
+
+    # Where the press was written: only at the mark write_at names.
+    said = reply.get("write_at")
+    writers = []
+    for kind, key, _label in FRAME_PROBE_MARKS:
+        if any(isinstance(row, dict) and row.get("wrote") is not None
+               for row in reply.get(key) or []):
+            writers.append(kind)
+    made = ", ".join(_mark_label(kind) for kind in writers) or "no mark"
+    if write_at in FRAME_PROBE_WRITE_ATS:
+        lines.append(f"press written at: asked for {_mark_label(write_at)}; made at {made}")
+    else:
+        lines.append(f"press written at: asked for {write_at!r}; made at {made}")
+    if said != write_at:
+        failed.append(f"write place (the reply says write_at {said!r}, "
+                      f"the probe asked for {write_at!r})")
+    elif writers != [write_at]:
+        failed.append(f"write place (made at {made}, not only at {_mark_label(write_at)})")
+
+    # The order of the marks in each frame, from their running numbers.
+    marks = _probe_marks(reply)
+    seqs = [seq for seq, _f, _k, _r in marks]
+    twice = sorted({s for s in seqs if seqs.count(s) > 1})
+    by_frame: Dict[Any, List[tuple]] = {}
+    for mark in marks:
+        by_frame.setdefault(mark[1], []).append(mark)
+    frames = sorted(by_frame)
+    kinds = [kind for kind, _key, _label in FRAME_PROBE_MARKS]
+    lacking = [(f, next(k for k in kinds if all(m[2] != k for m in by_frame[f])))
+               for f in frames if any(all(m[2] != k for m in by_frame[f]) for k in kinds)]
+    orders: Dict[tuple, List[Any]] = {}
+    for f in frames:
+        order = tuple(m[2] for m in sorted(by_frame[f], key=lambda m: m[0]))
+        orders.setdefault(order, []).append(f)
+    if not frames:
+        lines.append("mark order: not stated, the reply holds no marks")
+        failed.append("mark order (no marks)")
+    elif twice:
+        lines.append(f"mark order: not stated, {len(twice)} running numbers are held by "
+                     f"more than one mark (first: {twice[0]})")
+        failed.append(f"mark order ({len(twice)} running numbers held twice)")
+    elif lacking:
+        f, kind = lacking[0]
+        lines.append(f"mark order: not stated, {len(lacking)} of {len(frames)} frames lack "
+                     f"a mark (first: frame {f} has no mark at {_mark_label(kind)})")
+        failed.append(f"mark order ({len(lacking)} of {len(frames)} frames lack a mark)")
+    elif len(orders) == 1:
+        lines.append(f"mark order on all {len(frames)} frames: {_order_text(next(iter(orders)))}")
+    else:
+        parts = [f"{_order_text(order)} on {len(fs)} frames (first: frame {fs[0]})"
+                 for order, fs in sorted(orders.items(), key=lambda kv: -len(kv[1]))]
+        lines.append(f"mark order: {len(orders)} different orders over {len(frames)} frames: "
+                     + "; ".join(parts))
+        failed.append(f"mark order ({len(orders)} different orders, not one on every frame)")
+
+    # How many engine marks each frame held, and from how many engines.
+    engine_rows = [m for m in marks if m[2] == FRAME_PROBE_MARK_ENGINE]
+    counts: Dict[int, List[Any]] = {}
+    for f in frames:
+        n = sum(1 for m in by_frame[f] if m[2] == FRAME_PROBE_MARK_ENGINE)
+        counts.setdefault(n, []).append(f)
+    engines = {m[3].get("engine") for m in engine_rows}
+    if frames:
+        parts = [f"{n} on {len(fs)} frames" + ("" if len(counts) == 1 else
+                                               f" (first: frame {fs[0]})")
+                 for n, fs in sorted(counts.items())]
+        lines.append("engine marks per frame: " + ", ".join(parts)
+                     + f"; from {len(engines)} engines")
+
+    # The frame the pad first read pressed at the engine mark.
+    names = reply.get("read") or []
+    pressed_frame = None
+    if _is_number(down) and action in names:
+        at = names.index(action)
+        for _seq, f, _kind, row in sorted(engine_rows, key=lambda m: m[0]):
+            read = row.get("read")
+            if f >= down and isinstance(read, list) and len(read) > at and read[at] is True:
+                pressed_frame = f
+                break
+    if not _is_number(down):
+        lines.append(f"{action} at the engine mark: no press was written")
+    elif pressed_frame is None:
+        lines.append(f"{action} at the engine mark: never read pressed")
+        failed.append(f"engine read-back ({action} never read pressed at the engine mark)")
+    else:
+        lines.append(f"{action} at the engine mark: first read pressed on frame "
+                     f"{pressed_frame} (frames after the down frame: {pressed_frame - down})")
+
+    # Whether the time handed to the engine equalled the songTime read at
+    # the frame's first input event: if so, the judging clock was known
+    # when the event fired.
+    known: Dict[Any, bool] = {}
+    for f in frames:
+        events = sorted((m for m in by_frame[f] if m[2] == FRAME_PROBE_WRITE_AT_INPUT_EVENT),
+                        key=lambda m: m[0])
+        times = [m[3].get("time_s") for m in by_frame[f] if m[2] == FRAME_PROBE_MARK_ENGINE]
+        if not events or not times or not _is_number(events[0][3].get("song_time_s")):
+            continue
+        song = events[0][3]["song_time_s"]
+        known[f] = all(_is_number(t) and t == song for t in times)
+    if known:
+        line = (f"engine time equal to the songTime read at the input event: on "
+                f"{sum(known.values())} of {len(known)} frames")
+        if pressed_frame in known:
+            line += (f"; on frame {pressed_frame}, where {action} first read pressed: "
+                     f"{'yes' if known[pressed_frame] else 'no'}")
+        lines.append(line)
+    else:
+        lines.append("engine time equal to the songTime read at the input event: "
+                     "no frame holds both")
+
+    # The threads the marks ran on, for information.
+    threads = {kind: sorted({m[3].get("thread") for m in marks if m[2] == kind}, key=str)
+               for kind in kinds}
+    every = {t for ts in threads.values() for t in ts}
+    if len(every) == 1:
+        lines.append(f"threads: every mark ran on thread {next(iter(every))}")
+    else:
+        lines.append("threads: " + "; ".join(
+            f"{_mark_label(kind)} on {', '.join(str(t) for t in threads[kind]) or 'none'}"
+            for kind in kinds))
+    return lines, failed
+
+
+def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str,
+                      write_at: str) -> List[str]:
+    """The frame probe's reply judged against its pass line, LS-G1's
+    (docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md))
+    with T1's marks of docs/superpowers/plans/2026-11-22-squeeze-frame-cost.md
+    added: the frame steps, the frame rate, the frame the press read back on,
+    the gap between the engine clock and songTime, hook_out and failure, then
+    frame_probe_mark_lines' lines, then one PASS or FAIL line naming each part
+    that failed. The frame rate is printed for information and never decides
+    PASS or FAIL (D341). kit.ts's frame_probe owns what the reply holds;
+    `saved_line` is save_frame_probe's line and `write_at` the word the probe
+    was sent."""
     import statistics
     lines = [f"frame probe on the engine clock at {clock_addr:#x}"]
     failed: List[str] = []
@@ -990,10 +1168,26 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
     else:
         lines.append("engine clock minus songTime: no frame holds both")
 
+    # hook_out covers all three: the Update hook, the engine hook and the
+    # input event's delegate, each named in hooks_out.
     hook_out = reply.get("hook_out")
-    lines.append(f"hook_out: {hook_out}")
-    if hook_out is not True:
-        failed.append("hook (still in after the probe)")
+    each = reply.get("hooks_out")
+    each = each if isinstance(each, dict) else {}
+    def state(kind: str) -> str:
+        value = each.get(kind)
+        return "out" if value is True else ("still in" if value is False else "not reported")
+
+    parts = [f"{_mark_label(kind)} {state(kind)}" for kind, _key, _label in FRAME_PROBE_MARKS]
+    lines.append(f"hook_out: {hook_out} ({', '.join(parts)})")
+    left = [f"{_mark_label(kind)} {state(kind)}" for kind, _key, _label in FRAME_PROBE_MARKS
+            if each.get(kind) is not True]
+    if hook_out is not True or left:
+        failed.append("hook (not out after the probe: "
+                      f"{', '.join(left) if left else 'hook_out is not true'})")
+    unhook_error = reply.get("unhook_error")
+    if unhook_error is not None:
+        lines.append(f"taking the hooks out failed: {unhook_error}")
+        failed.append(f"unhook ({unhook_error})")
     failure = reply.get("failure")
     lines.append(f"failure: {'none' if failure is None else failure}")
     if failure is not None:
@@ -1001,11 +1195,17 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
     lines.append(f"managers: {reply.get('managers')}; probe wall time: "
                  f"{reply.get('wall_ms')} ms")
 
+    mark_lines, mark_failed = frame_probe_mark_lines(reply, write_at, down, action)
+    lines.extend(mark_lines)
+    failed.extend(mark_failed)
+
     if failed:
-        lines.append("FAIL against LS-G1's pass line: " + "; ".join(failed))
+        lines.append("FAIL against the frame probe's pass line: " + "; ".join(failed))
     else:
-        lines.append("PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
-                     "the press read back as pressed, and the hook is out")
+        lines.append("PASS against the frame probe's pass line: every frame stepped by 1, "
+                     "every frame held its marks in one order, the press was written only "
+                     f"at {_mark_label(write_at)} and read back as pressed, no fault, and "
+                     "every hook is out")
     return lines
 
 
@@ -1317,13 +1517,16 @@ class KitTools:
                 return None
             return GamePlayer(agent, self._request_lock)
 
-    def ch_kit_frame_probe(self, seconds: float = FRAME_PROBE_SECONDS) -> str:
-        """LS-G1's frame probe: find the playing song's engine, then have the
-        kit agent log each frame for `seconds` (the frame number, the engine
-        clock, songTime and the wall time), press FRAME_PROBE_ITEM once and
-        read it back each frame, save its reply to the session folder
-        (save_frame_probe) and print frame_probe_lines' report. A `seconds`
-        above FRAME_PROBE_SECONDS is refused, and so is a probe while a play
+    def ch_kit_frame_probe(self, seconds: float = FRAME_PROBE_SECONDS,
+                           write_at: Optional[str] = None) -> str:
+        """The frame probe: find the playing song's engine, then have the
+        kit agent log three marks in each frame for `seconds` (kit.ts's
+        frameProbe says what each holds), press FRAME_PROBE_ITEM once from
+        the mark `write_at` names and read it back, save its reply to the
+        session folder (save_frame_probe) and print frame_probe_lines'
+        report. `write_at` is required and has no default: a call without
+        one of FRAME_PROBE_WRITE_ATS is refused. A `seconds` above
+        FRAME_PROBE_SECONDS is refused, and so is a probe while a play
         session runs."""
         with self._lock:
             if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
@@ -1332,6 +1535,10 @@ class KitTools:
             if seconds > FRAME_PROBE_SECONDS:
                 return (f"seconds is at most {FRAME_PROBE_SECONDS:g} (FRAME_PROBE_SECONDS), "
                         f"not {seconds!r}")
+            if write_at not in FRAME_PROBE_WRITE_ATS:
+                words = " or ".join(repr(w) for w in FRAME_PROBE_WRITE_ATS)
+                return (f"write_at is required, {words} (where the probe writes its "
+                        f"press), not {write_at!r}")
             agent = self._ready_agent()
             if agent is None:
                 return NOT_SET_UP
@@ -1341,7 +1548,7 @@ class KitTools:
                 clock_addr = self._find_clock()
             except Exception as e:  # the finder's own words go to the caller
                 return f"frame probe: no engine found: {type(e).__name__}: {e}"
-            message = frame_probe_message(seconds, clock_addr)
+            message = frame_probe_message(seconds, clock_addr, write_at)
             try:
                 with self._request_lock:
                     reply = agent.request(message, message["cap_s"])
@@ -1349,7 +1556,7 @@ class KitTools:
                 note = " (seconds plus KIT_PRESS_CAP_S)" if e.reason == FA.END_CAP else ""
                 return self._reply([f"frame probe failed: {e}{note}", *fault_lines(e)])
             saved_line = save_frame_probe(reply, self._game.session_dir())
-            return self._reply(frame_probe_lines(reply, clock_addr, saved_line))
+            return self._reply(frame_probe_lines(reply, clock_addr, saved_line, write_at))
 
     def agent_attached(self) -> bool:
         """Whether a kit agent is held, alive or not: the one ch_kit_teardown
