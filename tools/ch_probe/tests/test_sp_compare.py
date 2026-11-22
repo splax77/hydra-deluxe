@@ -598,6 +598,15 @@ class SlipNoteTest(unittest.TestCase):
             self.assertTrue(notes[0].startswith(
                 f"{_SLIP_NOTE}{sp_compare._chord_label(SCORE['chords'][want])} on "), notes[0])
 
+    def test_a_parting_before_every_chord_says_no_chord_on_the_multiplier_line(self):
+        # No chord is landed by a parting before the first chord's first press.
+        report = sp_compare.Report()
+        sp_compare._check_multipliers(report, build_rows(), SCORE["chords"], 0.0,
+                                      _score_reach())
+        mult = _starting(report, "Multiplier not compared from chord ")
+        self.assertEqual(len(mult), 1, report.text())
+        self.assertIn("It parts at a point no chord reaches: ", mult[0])
+
     def test_the_note_decides_nothing(self):
         # The note is neither a PASS nor a FAIL line, and the summary still
         # counts exactly the report's PASS and FAIL lines.
