@@ -362,11 +362,14 @@ class ServerTest(unittest.TestCase):
 
     def test_ch_sp_compare_hands_the_recorded_files_and_resolution_to_the_compare(self):
         # A real watch piece against Hydra's files for its chart: refused
-        # with no resolution, compared with the chart's own.
+        # with no resolution, compared with the chart's own, and refused
+        # naming a press log that is not there.
         score, schedule, _index = self._pitch_dark_schedule()
         base = {"watch_csv": _RISE_CSV, "score_json": score, "schedule_json": schedule}
+        resolved = {**base, "resolution": _midi_resolution(_PITCH_DARK_CHART)}
         self._reaches("ch_sp_compare", self.helper.sp.ch_sp_compare, [
-            base, {**base, "resolution": _midi_resolution(_PITCH_DARK_CHART)}])
+            base, resolved,
+            {**resolved, "press_csv": os.path.join(self.tmp, "no-such-press.csv")}])
 
     def test_ch_compare_hands_the_run_settings_to_the_compare(self):
         # The game's real scorestats.json against Hydra's score, with and
