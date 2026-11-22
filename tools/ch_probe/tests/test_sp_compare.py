@@ -37,7 +37,8 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import play_chart, sp_compare  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
-    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_OLDER_NAMES)
+    PRESS_COLUMNS_BEFORE_FRAME_PICK, PRESS_LOG_COLUMNS, WATCH_CLOCK_COLUMNS,
+    WATCH_COLUMNS, WATCH_OLDER_NAMES)
 from tools.ch_probe.experiments.score_compare import stop_check  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 
@@ -76,14 +77,16 @@ DEFAULT_TIMES = range(500, 5001, 10)
 
 def build_rows(times=DEFAULT_TIMES, *, amount0=0, rise_skip=(), act=(3005, 4100),
                act_clears=True, mult_doubles=True, mult_lag=0,
-               sp_max=lambda t: FULL_METER, u64_scale=1):
+               sp_max=lambda t: FULL_METER, u64_scale=1, rise_at=None):
     """Watcher rows for the fake run, one per time in `times` (clock ms).
 
     A phrase end adds PHRASE to the amount (clamped at sp_max) CREDIT_MS after
-    its chord; an activation empties the meter, sets the flag, doubles the
-    multiplier and sets the end time act[1]; the flag clears at act[1]."""
+    its chord, or at rise_at[index] for a chord `rise_at` names; an activation
+    empties the meter, sets the flag, doubles the multiplier and sets the end
+    time act[1]; the flag clears at act[1]."""
     chords = SCORE["chords"]
-    events = [(c["ms"] + CREDIT_MS, "rise") for c in chords
+    rise_at = rise_at or {}
+    events = [(rise_at.get(c["index"], c["ms"] + CREDIT_MS), "rise") for c in chords
               if c["is_sp_phrase_end"] and c["index"] not in rise_skip]
     if act is not None:
         events.append((act[0], "activate"))
@@ -125,6 +128,22 @@ def _write_schedule(folder):
 def _score_reach():
     with tempfile.TemporaryDirectory() as folder:
         return sp_compare.press_reach(_write_schedule(folder))
+
+
+def write_press_log(path, judged, columns=PRESS_LOG_COLUMNS):
+    """A press log at `path` with the given header and one row per (index,
+    judged_ms) pair of `judged`, in its order; a judged_ms of None leaves the
+    cell blank, as play_chart writes a press with no judge time. The other
+    cells the reader needs are hand-picked, since sp_compare reads only index
+    and judged_ms."""
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for index, judged_ms in judged:
+            writer.writerow({"index": index, "chart_ms": 0.0, "clock_ms_at_press": 0.0,
+                             "score_before": 0, "score_after": 0, "send": "sent",
+                             "judged_ms": "" if judged_ms is None else repr(judged_ms)})
+    return path
 
 
 def run(rows, **kwargs):
@@ -923,6 +942,160 @@ def _rise_lines(score_path, reach, rows):
     sp_compare._check_phrase_rises(report, rows, _fixture_chords(score_path),
                                    AMOUNT, MAX, reach)
     return report.lines
+
+
+class JudgedReachTest(unittest.TestCase):
+    """run_reach takes each chord's reach from the press log's judged_ms when
+    the run recorded one, so a press the game judged a fraction of a ms before
+    its planned time is still found on its chord. The fake run's events are
+    put on the judged time of that chord's press, as the game credits it."""
+
+    # How far before its planned press the game judges the press in these
+    # tests: a hand-picked fraction of a ms, like the 0.04 ms LS-L1 run 1
+    # showed for chord 855 (hydra-data/ch-mcp-runs/2026-11-22/ls-l1-run1).
+    EARLY_MS = 0.04
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.folder = tmp.name
+        self.schedule = _write_schedule(self.folder)
+        self.planned = sp_compare.press_reach(self.schedule)
+
+    def judged_before_plan(self, index):
+        """The clock ms of a row a fraction of a ms before chord `index`'s
+        planned press, as the watcher's clock reads it."""
+        return sp_compare._ms({"clock_s": (self.planned[index].earliest_ms
+                                           - self.EARLY_MS) / 1000})
+
+    def log(self, judged_by_index, columns=PRESS_LOG_COLUMNS):
+        """A press log judging every chord at its planned press, except the
+        chords `judged_by_index` names, which it judges at their given time."""
+        judged = [(c["index"], judged_by_index.get(c["index"],
+                                                   self.planned[c["index"]].earliest_ms))
+                  for c in SCORE["chords"]]
+        return write_press_log(os.path.join(self.folder, "press-1.csv"), judged, columns)
+
+    def both(self, rows, judged_by_index):
+        """The report with the planned reach and with run_reach over a log."""
+        planned = run(rows, reach=self.planned)
+        reach, source = sp_compare.run_reach(self.schedule, self.log(judged_by_index))
+        return planned, run(rows, reach=reach, reach_source=source)
+
+    def test_a_rise_judged_before_its_planned_press_is_found_on_its_chord(self):
+        chord = SCORE["chords"][2]
+        self.assertTrue(chord["is_sp_phrase_end"])
+        at = self.judged_before_plan(2)
+        self.assertLess(at, self.planned[2].earliest_ms)
+        rows = build_rows(sorted([*DEFAULT_TIMES, at]), rise_at={2: at})
+        planned, judged = self.both(rows, {2: at})
+        label = f"phrase rise after {sp_compare._chord_label(chord)}: "
+        self.assertEqual(len(_starting(planned, "FAIL " + label + "missing")), 1,
+                         planned.text())
+        self.assertEqual(judged.fails, 0, judged.text())
+        self.assertIn(f"PASS {label}+{PHRASE} ({PHRASE} -> {2 * PHRASE}) at "
+                      f"{sp_compare.format_ms(at)}, full", judged.lines)
+
+    def test_a_rise_that_fills_the_meter_before_its_planned_press_is_not_no_room(self):
+        # Chord 2's own rise fills the meter a fraction of a ms before its
+        # planned press. With the planned reach the meter reads full when the
+        # search starts, but no earlier phrase end took that rise, so it is a
+        # missing rise naming the rise, not a "no room" note.
+        chord = SCORE["chords"][2]
+        at = self.judged_before_plan(2)
+        rows = build_rows(sorted([*DEFAULT_TIMES, at]), amount0=FULL_METER - 2 * PHRASE,
+                          rise_at={2: at})
+        planned, judged = self.both(rows, {2: at})
+        label = f"phrase rise after {sp_compare._chord_label(chord)}: "
+        self.assertEqual(_starting(planned, f"Note: {label}"), [], planned.text())
+        [fail] = _starting(planned, f"FAIL {label}missing")
+        start = self.planned[2].earliest_ms
+        self.assertTrue(fail.endswith(
+            f"; a rise no phrase end took, +{PHRASE} at {sp_compare.format_ms(at)}, "
+            f"shows {start - at:.2f} ms before the search starts"), fail)
+        self.assertIn(f"PASS {label}+{PHRASE} ({FULL_METER - PHRASE} -> {FULL_METER}) at "
+                      f"{sp_compare.format_ms(at)}, clamped", judged.lines)
+
+    def test_a_flip_judged_before_its_planned_press_lands_on_its_chord(self):
+        chord = SCORE["chords"][4]
+        self.assertEqual(chord["tick"], SCORE["activations"][0]["act_tick"])
+        flip = self.judged_before_plan(4)
+        rows = build_rows(sorted([*DEFAULT_TIMES, flip]), act=(flip, 4100))
+        planned, judged = self.both(rows, {4: flip})
+        self.assertIn(f"FAIL   activation 1 not on the path's chord: game no chord within "
+                      f"{sp_compare.LANDING_WINDOW_MS:g} ms, path act_tick {chord['tick']}",
+                      planned.lines)
+        self.assertEqual(judged.fails, 0, judged.text())
+        self.assertIn(f"PASS   activation 1 on the path's chord: "
+                      f"{sp_compare._chord_label(chord)}", judged.lines)
+
+    def test_the_header_names_the_judged_log_and_the_chords_left_planned(self):
+        log = self.log({})
+        # A press the game never judged (a dropped press) leaves its chord on
+        # the planned time.
+        judged = [(c["index"], None if c["index"] == 3 else self.planned[c["index"]].earliest_ms)
+                  for c in SCORE["chords"]]
+        write_press_log(log, judged)
+        reach, source = sp_compare.run_reach(self.schedule, log)
+        self.assertEqual(reach, self.planned)
+        self.assertEqual(source, f"press times: the game's judged times (judged_ms) from "
+                                 f"{log} for {len(SCORE['chords']) - 1} chords; planned "
+                                 f"times from the schedule for the 1 chords with no "
+                                 f"judged time (first: chord 3)")
+        self.assertEqual(run(build_rows(), reach=reach, reach_source=source).lines[2], source)
+
+    def test_a_run_without_judged_times_is_compared_as_before(self):
+        rows = build_rows()
+        today = run(rows, reach=self.planned)
+        no_log = sp_compare.run_reach(self.schedule, None)
+        self.assertEqual(no_log, (self.planned, sp_compare.PLANNED_REACH_SOURCE))
+        self.assertEqual(run(rows, reach=no_log[0], reach_source=no_log[1]).lines, today.lines)
+        self.assertEqual(today.lines[2], sp_compare.PLANNED_REACH_SOURCE)
+        # A log from before the frame pick has no judged_ms column, so the
+        # planned times stand and the header says why.
+        old = self.log({}, PRESS_COLUMNS_BEFORE_FRAME_PICK)
+        reach, source = sp_compare.run_reach(self.schedule, old)
+        self.assertEqual(reach, self.planned)
+        self.assertIn(f"the press log {old} has no judged_ms on any row", source)
+        old_report = run(rows, reach=reach, reach_source=source)
+        self.assertEqual(old_report.lines[:2] + old_report.lines[3:],
+                         today.lines[:2] + today.lines[3:])
+
+
+class FullMeterRiseTest(unittest.TestCase):
+    """A phrase end that comes while the meter is already full has no room to
+    rise, so the report says so in a note, not a missing rise."""
+
+    def test_a_phrase_at_a_full_meter_gets_the_no_room_note(self):
+        # The meter starts full, so chords 0 and 2 add nothing; the activation
+        # at chord 4 empties it, so chord 5's phrase rises as usual.
+        rows = build_rows(amount0=FULL_METER)
+        self.assertEqual(sp_compare.phrase_rises(rows, AMOUNT)[0].before, 0)
+        report = run(rows)
+        self.assertEqual(report.fails, 0, report.text())
+        reach = _score_reach()
+        for index in (0, 2):
+            chord = SCORE["chords"][index]
+            label = f"phrase rise after {sp_compare._chord_label(chord)}: "
+            self.assertEqual(_starting(report, "FAIL " + label), [], report.text())
+            self.assertEqual(_starting(report, "PASS " + label), [], report.text())
+            self.assertIn(
+                f"Note: {label}no room for a rise; the meter was already full "
+                f"({FULL_METER} of {FULL_METER}) before its first press at "
+                f"{sp_compare.format_ms(reach[index].earliest_ms)}, full since "
+                f"{sp_compare.format_ms(DEFAULT_TIMES[0])}. Not a PASS or FAIL: the score "
+                f"JSON has no per-chord meter, so this report cannot say whether "
+                f"Hydra's path also expects no gain here", report.lines)
+        self.assertEqual(len(_starting(report, "PASS phrase rise after "
+                                       f"{sp_compare._chord_label(SCORE['chords'][5])}")),
+                         1, report.text())
+
+    def test_a_missing_rise_below_a_full_meter_still_fails(self):
+        report = run(build_rows(amount0=FULL_METER - PHRASE, rise_skip=(0,)))
+        chord = SCORE["chords"][0]
+        self.assertEqual(len(_starting(
+            report, f"FAIL phrase rise after {sp_compare._chord_label(chord)}: missing")),
+            1, report.text())
 
 
 class PressReachTest(unittest.TestCase):

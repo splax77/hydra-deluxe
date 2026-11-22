@@ -562,19 +562,24 @@ def build_server(helper: Optional[Helper] = None):
     def ch_sp_compare(watch_csv: str, score_json: str, schedule_json: str,
                       resolution: int | None = None,
                       sp_bar_ticks: int | None = None,
-                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
+                      width: int = sp_compare.DEFAULT_WIDTH,
+                      press_csv: str | None = None) -> str:
         """Compare a watcher CSV with a hydra_replay score JSON and print
         sp_compare's report, one PASS or FAIL line per check, then one line
         per activation with Hydra's ready point and the first row the game
         was ready. resolution, the chart's Resolution from its [Song]
         section, is needed: without it the compare is refused. The run's
         stop reason is the last play session's, and a running play is
-        refused. The checks look for each chord where the auto-player pressed it,
-        which schedule_json, the same path's hydra_replay schedule (the file
-        ch_play_chart plays), says. A schedule that refuses its path is
-        refused with the schedule's words."""
+        refused. The checks look for each chord where the game judged its
+        press: give press_csv, the run's press-<n>.csv, for a kit run, whose
+        judged times the checks use. Without it, or for a chord the log has
+        no judged time for, they use the planned press times of
+        schedule_json, the same path's hydra_replay schedule (the file
+        ch_play_chart plays). The report's third line names which times it
+        used. A schedule that refuses its path is refused with the
+        schedule's words."""
         return capped(h.sp.ch_sp_compare(watch_csv, score_json, schedule_json,
-                                         resolution, sp_bar_ticks, width))
+                                         resolution, sp_bar_ticks, width, press_csv))
 
     @server.tool()
     def ch_sp_between(start_ms: float, end_ms: float) -> str:

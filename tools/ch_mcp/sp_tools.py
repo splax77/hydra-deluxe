@@ -316,12 +316,15 @@ class SpTools:
     def ch_sp_compare(self, watch_csv: str, score_json: str, schedule_json: str,
                       resolution: Optional[int] = None,
                       sp_bar_ticks: Optional[int] = None,
-                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
+                      width: int = sp_compare.DEFAULT_WIDTH,
+                      press_csv: Optional[str] = None) -> str:
         """sp_compare.compare's report for a watcher CSV against a
         hydra_replay score JSON, with each chord's press times from
-        sp_compare.press_reach over `schedule_json`, the same path's
-        hydra_replay schedule. A schedule file that press_reach cannot read,
-        or that refuses its path, gets one line naming why. `resolution` is
+        sp_compare.run_reach over `schedule_json`, the same path's
+        hydra_replay schedule, and `press_csv`, the run's press log, whose
+        judged times it prefers. A schedule or press log that run_reach
+        cannot read, or a schedule that refuses its path, gets one line
+        naming why. `resolution` is
         the chart's Resolution, which no file here holds, and the run's stop
         reason and its message are the last play session's
         (GameTools.play_snapshot). After the
@@ -342,14 +345,20 @@ class SpTools:
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"compare failed: {type(e).__name__}: {e}"
             try:
-                reach = sp_compare.press_reach(schedule_json)
                 schedule = play_chart.load_schedule(schedule_json)
+                # Read here so a schedule's own fault is named as the schedule's.
+                sp_compare.press_reach(schedule_json)
             except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
                 return f"could not read {schedule_json}: {type(e).__name__}: {e}"
             try:
+                reach, source = sp_compare.run_reach(schedule_json, press_csv)
+            except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+                return f"could not read {press_csv}: {type(e).__name__}: {e}"
+            try:
                 report = sp_compare.compare(rows, score, resolution=resolution,
                                             sp_bar_ticks=sp_bar_ticks, width=width,
-                                            reach=reach, stop=stop, stop_message=stop_message)
+                                            reach=reach, reach_source=source,
+                                            stop=stop, stop_message=stop_message)
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"compare failed: {type(e).__name__}: {e}"
             return "\n".join([report.text()] + ready_lines(rows, schedule))

@@ -7,7 +7,10 @@ Pure logic: it opens no process. It reads three files from an overlay-spike run:
 - the `hydra_replay score --path <dump.json> --index N` JSON of the path the
   run was meant to play;
 - the `hydra_replay schedule` JSON of the same path, which says when the
-  auto-player presses each chord (press_reach).
+  auto-player planned to press each chord (press_reach);
+- optionally the run's press log, whose judged_ms says when the game judged
+  each press; run_reach prefers it, and the report's third line names which
+  times it used.
 
 Each chord's `ms` in the JSON is taken as the chord's time on the game's song
 clock (`clock_s` in the CSV), so the comparison is the same for an
@@ -18,7 +21,8 @@ the numbers:
 
 - the run's end: whether the run reached the song's end
   (score_compare.stop_check);
-- phrase rises: each phrase-end chord is followed by a rise in the SP amount;
+- phrase rises: each phrase-end chord is followed by a rise in the SP amount,
+  or, when the meter was already full, a note that no rise could show;
 - sp_max on every row equals the game's full meter for the chart's
   resolution (game_full_meter);
 - each activation the game made: the multiplier doubles, an end time ahead of
@@ -38,7 +42,8 @@ The server prints their answers and asks nothing itself.
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
-        --resolution 192 --schedule <schedule.json> [--stop done]
+        --resolution 192 --schedule <schedule.json> [--press-log <press.csv>]
+        [--stop done]
         [--stop-message TEXT] [--sp-bar-ticks 14400] [--width 64|32]
 
 Exit code 0 when every check passed, 1 when any printed FAIL.
@@ -69,7 +74,7 @@ from tools.ch_probe.engine import pressed_input_hit
 from tools.ch_probe.experiments.overlay_logs import (
     WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_LATE_GROUPS, watch_header)
 from tools.ch_probe.experiments import play_chart
-from tools.ch_probe.experiments.score_compare import stop_check
+from tools.ch_probe.experiments.score_compare import load_press_log, stop_check
 
 # How far from an event a matching change in the watcher log may sit: a
 # phrase end's rise, the multiplier doubling after an activation, the flag
@@ -86,23 +91,63 @@ LANDING_WINDOW_MS = 150.0
 # rise or an activation flag can show on a row whose clock is that far from the
 # chord, and the searches reach that far for that chord only. A wider reach for
 # every chord could hand a rise to the wrong one of two chords a few ms apart.
+# The game judges a press on a frame, which can fall a little either side of
+# its plan, so run_reach takes the judged times when the run recorded them.
 class PressReach(NamedTuple):
-    """The song clock of a chord's first and last press (press_reach)."""
+    """The song clock of a chord's first and last press (run_reach)."""
     earliest_ms: float
     latest_ms: float
 
 
+def _widen(reach: dict, index: int, at_ms: float) -> None:
+    lo, hi = reach.get(index, (at_ms, at_ms))
+    reach[index] = PressReach(min(lo, at_ms), max(hi, at_ms))
+
+
 def press_reach(schedule_path: str) -> dict:
     """Each chord's PressReach by its `index`, from press_plan over
-    play_chart.load_schedule of the path's `hydra_replay schedule` file.
-    load_schedule's ValueError, for a schedule that refuses the path, is
-    passed on."""
+    play_chart.load_schedule of the path's `hydra_replay schedule` file: the
+    times the presses were planned for. load_schedule's ValueError, for a
+    schedule that refuses the path, is passed on."""
     chords = play_chart.load_schedule(schedule_path).chords
     reach = {}
     for press in play_chart.press_plan(chords):
-        lo, hi = reach.get(press.index, (press.at_ms, press.at_ms))
-        reach[press.index] = PressReach(min(lo, press.at_ms), max(hi, press.at_ms))
+        _widen(reach, press.index, press.at_ms)
     return reach
+
+
+# The report's header line when the reach is press_reach alone.
+PLANNED_REACH_SOURCE = ("press times: planned, from the schedule (press_reach); "
+                        "no press log given, so a press the game judged a little "
+                        "before its plan can read as missed")
+
+
+def run_reach(schedule_path: str, press_log_path: str | None) -> tuple:
+    """(reach, source line) for a run. With a press log, each chord whose rows
+    there carry a `judged_ms` (score_compare.load_press_log reads it; the kit
+    agent records it as the song time the game judged the press at) gets its
+    PressReach from those judged times; every other chord keeps press_reach's
+    planned times. Without a press log the reach is press_reach and the line
+    is PLANNED_REACH_SOURCE. The line says which source each chord got, for
+    the report's header."""
+    planned = press_reach(schedule_path)
+    if press_log_path is None:
+        return planned, PLANNED_REACH_SOURCE
+    judged = {}
+    for press in load_press_log(press_log_path):
+        if press.judged_ms:
+            _widen(judged, press.index, float(press.judged_ms))
+    if not judged:
+        return planned, (f"press times: planned, from the schedule (press_reach); "
+                         f"the press log {press_log_path} has no judged_ms on any "
+                         f"row (a keys-route log, or one from before the frame pick)")
+    reach = dict(planned)
+    reach.update(judged)
+    kept = sorted(set(planned) - set(judged))
+    kept_text = (f"; planned times from the schedule for the {len(kept)} chords "
+                 f"with no judged time (first: chord {kept[0]})" if kept else "")
+    return reach, (f"press times: the game's judged times (judged_ms) from "
+                   f"{press_log_path} for {len(judged)} chords{kept_text}")
 
 def header_int(path: str, name: str) -> int:
     """The value a C++ header gives `name` in an `inline constexpr int`
@@ -328,11 +373,14 @@ def gap_summary(rows: list, gap_ms: float,
 
 def _check_phrase_rises(report: Report, rows: list, chords: list,
                         amount_col: str, max_col: str, reach: dict) -> None:
-    """A rise is looked for from the chord's first press (press_reach) to
-    EVENT_WINDOW_MS after the later of its ms and its last press."""
+    """A rise is looked for from the chord's first press (`reach`, from
+    run_reach) to EVENT_WINDOW_MS after the later of its ms and its last
+    press. A phrase end with no rise whose meter was already full at its
+    first press gets _full_meter_note instead of a FAIL."""
     used_steps = set()
     full_sizes = []
     rise_rows = _rise_rows(rows, amount_col)
+    clocks = [_ms(r) for r in rows]
     for chord in chords:
         if not chord["is_sp_phrase_end"]:
             continue
@@ -349,8 +397,14 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
             step = i
             break
         if step is None:
+            full = _full_meter_note(rows, clocks, chord, lo, amount_col, max_col,
+                                    used_steps)
+            if full is not None:
+                report.note(full)
+                continue
             report.check(False, f"phrase rise after {_chord_label(chord)}: "
-                         f"missing (no rise from {format_ms(lo)} to {format_ms(hi)})")
+                         f"missing (no rise from {format_ms(lo)} to {format_ms(hi)})"
+                         f"{_early_rise_hint(rows, rise_rows, used_steps, lo, amount_col)}")
             continue
         used_steps.add(step)
         before = rows[step - 1][amount_col]
@@ -374,6 +428,48 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
         sizes = ", ".join(str(s) for s in sorted(set(full_sizes)))
         report.note(f"Full rises: not all the same, sizes {sizes}; "
                     f"sp_max / {PHRASES_PER_FULL_METER} = {quarter:g}")
+
+
+def _early_rise_hint(rows: list, rise_rows: list, used_steps: set, lo: float,
+                     amount_col: str) -> str:
+    """For a missing rise: the latest rise no phrase end took that shows
+    within EVENT_WINDOW_MS before the search's start `lo`, as text to append,
+    or "". Such a rise is often the chord's own, credited before the reach
+    the report used (a press judged before its planned time)."""
+    early = [i for i in rise_rows if i not in used_steps
+             and lo - EVENT_WINDOW_MS <= _ms(rows[i]) < lo]
+    if not early:
+        return ""
+    i = early[-1]
+    return (f"; a rise no phrase end took, +{rows[i][amount_col] - rows[i - 1][amount_col]} "
+            f"at {format_ms(_ms(rows[i]))}, shows {lo - _ms(rows[i]):.2f} ms before "
+            f"the search starts")
+
+
+def _full_meter_note(rows: list, clocks: list, chord: dict, lo: float,
+                     amount_col: str, max_col: str, used_steps: set) -> str | None:
+    """The note for a phrase end with no rise when the last row at or before
+    its first press `lo` shows the amount already at sp_max, so the phrase
+    had no room to add any; None otherwise. The meter must have been full
+    from the watch's first row or from a rise an earlier phrase end took
+    (`used_steps`): a rise no phrase end took may be this chord's own, shown
+    before the reach starts, so that stays a missing rise. It is a note, not
+    a PASS or a FAIL, because the score JSON carries no per-chord meter to
+    say whether Hydra's path also expects no gain there."""
+    k = bisect.bisect_right(clocks, lo) - 1
+    if k < 0 or rows[k][amount_col] < rows[k][max_col]:
+        return None
+    since = k
+    while since > 0 and rows[since - 1][amount_col] >= rows[since - 1][max_col]:
+        since -= 1
+    if since > 0 and since not in used_steps:
+        return None
+    return (f"Note: phrase rise after {_chord_label(chord)}: no room for a rise; the "
+            f"meter was already full ({rows[k][amount_col]} of {rows[k][max_col]}) "
+            f"before its first press at {format_ms(lo)}, full since "
+            f"{format_ms(clocks[since])}. Not a PASS or FAIL: the score JSON has no "
+            f"per-chord meter, so this report cannot say whether Hydra's path also "
+            f"expects no gain here")
 
 
 def _check_sp_max(report: Report, rows: list, max_col: str,
@@ -650,18 +746,22 @@ def _slip_note(report: Report, chords: list, parted_ms, reach: dict) -> None:
 
 def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH,
-            reach: dict, stop: str | None = None, stop_message: str = "") -> Report:
+            reach: dict, reach_source: str = PLANNED_REACH_SOURCE,
+            stop: str | None = None, stop_message: str = "") -> Report:
     """Every check over the watcher rows and the score JSON, as a Report whose
-    first line is the summary. `reach` is press_reach of the same path's
-    schedule file; `stop` and `stop_message` are the run's RunResult.stop and
-    .message, judged by score_compare.stop_check. Raises ValueError with no
-    resolution, because sp_max is checked against it."""
+    first line is the summary. `reach` and `reach_source` are run_reach's
+    pair for the same path's schedule file and the run's press log; a bare
+    press_reach goes with the default source line. `stop` and `stop_message`
+    are the run's RunResult.stop and .message, judged by
+    score_compare.stop_check. Raises ValueError with no resolution, because
+    sp_max is checked against it."""
     if resolution is None:
         raise ValueError("no chart resolution given; sp_max is checked against "
                          "the game's full meter for it (SP-11)")
     report = Report()
     _compare_into(report, rows, score, resolution, sp_bar_ticks, width, reach,
                   stop, stop_message)
+    report.lines.insert(1, reach_source)
     report.lines.insert(0, f"Summary: {report.passes} PASS, {report.fails} FAIL")
     return report
 
@@ -709,11 +809,15 @@ def main(argv=None) -> int:
                     help="which sp_amount and sp_max columns to read")
     ap.add_argument("--schedule", required=True,
                     help="the same path's hydra_replay schedule JSON, which gives "
-                         "each chord's press times")
+                         "each chord's planned press times")
+    ap.add_argument("--press-log", default=None,
+                    help="the run's press log (press-<n>.csv); its judged_ms "
+                         "times replace the planned ones (run_reach)")
     args = ap.parse_args(argv)
+    reach, source = run_reach(args.schedule, args.press_log)
     report = compare(load_watch_rows(args.watch_csv), load_score(args.score_json),
                      resolution=args.resolution, sp_bar_ticks=args.sp_bar_ticks,
-                     width=args.width, reach=press_reach(args.schedule),
+                     width=args.width, reach=reach, reach_source=source,
                      stop=args.stop, stop_message=args.stop_message)
     print(report.text())
     return 1 if report.fails else 0

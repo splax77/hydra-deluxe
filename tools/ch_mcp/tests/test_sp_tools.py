@@ -40,7 +40,7 @@ from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 # A real watch piece of a corpus chart's run, and Hydra's files for that chart,
 # from the test file that owns them.
 from tools.ch_probe.tests.test_sp_compare import (  # noqa: E402
-    _PITCH_DARK_CHART, _RISE_CSV, _midi_resolution, _replay_file, _within)
+    _PITCH_DARK_CHART, _RISE_CSV, _midi_resolution, _replay_file, _within, write_press_log)
 
 
 def setUpModule():
@@ -718,6 +718,37 @@ class SpToolsOnARecordedRunTest(unittest.TestCase):
         reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution)
         # Every line of the report, in order, then every ready line.
         self.assertEqual(reply.splitlines(), report.splitlines() + ready)
+
+    def test_ch_sp_compare_reads_the_press_logs_judged_times(self):
+        # A press log judging each chord of the piece 1 ms before its planned
+        # press (a hand-picked offset): the reply is the report over
+        # run_reach's judged reach and its header line, then the ready lines.
+        rows, score, score_json, schedule_json = self.rise_files()
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        planned = sp_compare.press_reach(schedule_json)
+        press_csv = write_press_log(
+            os.path.join(self.tmp.name, "press-1.csv"),
+            [(c["index"], planned[c["index"]].earliest_ms - 1.0) for c in score["chords"]])
+        reach, source = sp_compare.run_reach(schedule_json, press_csv)
+        self.assertNotEqual(reach, planned)
+        self.assertTrue(source.startswith(
+            f"press times: the game's judged times (judged_ms) from {press_csv} "), source)
+        report = sp_compare.compare(rows, score, resolution=resolution, reach=reach,
+                                    reach_source=source).text()
+        ready = sp_tools.ready_lines(rows, play_chart.load_schedule(schedule_json))
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json, resolution,
+                                           press_csv=press_csv)
+        self.assertEqual(reply.splitlines(), report.splitlines() + ready)
+        self.assertIn(source, reply.splitlines())
+
+    def test_ch_sp_compare_names_a_missing_press_log(self):
+        _rows, _score, score_json, schedule_json = self.rise_files()
+        missing = os.path.join(self.tmp.name, "no-press.csv")
+        reply = self.tools().ch_sp_compare(_RISE_CSV, score_json, schedule_json,
+                                           _midi_resolution(_PITCH_DARK_CHART),
+                                           press_csv=missing)
+        self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError: "),
+                        reply)
 
     def test_ch_sp_compare_names_a_missing_file(self):
         missing = os.path.join(self.tmp.name, "none.csv")
