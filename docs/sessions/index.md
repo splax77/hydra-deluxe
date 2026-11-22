@@ -574,7 +574,8 @@
 - 2026-11-21 5bdf9eef CI runs failing (2026-11-21) | ci, tests, review, agents, hooks | The session ended with both fixes merged into local main, and the question of pushing main to GitHub still unanswered.
 - 2026-11-21 9f61bc5c Chapter 10 fills and followups handoff (2026-11-21) | docs, agents, hooks, review, tests | The session ended with main pushed to GitHub, with the handoff rule, the pointer check and the citation cleanup all in.
 - 2026-11-21 76ea2f48 Understanding the 569 number (2026-11-21) | docs, tests, review, planning | The session ended with the audit JSON removed from main, and nothing pushed to GitHub.
-- 2026-11-21 02ed5228 Release 3.2.0 (2026-11-21) | release, installer, tests, review, agents | The 3.2.0 release was merged, built, signed and published, and the build-step fix was pushed, all in one session.
+- 2026-11-21 02ed5228 Release 3.2.0 (2026-11-21) | release, installer, tests, review, agents | The 3.2.0 release was merged, built, signed and published, and the build-step fix was pushed, all in one session. [stale]
+- 2026-11-22 76fb0f03 Screen flicker in path builder activations (2026-11-22) | path-builder, builder-timeline, activation, review, tests | The session ended with the fix merged into main, not pushed.
 
 ## Proposed tags
 
