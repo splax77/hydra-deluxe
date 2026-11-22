@@ -593,17 +593,20 @@ TEST_CASE("schedule: feasible is Hydra's safe sum, short below zero") {
     // out no sum of its own.
     bool saw_safe = false;
     bool saw_short = false;
-    // One tick is 2.604 ms, finer than the 5 ms band the small sum is looked
-    // for in, so the walk cannot step over it.
-    for (int64_t chord_tick = 3000; chord_tick >= 2310; --chord_tick) {
+    // The walk starts one tick before the end (tick 3082), where the sum is
+    // widest, and moves the chord away from the end, so the sum falls through
+    // every value down past zero. One tick is 2.604 ms, finer than the 5 ms
+    // band the small sum is looked for in, so the walk cannot step over it.
+    const int64_t end_tick = 3082;
+    for (int64_t chord_tick = end_tick - 1; chord_tick >= 2310; --chord_tick) {
         Overfill o{plain_song({0, 768, 1536, 2304, chord_tick, 3840}), Activation{}};
         o.song.sequence[4].chord.add_note(NoteColor::Kick);
         o.act.timecode = o.song.timecode(768);
         o.act.bank_rise_ticks = {0, 768};
-        o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, 3082, SpEndKind::Clamped}};
+        o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, end_tick, SpEndKind::Clamped}};
         SPSqueeze out{};
         out.kind = SqueezeKind::SqOut;
-        out.offset_ms = offset_from_sp_end(o.song.timecode(chord_tick).ms(), o.song.timecode(3082).ms());
+        out.offset_ms = offset_from_sp_end(o.song.timecode(chord_tick).ms(), o.song.timecode(end_tick).ms());
         o.act.sqinouts.push_back(out);
         o.act.sqout_tick = chord_tick;
         o.act.transfer_post = TransferScale{1.0, 1.0};
@@ -1912,6 +1915,68 @@ TEST_CASE("schedule: every end-band press runs from its window's front edge to i
     CHECK(seen.count("squeeze_out_inside") == 1);
     CHECK(seen.count("squeeze_in") == 1);
     CHECK(seen.count("sp_end") == 1);
+}
+
+TEST_CASE("schedule: a chord paid inside before a moved end is banded only when it is after that end") {
+    // The overfill shape with the squeeze-out's end one tick after chord 5
+    // (tick 3073), so the anchor's early lead moves the final end before
+    // chord 5's own time. Chord 4 (Yellow, tick 3068) sits between that moved
+    // end and chord 5; chord 3 (Red, tick 2304) sits well before it. A Blue
+    // chord at tick 3080, past the end, gives chord 5 a near neighbour on
+    // each side, so its side is narrow and the lead long. Both chords 3 and 4
+    // are paid inside by the window; SP-29 pays chord 4 inside only if it is
+    // judged by the moved end, so it gets the end-band row, and chord 3 is
+    // pressed plain at its own time.
+    Overfill o{plain_song({0, 768, 1536, 2304, 3068, 3072, 3080}), Activation{}};
+    o.song.sequence[4].chord = Chord{};
+    o.song.sequence[4].chord.add_note(NoteColor::Yellow);
+    o.song.sequence[5].chord.add_note(NoteColor::Kick);
+    o.song.sequence[6].chord = Chord{};
+    o.song.sequence[6].chord.add_note(NoteColor::Blue);
+    const int64_t end_tick = 3073;
+    o.act.timecode = o.song.timecode(768);
+    o.act.bank_rise_ticks = {0, 768};
+    o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, end_tick, SpEndKind::Clamped}};
+    SPSqueeze out{};
+    out.kind = SqueezeKind::SqOut;
+    out.offset_ms = offset_from_sp_end(o.song.timecode(3072).ms(), o.song.timecode(end_tick).ms());
+    o.act.sqinouts.push_back(out);
+    o.act.sqout_tick = 3072;
+    o.act.transfer_post = TransferScale{1.0, 1.0};
+    ReplayWindow w;
+    w.act_tick = 768;
+    w.deact_tick = end_tick;
+    w.sqout_tick = 3072;
+    const json s = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {w}), core::default_rules());
+    INFO(s["refusals"].dump());
+    CHECK(s["refusals"].empty());
+    // The moved end is the read after chord 2, the anchor the clamp names,
+    // as the anchor's lead plans it: earlier than stored.
+    const json& reads = s["chords"][2]["reads"];
+    REQUIRE(reads.size() == 1);
+    const double moved_end = reads[0]["planned_end_ms"].get<double>();
+    REQUIRE(moved_end < reads[0]["stored_end_ms"].get<double>());
+    const double ms3 = s["chords"][3]["ms"].get<double>();
+    const double ms4 = s["chords"][4]["ms"].get<double>();
+    // Both chords are paid inside by the activation, one on each side of the
+    // moved end.
+    REQUIRE_FALSE(s["chords"][3]["paid_by"].empty());
+    REQUIRE_FALSE(s["chords"][4]["paid_by"].empty());
+    REQUIRE(ms3 < moved_end);
+    REQUIRE(ms4 > moved_end);
+    // Chord 4, after the moved end: one end-band row, judged by that end.
+    const std::vector<json> banded = presses_of(s, 4, "inside_moved_end");
+    REQUIRE(banded.size() == 1);
+    CHECK(presses_of(s, 4, "plain").empty());
+    CHECK(banded[0]["band"]["to_ms"].get<double>() == doctest::Approx(moved_end));
+    CHECK(banded[0]["band"]["from_ms"].get<double>() == doctest::Approx(banded[0]["window_from_ms"].get<double>()));
+    // Chord 3, before the moved end: plain, at its own time, in its window.
+    CHECK(presses_of(s, 3, "inside_moved_end").empty());
+    const std::vector<json> plain = presses_of(s, 3, "plain");
+    REQUIRE(plain.size() == 1);
+    CHECK(plain[0]["aim_ms"].get<double>() == 0.0);
+    CHECK(plain[0]["band"]["from_ms"].get<double>() == plain[0]["window_from_ms"].get<double>());
+    CHECK(plain[0]["band"]["to_ms"].get<double>() == plain[0]["window_to_ms"].get<double>());
 }
 
 TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {

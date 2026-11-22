@@ -315,7 +315,13 @@ std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
 std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place, double from_ms,
                                              double to_ms, const std::vector<Pad>& pads) {
     const PadChord& own = chords[place];
-    auto in_own = [&](double t) { return std::abs(t - own.ms) <= own.side_ms; };
+    // Compared with the window's own edges, worked out by the same functions
+    // that build every band, so a band edge on the window's edge is inside it.
+    // Measuring |t - chord| against the side instead rounds an edge one bit
+    // past it.
+    auto in_own = [&](double t) {
+        return t >= first_judge_ms(own.ms, own.side_ms) && t <= last_judge_ms(own.ms, own.side_ms);
+    };
     auto meets = [&](const PadChord& c) {
         return from_ms <= last_judge_ms(c.ms, c.side_ms) && to_ms >= first_judge_ms(c.ms, c.side_ms);
     };
