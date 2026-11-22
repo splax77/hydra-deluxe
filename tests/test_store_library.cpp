@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+#include <sqlite3.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -826,6 +828,180 @@ TEST_CASE("store: a chart list read on threads whose connection fails to open fa
         // The forced failure was for one read only; the next one reads it all.
         CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() ==
               static_cast<size_t>(kThreadedRows));
+    }
+    std::remove(path.c_str());
+}
+
+namespace {
+
+// Stands in for SQLite's "win32-longpath" layer (open_sqlite in
+// record_store.cpp opens every connection through it) while it lives, and
+// refuses each main database file opened meanwhile its first kRefusedLocks
+// shared-lock requests with SQLITE_BUSY, the answer SQLite's own layer gives
+// while another connection holds a lock that keeps new readers out
+// (https://www.sqlite.org/wal.html, "Sometimes Queries Return SQLITE_BUSY In
+// WAL Mode"). A shared lock is what a new connection's first read asks for
+// before it reads anything. The refusal is counted, not timed, so every run
+// meets it. Another connection really holding such a lock cannot be set up
+// here: an exclusive-mode connection needs an exclusive lock on the file,
+// and the store's own connection, open through the whole read, keeps a
+// shared lock on it as every WAL connection does, so that connection's own
+// first read would fail instead.
+class LockedForNewReaders {
+public:
+    static constexpr int kRefusedLocks = 2;
+
+    LockedForNewReaders() {
+        real_ = sqlite3_vfs_find(kName);
+        REQUIRE(real_ != nullptr);
+        vfs_ = *real_;
+        vfs_.szOsFile = static_cast<int>(sizeof(File)) + real_->szOsFile;
+        // pAppData stays the real layer's: its own calls, handed this VFS,
+        // read it.
+        vfs_.xOpen = &open;
+        // One VFS per name: the real one leaves while this one stands in. A
+        // failure here throws out of the constructor, where the destructor
+        // does not run, so the real layer goes back first.
+        const int left = sqlite3_vfs_unregister(real_);
+        const int stood = left == SQLITE_OK ? sqlite3_vfs_register(&vfs_, 0) : left;
+        if (stood != SQLITE_OK && left == SQLITE_OK) sqlite3_vfs_register(real_, 0);
+        REQUIRE(stood == SQLITE_OK);
+        active_ = this;
+    }
+    ~LockedForNewReaders() {
+        sqlite3_vfs_unregister(&vfs_);
+        sqlite3_vfs_register(real_, 0);
+        active_ = nullptr;
+    }
+    LockedForNewReaders(const LockedForNewReaders&) = delete;
+    LockedForNewReaders& operator=(const LockedForNewReaders&) = delete;
+
+    // Shared-lock requests refused so far, over every file.
+    int refused() const { return refused_.load(); }
+
+private:
+    static constexpr const char* kName = "win32-longpath";
+
+    // The real layer's file sits right after this one, in the same block.
+    struct File {
+        sqlite3_file base;
+        sqlite3_file* real;
+        LockedForNewReaders* owner;
+        int refusals_left;
+    };
+
+    static sqlite3_file* real_of(sqlite3_file* f) { return reinterpret_cast<File*>(f)->real; }
+
+    static int open(sqlite3_vfs* vfs, const char* name, sqlite3_file* file, int flags,
+                    int* out_flags) {
+        (void)vfs;
+        LockedForNewReaders* self = active_;
+        File* f = reinterpret_cast<File*>(file);
+        f->real = reinterpret_cast<sqlite3_file*>(f + 1);
+        f->owner = self;
+        f->refusals_left = (flags & SQLITE_OPEN_MAIN_DB) ? kRefusedLocks : 0;
+        const int rc = self->real_->xOpen(self->real_, name, f->real, flags, out_flags);
+        // SQLite closes a file whose methods are set, even after a failed open.
+        f->base.pMethods = f->real->pMethods ? &kMethods : nullptr;
+        return rc;
+    }
+
+    static int lock(sqlite3_file* file, int level) {
+        File* f = reinterpret_cast<File*>(file);
+        if (level == SQLITE_LOCK_SHARED && f->refusals_left > 0) {
+            --f->refusals_left;
+            f->owner->refused_.fetch_add(1);
+            return SQLITE_BUSY;
+        }
+        return f->real->pMethods->xLock(f->real, level);
+    }
+
+    // Every other call goes straight to the real layer's file.
+    static int close(sqlite3_file* f) { return real_of(f)->pMethods->xClose(real_of(f)); }
+    static int read(sqlite3_file* f, void* p, int n, sqlite3_int64 at) {
+        return real_of(f)->pMethods->xRead(real_of(f), p, n, at);
+    }
+    static int write(sqlite3_file* f, const void* p, int n, sqlite3_int64 at) {
+        return real_of(f)->pMethods->xWrite(real_of(f), p, n, at);
+    }
+    static int truncate(sqlite3_file* f, sqlite3_int64 size) {
+        return real_of(f)->pMethods->xTruncate(real_of(f), size);
+    }
+    static int sync(sqlite3_file* f, int flags) {
+        return real_of(f)->pMethods->xSync(real_of(f), flags);
+    }
+    static int file_size(sqlite3_file* f, sqlite3_int64* size) {
+        return real_of(f)->pMethods->xFileSize(real_of(f), size);
+    }
+    static int unlock(sqlite3_file* f, int level) {
+        return real_of(f)->pMethods->xUnlock(real_of(f), level);
+    }
+    static int check_reserved(sqlite3_file* f, int* out) {
+        return real_of(f)->pMethods->xCheckReservedLock(real_of(f), out);
+    }
+    static int file_control(sqlite3_file* f, int op, void* arg) {
+        return real_of(f)->pMethods->xFileControl(real_of(f), op, arg);
+    }
+    static int sector_size(sqlite3_file* f) {
+        return real_of(f)->pMethods->xSectorSize(real_of(f));
+    }
+    static int device_characteristics(sqlite3_file* f) {
+        return real_of(f)->pMethods->xDeviceCharacteristics(real_of(f));
+    }
+    static int shm_map(sqlite3_file* f, int region, int size, int extend, void volatile** pp) {
+        return real_of(f)->pMethods->xShmMap(real_of(f), region, size, extend, pp);
+    }
+    static int shm_lock(sqlite3_file* f, int offset, int n, int flags) {
+        return real_of(f)->pMethods->xShmLock(real_of(f), offset, n, flags);
+    }
+    static void shm_barrier(sqlite3_file* f) { real_of(f)->pMethods->xShmBarrier(real_of(f)); }
+    static int shm_unmap(sqlite3_file* f, int delete_flag) {
+        return real_of(f)->pMethods->xShmUnmap(real_of(f), delete_flag);
+    }
+    static int fetch(sqlite3_file* f, sqlite3_int64 at, int n, void** pp) {
+        return real_of(f)->pMethods->xFetch(real_of(f), at, n, pp);
+    }
+    static int unfetch(sqlite3_file* f, sqlite3_int64 at, void* p) {
+        return real_of(f)->pMethods->xUnfetch(real_of(f), at, p);
+    }
+
+    // Version 3, as SQLite's Windows layer is: the shared-memory calls WAL
+    // needs and the memory-mapped reads.
+    static constexpr sqlite3_io_methods kMethods = {
+        3,           &close,         &read,          &write,     &truncate,
+        &sync,       &file_size,     &lock,          &unlock,    &check_reserved,
+        &file_control, &sector_size, &device_characteristics, &shm_map, &shm_lock,
+        &shm_barrier, &shm_unmap,    &fetch,         &unfetch,
+    };
+
+    // The one standing in now; files opened through it count their refusals
+    // on it.
+    static inline LockedForNewReaders* active_ = nullptr;
+    sqlite3_vfs* real_ = nullptr;
+    sqlite3_vfs vfs_{};
+    std::atomic<int> refused_{0};
+};
+
+}  // namespace
+
+TEST_CASE("store: a chart list read on threads waits out a lock on its connections' first reads") {
+    const std::string path = threaded_library_file("threaded_locked");
+    {
+        RecordStore store(path);
+        const std::vector<ChartLibraryEntry> one = store.list_chart_library(0, -1);
+        REQUIRE(one.size() == static_cast<size_t>(kThreadedRows));
+        std::vector<ChartLibraryEntry> threaded;
+        int refused = 0;
+        {
+            const LockedForNewReaders locked;
+            REQUIRE_NOTHROW(threaded = store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted));
+            refused = locked.refused();
+        }
+        // Every reader connection met the lock, and the read still returned
+        // every row.
+        CHECK(refused ==
+              static_cast<int>(kLibraryOpenThreads) * LockedForNewReaders::kRefusedLocks);
+        CHECK(md5_set_of(threaded) == md5_set_of(one));
     }
     std::remove(path.c_str());
 }
