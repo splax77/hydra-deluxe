@@ -432,6 +432,42 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), empty_score.c_str());
 }
 
+// A click that makes an activation never blanks the screen: every frame
+// after it still draws the timeline's "Star Power saved" row, and the song
+// reaches the fill's dot only on a frame whose highway already draws the new
+// activation, so no frame shows the old path at the clicked fill.
+void test_click_never_blanks_the_screen(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg = corpus::burnout_notes();
+    reset_app(h);
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->SetRef(h.home_ref.c_str());
+    IM_CHECK_RETV(wait_text(ctx, kNoStepsText), );
+    IM_CHECK_RETV(scene_of(h).activations.empty(), );
+    const std::optional<size_t> first = first_fill_where(h, FillRefusal::None);
+    IM_CHECK_RETV(first.has_value(), );
+    const int64_t tick = scene_of(h).fills[*first].chord_tick;
+    const std::string dot_clock = clock_text_at(h, fill_dot_ms(h, tick));
+    IM_CHECK_RETV(!on_screen(h, dot_clock), );
+
+    ctx->ItemClick(fill_ref(tick).c_str());
+    bool blank = false;
+    bool moved_early = false;
+    const bool landed = uitest::wait_until(
+        ctx,
+        [&] {
+            if (!on_screen(h, hydra::ui::kTimelineSavedLabel)) blank = true;
+            const bool moved = on_screen(h, dot_clock);
+            const bool drawn = !scene_of(h).activations.empty();
+            if (moved && !drawn) moved_early = true;
+            return moved && drawn && player_windows(h).size() == 1;
+        },
+        kTextWaitSeconds);
+    IM_CHECK(landed);
+    IM_CHECK(!blank);
+    IM_CHECK(!moved_early);
+}
+
 // Opens the long song (long_song_notes) with nothing hovered, and leaves the
 // test's ref on the builder's window. False when it did not settle.
 bool open_long_song(ImGuiTestContext* ctx) {
@@ -696,6 +732,7 @@ void test_follow_the_playhead(ImGuiTestContext* ctx) {
 
 void register_build_tests(Harness& h) {
     uitest::register_test(h, "build-a-path-by-clicking", test_build_a_path_by_clicking);
+    uitest::register_test(h, "click-never-blanks-the-screen", test_click_never_blanks_the_screen);
     uitest::register_test(h, "build-a-path-on-a-long-song", test_build_a_path_on_a_long_song);
     uitest::register_test(h, "follow-the-playhead", test_follow_the_playhead);
 }

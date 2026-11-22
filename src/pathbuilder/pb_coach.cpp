@@ -545,6 +545,8 @@ bool DecisionList::busy() const {
            !retired_clicks_.empty();
 }
 
+bool DecisionList::editing() const { return click_job_ != nullptr; }
+
 void DecisionList::clear() {
     coach_.clear();
     key_.clear();

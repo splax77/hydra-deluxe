@@ -2,7 +2,7 @@
   "rules": [
     {
       "question": "Where does the Preview's clock go when a fill is clicked?",
-      "owner": "PbApp::click_fill in src/pathbuilder/pb_window.cpp, which seeks the Preview to the fill's dot (ui::timeline_fill_ms) for the timeline, the highway and a list row alike",
+      "owner": "PbApp::click_fill in src/pathbuilder/pb_window.cpp, which seeks the Preview to the fill's dot (ui::timeline_fill_ms) for the timeline, the highway and a list row alike; a click that starts a window holds that moment in pending_seek_ms_ and PbApp::land_pending_seek seeks there once the new path is drawn",
       "owner_file": "src/pathbuilder/pb_window.cpp",
       "owner_symbol": "click_fill",
       "date": "2026-10-31",
