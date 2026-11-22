@@ -502,12 +502,10 @@ function readBack(player: Il2Cpp.Object, names: string[], frame: number,
     }
 }
 
-// One group of a press: its elements, how long after the first group's down
-// it goes down, and the frame and time it went down and came up (-1 until
-// then).
+// One group of a press: its elements, and the frame and time it went down
+// and came up (-1 until then).
 interface Group {
     elements: Element[];
-    afterMs: number;
     downFrame: number;
     downMs: number;
     upFrame: number;
@@ -515,31 +513,33 @@ interface Group {
 }
 
 // The press's groups: its own elements first, then each group of its
-// optional "then" list, each {elements, after_ms} with after_ms above 0.
+// optional "then" list, each {elements}. A group carries no time of its own:
+// the play route's rule (a later group goes down the frame after the group
+// it follows, press_schedule.ts) holds here too.
 function groupsOf(m: Message): Group[] {
-    const fresh = (elements: Element[], afterMs: number): Group =>
-        ({ elements, afterMs, downFrame: -1, downMs: -1, upFrame: -1, upMs: -1 });
-    const groups = [fresh(elementsOf(m), 0)];
+    const fresh = (elements: Element[]): Group =>
+        ({ elements, downFrame: -1, downMs: -1, upFrame: -1, upMs: -1 });
+    const groups = [fresh(elementsOf(m))];
     const raw = m.then;
     if (raw === undefined || raw === null) {
         return groups;
     }
     if (!Array.isArray(raw)) {
-        throw new Error(`a press "then" is a list of {elements, after_ms}: ${JSON.stringify(raw)}`);
+        throw new Error(`a press "then" is a list of {elements}: ${JSON.stringify(raw)}`);
     }
     for (const g of raw) {
-        const afterMs = typeof g === "object" && g !== null ? g.after_ms : undefined;
-        if (typeof afterMs !== "number" || !(afterMs > 0)) {
-            throw new Error(`a press "then" group needs an "after_ms" above 0: ${JSON.stringify(g)}`);
+        if (typeof g !== "object" || g === null || g.after_ms !== undefined) {
+            throw new Error(`a press "then" group is {elements}, with no "after_ms": `
+                + JSON.stringify(g));
         }
-        groups.push(fresh(elementsOf({ type: m.type, id: m.id, elements: g.elements }), afterMs));
+        groups.push(fresh(elementsOf({ type: m.type, id: m.id, elements: g.elements })));
     }
     return groups;
 }
 
-// Sets the first group's elements, then on each tick puts down each later
-// group once `after_ms` has passed since the first group's down, so it lands
-// in the first frame at or after that time. Each group is held until the
+// Sets the first group's elements, then on each tick puts down the next
+// later group once the frame count has moved past the down frame of the
+// group before it, so each lands one frame after the one before. Each group is held until the
 // frame count has moved on by the hold from its own down, writing the values
 // again each tick when `rewrite` is true. A group whose hold has passed comes
 // up in that tick while another group is still to go down or held; the last
@@ -610,8 +610,13 @@ async function press(m: Message) {
             frame = await settled(() => {
                 const f = frameCount();
                 const t = Date.now();
-                for (const g of groups) {
-                    if (g.downFrame < 0 && t >= first.downMs + g.afterMs) {
+                for (let k = 0; k < groups.length; ++k) {
+                    const g = groups[k];
+                    // The first group is already down; a later one waits for
+                    // a frame past the down frame of the group before it.
+                    const before = k > 0 ? groups[k - 1] : null;
+                    if (before !== null && g.downFrame < 0 && before.downFrame >= 0
+                        && f > before.downFrame) {
                         write(kit, g.elements, false);
                         g.downFrame = f;
                         g.downMs = t;
@@ -668,7 +673,6 @@ async function press(m: Message) {
     if (groups.length > 1) {
         reply.groups = groups.map((g) => ({
             down_frame: g.downFrame, up_frame: g.upFrame, down_ms: g.downMs, up_ms: g.upMs,
-            after_ms: g.afterMs,
         }));
     }
     if (names.length > 0) {
