@@ -63,7 +63,7 @@ Rule: When no chord sits at or before a written fill's end, the game takes the f
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 40 to 60: the before side is -1, so the after chord is returned with no bound test.
 Game code (6142): RVA `0x5DE030`, `code/6142/nearest_chord_5DE030.asm` lines 40 to 60.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 404 passes the bounds (`f.start` and the end plus the window) to `chords_around`, which applies them on every side.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 404 passes the bounds (the fill's start, and its end plus the window) to `chords_around`, which applies them on every side.
 Ruling: D30: "Clone Hero's unbounded one-side fallback (B2) is not adopted." ADR 0023 lists it under deliberate differences.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
