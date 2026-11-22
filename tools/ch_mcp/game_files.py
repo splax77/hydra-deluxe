@@ -4,8 +4,8 @@ after the step, and how to read a song folder's song.ini and change its
 title.
 
 This module is the one home of those paths, of the registry key the game's
-input library saves its bindings under, and of the settings.ini line a run
-changes (set_game_setting). No file in the game's folders is backed up,
+input library saves its bindings under, and of how settings.ini is read and
+written (get_game_setting, get_video_setting, set_game_setting). No file in the game's folders is backed up,
 restored, moved or deleted: the user's rulings of 2026-11-13 in
 docs/agents/rulings/clone-hero.md. The server plan is
 `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md`).
@@ -70,6 +70,20 @@ REGISTRY_LINE_NAME = "rewired registry"
 GAME_SECTION = "game"
 PAUSE_ON_FOCUS_LOST = "pause_on_focus_lost"
 PAUSE_ON_FOCUS_LOST_RUN_VALUE = "0"
+# The [game] line ch_start sets only when it is asked to: the game's frame
+# multiplier (TM-54 on docs/clone-hero/03-timing.md), and the range the game's
+# setting takes there.
+FRAME_MULTIPLIER = "simulated_frame_multiplier"
+FRAME_MULTIPLIER_MIN = 1
+FRAME_MULTIPLIER_MAX = 25
+
+# The settings.ini section get_video_setting reads, and its two lines that set
+# the game's frame cap (TM-54). The multiplier does nothing unless vsync reads
+# VSYNC_OFF.
+VIDEO_SECTION = "video"
+FRAMERATE = "framerate"
+VSYNC = "vsync"
+VSYNC_OFF = "0"
 
 # How long one reg.exe call may take, in seconds (the user's ruling of
 # 2026-10-30: "Cap at 30 s"). A call that passes it fails like one that exits
@@ -214,10 +228,10 @@ def restore_registry(backup_dir: str, *, run_reg: Optional[RegRunner],
     return lines
 
 
-def _game_setting_line(lines: list[bytes], key: str) -> int:
-    """The index of the one `key = value` line in the [GAME_SECTION]
-    section of a settings.ini split into lines. Raises SettingNotFound when
-    there is none or more than one."""
+def _setting_lines(lines: list[bytes], section_name: str, key: str) -> list[int]:
+    """The indexes of every `key = value` line in the [section_name] section
+    of a settings.ini split into lines. This is the one rule for which lines
+    a settings reader or writer sees."""
     found = []
     section: Optional[str] = None
     want = key.strip().lower()
@@ -226,15 +240,29 @@ def _game_setting_line(lines: list[bytes], key: str) -> int:
         if line.startswith(b"[") and line.endswith(b"]"):
             section = line[1:-1].strip().lower().decode("utf-8", "replace")
             continue
-        if section != GAME_SECTION or b"=" not in line:
+        if section != section_name or b"=" not in line:
             continue
         name = line.split(b"=", 1)[0].strip().lower().decode("utf-8", "replace")
         if name == want:
             found.append(i)
+    return found
+
+
+def _one_setting_line(lines: list[bytes], section_name: str, key: str) -> int:
+    """The index of the one `key = value` line in the [section_name] section.
+    Raises SettingNotFound when there is none or more than one."""
+    found = _setting_lines(lines, section_name, key)
     if len(found) != 1:
         where = "no" if not found else f"{len(found)}"
-        raise SettingNotFound(f"{where} `{key}` line in the [{GAME_SECTION}] section")
+        raise SettingNotFound(f"{where} `{key}` line in the [{section_name}] section")
     return found[0]
+
+
+def _game_setting_line(lines: list[bytes], key: str) -> int:
+    """The index of the one `key = value` line in the [GAME_SECTION]
+    section of a settings.ini split into lines. Raises SettingNotFound when
+    there is none or more than one."""
+    return _one_setting_line(lines, GAME_SECTION, key)
 
 
 # A settings line split into what comes before the value (the key, the "="
@@ -250,6 +278,20 @@ def get_game_setting(path: str, key: str) -> str:
     with open(path, "rb") as f:
         lines = f.read().splitlines(keepends=True)
     m = _SETTING_LINE.match(lines[_game_setting_line(lines, key)])
+    return m.group(2).decode("utf-8", "replace")
+
+
+def get_video_setting(path: str, key: str) -> Optional[str]:
+    """The value of the `key = value` line in the [VIDEO_SECTION] section of
+    the settings.ini at `path`, without the spacing around it; None when the
+    section has no such line. A line of the same name in another section is
+    not read. Raises SettingNotFound when the section has more than one, and
+    OSError when the file cannot be read."""
+    with open(path, "rb") as f:
+        lines = f.read().splitlines(keepends=True)
+    if not _setting_lines(lines, VIDEO_SECTION, key):
+        return None
+    m = _SETTING_LINE.match(lines[_one_setting_line(lines, VIDEO_SECTION, key)])
     return m.group(2).decode("utf-8", "replace")
 
 

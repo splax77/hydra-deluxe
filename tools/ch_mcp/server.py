@@ -132,7 +132,8 @@ def build_server(helper: Optional[Helper] = None):
             " the bot plays it, or with human=True a human player on the virtual kit;"
             " with none the game opens at its menu); ch_stop closes it"
             " and puts the key back. No file in the game's folders is backed up or"
-            " restored: settings.ini keeps the run's line, and scorestats.json and the"
+            " restored: settings.ini keeps the run's line (ch_start with frame_multiplier"
+            " sets simulated_frame_multiplier the same way), and scorestats.json and the"
             " game's other saves stay as the game left them. ch_attach, ch_state, ch_snapshot and ch_menu read the"
             " game through Frida; ch_trace_start, ch_notes and ch_trace_stop trace each"
             " note the player hits. Presses and menus go through the virtual kit inside"
@@ -154,7 +155,8 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
-                 profile: str | None = None, human: bool = False) -> str:
+                 profile: str | None = None, human: bool = False,
+                 frame_multiplier: int | None = None) -> str:
         """Check the machine is quiet (about 6 s; a machine that is not quiet
         refuses the launch and the reply says why). Back up the Rewired
         registry key, set settings.ini's pause_on_focus_lost line for the run
@@ -166,13 +168,21 @@ def build_server(helper: Optional[Helper] = None):
         starts paused, the launch agent changes one byte of the command-line
         loader in memory when GameAssembly.dll appears
         (tools/ch_mcp/launch_patch.json), and the game is let go. human=True
-        with no song folder is refused. A run already open is stopped and
+        with no song folder is refused. frame_multiplier sets settings.ini's
+        simulated_frame_multiplier line for the run too, and no tool puts it
+        back either; it is refused before anything runs when it is outside
+        the game's range, when the file has no such line, or when vsync is
+        not off, since the multiplier then does nothing. Left out, that line
+        is not touched. A run already open is stopped and
         restored first. Every run also starts the machine recorder beside the
         game, after the check and before the launch; a recorder that fails to
         start is one line and the run goes on. The reply names the recorder's
         pid and folder, the worker's pid and its parent's, the backup folder,
-        the settings line, the command line, the pid and the song length."""
-        return capped(h.game.ch_start(song_folder, player, profile, human=human))
+        the settings lines, the frame settings it recorded in the session
+        folder (framerate, vsync and the multiplier before and after), the
+        command line, the pid and the song length."""
+        return capped(h.game.ch_start(song_folder, player, profile, human=human,
+                                      frame_multiplier=frame_multiplier))
 
     @server.tool()
     def ch_stop() -> str:

@@ -511,6 +511,55 @@ class GetGameSettingTest(unittest.TestCase):
             G.get_game_setting(self.path, "pause_on_focus_lost")
 
 
+class GetVideoSettingTest(unittest.TestCase):
+    """get_video_setting on copies of the settings.ini a real run backed up.
+    That copy's [video] section reads `framerate = 330` and `vsync = 0`, and
+    no other section of it names either key."""
+
+    REAL_VSYNC_LINE = b"vsync = 0"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, G.SETTINGS)
+        self.real = _read(os.path.join(REAL_BACKUP, G.SETTINGS))
+        self.assertEqual(self.real.count(self.REAL_VSYNC_LINE), 1)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_reads_vsync_and_framerate_from_a_real_copy(self):
+        _write(self.path, self.real)
+        self.assertEqual(G.get_video_setting(self.path, G.VSYNC), "0")
+        self.assertEqual(G.get_video_setting(self.path, G.FRAMERATE), "330")
+        # The value comes from the file: the same copy with its vsync line
+        # changed reads the new value.
+        _write(self.path, self.real.replace(self.REAL_VSYNC_LINE, b"vsync = 1"))
+        self.assertEqual(G.get_video_setting(self.path, G.VSYNC), "1")
+
+    def test_a_missing_key_reads_none(self):
+        _write(self.path, self.real.replace(self.REAL_VSYNC_LINE + b"\r\n", b"")
+               .replace(self.REAL_VSYNC_LINE + b"\n", b""))
+        self.assertNotIn(self.REAL_VSYNC_LINE, _read(self.path))
+        self.assertIsNone(G.get_video_setting(self.path, G.VSYNC))
+
+    def test_a_same_named_key_in_another_section_is_not_read(self):
+        # The copy's vsync line taken out of [video] and put in [game]: the
+        # reader finds none in [video].
+        moved = self.real.replace(self.REAL_VSYNC_LINE, b"").replace(
+            b"[game]", b"[game]\r\nvsync = 1", 1)
+        _write(self.path, moved)
+        self.assertIsNone(G.get_video_setting(self.path, G.VSYNC))
+        # And with [video]'s own line kept, the [game] one does not win.
+        _write(self.path, self.real.replace(b"[game]", b"[game]\r\nvsync = 1", 1))
+        self.assertEqual(G.get_video_setting(self.path, G.VSYNC), "0")
+
+    def test_two_lines_in_the_section_are_refused(self):
+        _write(self.path, self.real.replace(self.REAL_VSYNC_LINE,
+                                            self.REAL_VSYNC_LINE + b"\r\nvsync = 1"))
+        with self.assertRaises(G.SettingNotFound):
+            G.get_video_setting(self.path, G.VSYNC)
+
+
 class SongIniTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
