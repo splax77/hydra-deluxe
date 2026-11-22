@@ -516,11 +516,21 @@ void scan_library(ImGuiTestContext* ctx) {
     ctx->SetRef("//Scanning charts");
     // State, not the modal's wording.
     IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
+    // The scan's own problem list, read while its job is still there, so a
+    // library left empty below says what Hydra said went wrong.
+    const std::vector<std::string> scan_errors = h.app->scan_job->snapshot().errors;
     ctx->ItemClick("Continue");
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(!h.app->library.rows().empty());
+    if (h.app->library.rows().empty()) {
+        std::string problems;
+        for (const std::string& e : scan_errors) problems += "\n  " + e;
+        if (problems.empty()) problems = " none";
+        IM_ERRORF("the library is empty after the scan; status line: \"%s\"; scan problems:%s",
+                  h.app->status_message.c_str(), problems.c_str());
+        return;
+    }
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 
