@@ -368,15 +368,17 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.kit.ch_kit_watch(seconds))
 
     @server.tool()
-    def ch_kit_frame_probe(seconds: float) -> str:
-        """For seconds inside a playing song, have the kit agent log each
-        frame's number, the engine's song clock, the game's songTime and the
-        wall time, press kit_tools.FRAME_PROBE_ITEM once and read it back
-        each frame, then print
-        what it sent back. A probe longer than
-        kit_tools.FRAME_PROBE_SECONDS is refused, and so is one while a play
-        session runs. Needs ch_kit_setup."""
-        return capped(h.kit.ch_kit_frame_probe(seconds))
+    def ch_kit_frame_probe(seconds: float, write_at: str) -> str:
+        """For seconds inside a playing song, have the kit agent log three
+        marks in each frame, each with a running number: GameManager.Update
+        returning, Rewired's input event, and the engine's frame update with
+        the time it was handed. It presses kit_tools.FRAME_PROBE_ITEM once,
+        written from the mark write_at names (one of
+        kit_tools.FRAME_PROBE_WRITE_ATS, required), reads it back, then
+        prints the order of the marks and what it sent back. A probe longer
+        than kit_tools.FRAME_PROBE_SECONDS is refused, and so is one while a
+        play session runs. Needs ch_kit_setup."""
+        return capped(h.kit.ch_kit_frame_probe(seconds, write_at))
 
     @server.tool()
     def ch_kit_teardown() -> str:

@@ -58,6 +58,7 @@ export const ALLOWED_CALLS = [
     "get_frameCount", "get_isFocused",
     "GetButton", "GetAnyButton",
     "Update",
+    "add_InputSourceUpdateEvent", "remove_InputSourceUpdateEvent", "ʵʺʴʻˀʺˀˁʶʻʷ",
 ];
 
 // The images and classes, as the Il2CppDumper dump of build 6142 names them;
@@ -65,6 +66,10 @@ export const ALLOWED_CALLS = [
 const REWIRED = "Rewired_Core";
 const UNITY_CORE = "UnityEngine.CoreModule";
 const GAME = "CloneHero";
+const STRIKE = "StrikeCore";
+// The engine's base class, scrambled; docs/clone-hero/code/names-6142.tsv
+// maps it and its frame update to our names.
+const ENGINE_BASE = "ʿʶʴˀʴʾʵʵʶʳʲ";
 
 // How often the press loop wakes to read the frame count and, when the
 // message asks for it, write the values again: the probe's 2 ms (the plan,
@@ -987,8 +992,12 @@ interface Play {
 let play: Play | null = null;
 // The one hook on GameManager.Update, the play's or the frame probe's, and
 // every element its owner may write, with whether it is a button, so unhook
-// can lift them all.
+// can lift them all. The frame probe alone also hooks the engine's frame
+// update and subscribes a delegate to Rewired's InputSourceUpdateEvent
+// (docs/clone-hero/07-internals.md, IN-94); unhook takes those out too.
 let hook: InvocationListener | null = null;
+let engineHook: InvocationListener | null = null;
+let inputEvent: Il2Cpp.Object | null = null;
 const hookPads = new Map<number, boolean>();
 
 function needAddress(m: Message, key: string): NativePointer {
@@ -1015,16 +1024,21 @@ function addPads(elements: Element[]): void {
 }
 
 // Places the hook. `each` runs as each GameManager.Update returns, on the
-// game's main thread, with the GameManager the call ran on.
-function placeHook(each: (self: NativePointer) => void): void {
-    if (hook !== null) {
+// game's main thread, with the GameManager the call ran on. When `engine` is
+// given (the frame probe's), a second hook runs it as the engine's frame
+// update is entered, with the engine and the time in seconds it was handed.
+// Each hook is kept the moment it is in, so unhook takes out a half-placed pair.
+function placeHook(each: (self: NativePointer) => void,
+                   engine: ((self: NativePointer, timeS: number) => void) | null = null): void {
+    if (hook !== null || engineHook !== null) {
         throw new Error(`a hook on ${GAME_MANAGER}.Update is already in`);
     }
     const update = Il2Cpp.domain.assembly(GAME).image.class(GAME_MANAGER).method("Update", 0);
     if (update.virtualAddress.isNull()) {
         throw new Error(`${GAME_MANAGER}.Update has no code address`);
     }
-    hook = Interceptor.attach(update.virtualAddress, {
+    const targets: [NativePointer, ScriptInvocationListenerCallbacks,
+                    (l: InvocationListener) => void][] = [[update.virtualAddress, {
         onEnter(args) {
             // An instance method gets its object first.
             this.self = args[0];
@@ -1032,18 +1046,67 @@ function placeHook(each: (self: NativePointer) => void): void {
         onLeave() {
             each(this.self as NativePointer);
         },
-    });
+    }, (l) => { hook = l; }]];
+    if (engine !== null) {
+        const frameUpdate = Il2Cpp.domain.assembly(STRIKE).image.class(ENGINE_BASE)
+            .method("ʵʺʴʻˀʺˀˁʶʻʷ");
+        if (frameUpdate.virtualAddress.isNull()) {
+            throw new Error("the engine's frame update has no code address");
+        }
+        targets.push([frameUpdate.virtualAddress, {
+            onEnter(args) {
+                // The engine comes first. The time is a double, and the
+                // Windows x64 convention passes a double second argument in
+                // xmm1, not in the integer register args[1] reads.
+                const ctx = this.context as X64CpuContext;
+                engine(args[0], new Float64Array(ctx.xmm1)[0]);
+            },
+        }, (l) => { engineHook = l; }]);
+    }
+    for (const [at, callbacks, keep] of targets) {
+        keep(Interceptor.attach(at, callbacks));
+    }
 }
 
-// The one way the hook comes out: it detaches the hook, then lifts every
-// element its owner may have written. Every play stop, the frame probe's end
-// and teardown come here.
+// Subscribes `each` to Rewired's InputSourceUpdateEvent through ReInput's
+// public add method, the one the game's MIDI kit calls (IN-94). Kept the
+// moment it is in, so unhook removes it.
+function subscribeInputEvent(each: () => void): void {
+    if (inputEvent !== null) {
+        throw new Error("a delegate on InputSourceUpdateEvent is already in");
+    }
+    const action = Il2Cpp.delegate(Il2Cpp.corlib.class("System.Action"), () => { each(); });
+    rewired("Rewired.ReInput").method("add_InputSourceUpdateEvent").invoke(action);
+    inputEvent = action;
+}
+
+// The one way the hooks come out: it detaches each hook and removes the
+// input event's delegate, then lifts every element its owner may have
+// written. Every play stop, the frame probe's end and teardown come here.
+// The delegate stays recorded when its removal fails, so the probe's reply
+// says it is still in.
 function unhook(kit: Il2Cpp.Object | null): void {
     const h = hook;
+    const e = engineHook;
     hook = null;
+    engineHook = null;
     try {
-        if (h !== null) {
-            h.detach();
+        try {
+            if (h !== null) {
+                h.detach();
+            }
+        } finally {
+            try {
+                if (e !== null) {
+                    e.detach();
+                }
+            } finally {
+                const d = inputEvent;
+                if (d !== null) {
+                    rewired("Rewired.ReInput").method("remove_InputSourceUpdateEvent").invoke(d);
+                    inputEvent = null;
+                }
+            }
         }
     } finally {
         const pads = [...hookPads].map(([id, isButton]) => ({ id, value: isButton ? true : 0 }));
@@ -1202,18 +1265,39 @@ function stopPlay() {
     return { stopped: true };
 }
 
-// For the message's seconds, logs every GameManager.Update as it returns: its
-// frame, the engine clock and GameManager.songTime as read (both in
-// seconds), and the wall time. It puts the message's elements down on the
-// first frame and lifts them hold_frames frames later, and after any write
-// reads the kit's player back on every frame: GetAnyButton, and each action
-// of an optional "read" list by name, as press reads them. A row's `wrote`
-// says which write that frame made. The hook comes out through unhook.
+// Where the frame probe writes its one press: as GameManager.Update returns,
+// or inside Rewired's InputSourceUpdateEvent. kit_tools.py owns the words.
+const WRITE_AT_UPDATE = "update";
+const WRITE_AT_INPUT_EVENT = "input_event";
+
+// For the message's seconds, logs three marks in every frame, each with a
+// running number `seq` shared by all three, so the order they ran in shows:
+// every GameManager.Update as it returns (a row of `frames`: its frame, the
+// engine clock and GameManager.songTime as read, both in seconds, and the
+// wall time), every InputSourceUpdateEvent (a row of `events`: its frame,
+// the engine clock and the songTime of the last GameManager seen, as read
+// when the event fired), and every entry to the engine's frame update (a
+// row of `engine`: its frame, the engine, the time in seconds it was handed,
+// and the read list read back at that moment). Each mark also says which
+// thread it ran on. The message's required "write_at" says which mark writes
+// the press: it puts the message's elements down on the first frame and
+// lifts them hold_frames frames later, from that mark alone, and the mark's
+// `wrote` says which write it made. After any write it reads the kit's
+// player back at every Update mark: GetAnyButton, and each action of an
+// optional "read" list by name, as press reads them. The hooks go in and come
+// out on the game's main thread, and the reply keeps only the marks of the
+// frames between those two, the frames the hooks saw whole. Every hook and
+// the delegate come out through unhook.
 async function frameProbe(m: Message) {
     const seconds = needAbove0(m, "seconds");
     const capS = m.cap_s;
     if (typeof capS !== "number" || !(capS > seconds)) {
         throw new Error('frame_probe needs a "cap_s" above its "seconds"');
+    }
+    const writeAt = m.write_at;
+    if (writeAt !== WRITE_AT_UPDATE && writeAt !== WRITE_AT_INPUT_EVENT) {
+        throw new Error(`frame_probe needs a "write_at" of "${WRITE_AT_UPDATE}" or `
+            + `"${WRITE_AT_INPUT_EVENT}", not ${JSON.stringify(writeAt)}`);
     }
     const clock = needAddress(m, "clock_addr");
     const elements = elementsOf(m);
@@ -1228,35 +1312,67 @@ async function frameProbe(m: Message) {
     }
     const kit = rec.kit;
     const reader = rec.target.player;
-    const frames: object[] = [];
+    let frames: { [key: string]: unknown }[] = [];
+    let events: { [key: string]: unknown }[] = [];
+    let engines: { [key: string]: unknown }[] = [];
+    let seq = 0;
+    let installFrame: number | null = null;
+    let endFrame: number | null = null;
     let downFrame: number | null = null;
     let upFrame: number | null = null;
     let failure: string | null = null;
+    let unhookError: string | null = null;
     const managers = new Map<string, Il2Cpp.Object>();
+    let lastManager: Il2Cpp.Object | null = null;
+    // The frame of a mark, or null when the hooks did not see that frame
+    // whole: the frame they went in on, or one after they came out.
+    const covered = (): number | null => {
+        const f = frameCount();
+        return installFrame === null || f <= installFrame || endFrame !== null ? null : f;
+    };
+    // The press's down or up write, made by whichever mark write_at names.
+    const pressStep = (f: number): string | null => {
+        if (downFrame === null) {
+            write(kit, elements, false);
+            downFrame = f;
+            return "down";
+        }
+        if (upFrame === null && f >= downFrame + hold) {
+            write(kit, elements, true);
+            upFrame = f;
+            return "up";
+        }
+        return null;
+    };
+    const fail = (where: string, e: unknown) => {
+        if (failure === null) {
+            failure = `at the ${where} mark, after ${frames.length} frames: ${e}`;
+        }
+    };
     const onFrame = (self: NativePointer) => {
         if (failure !== null) {
             return;
         }
         try {
             const wall = Date.now();
-            const f = frameCount();
+            const f = covered();
+            if (f === null) {
+                return;
+            }
+            seq++;
             let gm = managers.get(self.toString());
             if (gm === undefined) {
                 gm = new Il2Cpp.Object(self);
                 managers.set(self.toString(), gm);
             }
+            lastManager = gm;
             const row: { [key: string]: unknown } = {
-                frame: f, engine_clock_s: clock.readDouble(),
-                song_time_s: gm.field<number>("songTime").value, wall_ms: wall, wrote: null,
+                seq, frame: f, engine_clock_s: clock.readDouble(),
+                song_time_s: gm.field<number>("songTime").value, wall_ms: wall,
+                thread: Process.getCurrentThreadId(), wrote: null,
             };
-            if (downFrame === null) {
-                write(kit, elements, false);
-                downFrame = f;
-                row.wrote = "down";
-            } else if (upFrame === null && f >= downFrame + hold) {
-                write(kit, elements, true);
-                upFrame = f;
-                row.wrote = "up";
+            if (writeAt === WRITE_AT_UPDATE) {
+                row.wrote = pressStep(f);
             }
             row.any_button = anyButton(reader);
             if (names.length !== 0) {
@@ -1264,21 +1380,87 @@ async function frameProbe(m: Message) {
             }
             frames.push(row);
         } catch (e) {
-            failure = `after ${frames.length} frames: ${e}`;
+            fail(WRITE_AT_UPDATE, e);
+        }
+    };
+    const onEvent = () => {
+        if (failure !== null) {
+            return;
+        }
+        try {
+            const wall = Date.now();
+            const f = covered();
+            if (f === null) {
+                return;
+            }
+            seq++;
+            const gm = lastManager;
+            const row: { [key: string]: unknown } = {
+                seq, frame: f, engine_clock_s: clock.readDouble(),
+                song_time_s: gm === null ? null : gm.field<number>("songTime").value,
+                wall_ms: wall, thread: Process.getCurrentThreadId(), wrote: null,
+            };
+            if (writeAt === WRITE_AT_INPUT_EVENT) {
+                row.wrote = pressStep(f);
+            }
+            events.push(row);
+        } catch (e) {
+            fail(WRITE_AT_INPUT_EVENT, e);
+        }
+    };
+    const onEngine = (self: NativePointer, timeS: number) => {
+        if (failure !== null) {
+            return;
+        }
+        try {
+            const wall = Date.now();
+            const f = covered();
+            if (f === null) {
+                return;
+            }
+            seq++;
+            engines.push({
+                seq, frame: f, engine: hex(self), time_s: timeS, wall_ms: wall,
+                thread: Process.getCurrentThreadId(),
+                read: names.map((a) => button(reader, a)),
+            });
+        } catch (e) {
+            fail("engine", e);
         }
     };
     addPads(elements);
     const start = Date.now();
     try {
-        await settled(() => placeHook(onFrame));
+        await settled(() => {
+            installFrame = frameCount();
+            placeHook(onFrame, onEngine);
+            subscribeInputEvent(onEvent);
+        }, "main");
         await sleep(seconds * MS_PER_S);
     } finally {
-        await settled(() => unhook(kit));
+        try {
+            await settled(() => {
+                endFrame = frameCount();
+                unhook(kit);
+            }, "main");
+        } catch (e) {
+            unhookError = `${e}`;
+        }
     }
+    // A mark of the frame the hooks came out on saw only part of it.
+    const whole = (row: { [key: string]: unknown }) => row.frame !== endFrame;
+    frames = frames.filter(whole);
+    events = events.filter(whole);
+    engines = engines.filter(whole);
+    const hooksOut = { update: hook === null, engine: engineHook === null,
+                       input_event: inputEvent === null };
     return {
-        seconds, wall_ms: Date.now() - start, hold_frames: hold, down_frame: downFrame,
-        up_frame: upFrame, read: names, failure, hook_out: hook === null,
-        managers: managers.size, frames,
+        seconds, wall_ms: Date.now() - start, write_at: writeAt, hold_frames: hold,
+        down_frame: downFrame, up_frame: upFrame, read: names, failure,
+        unhook_error: unhookError,
+        hook_out: hooksOut.update && hooksOut.engine && hooksOut.input_event,
+        hooks_out: hooksOut, install_frame: installFrame, end_frame: endFrame,
+        managers: managers.size, frames, events, engine: engines,
     };
 }
 

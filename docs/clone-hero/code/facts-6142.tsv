@@ -674,6 +674,10 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6F9C0		0x1D6F9C0
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6FA80		0x1D6FA80
 6142	method	3740	ReInput.ControllerHelper	DestroyCustomController	0x1D6FC70		0x1D6FC70
+6142	method	3751	ReInput	add_InputSourceUpdateEvent	0x1F704D0		0x1F704D0
+6142	method	3751	ReInput	add_InputSourceUpdateEvent	0x1F704D0		ReInput.add_InputSourceUpdateEvent
+6142	method	3751	ReInput	remove_InputSourceUpdateEvent	0x1F75B70		0x1F75B70
+6142	method	3751	ReInput	remove_InputSourceUpdateEvent	0x1F75B70		ReInput.remove_InputSourceUpdateEvent
 6142	method	3763	CustomInputManager	get_inputSource	0x84220		0x84220
 6142	method	3842	CustomPlatformUnifiedControllerSource	get_controllerExtension	0x84220		0x84220
 6142	method	3852	HardwareJoystickMapCustomPlatformMap	GetVariants	0x84220		0x84220
