@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-21.
+Last write-back: 2026-11-22.
 
 ## Written fills
 
@@ -328,6 +328,16 @@ Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 6 
 Hydra: no owner: a grep of `src/` for a fill-end grant finds nothing; Hydra's paths hit every note.
 Ruling: none needed: Hydra's paths hit every note, so the grant changes nothing they score
 Found: drum-lanes FINDINGS-play-time.md.; the grant's slot, 2026-11-06, session 70bfa33d; 2026-11-08, session 77057df2 (docs-gaps search)
+
+### FL-46 On Petal, a fill-end gem left unhit was not a missed note while Star Power could activate, and was one when it could not
+
+Rule: A fill-end gem the player leaves unhit, while Star Power can be activated, is not counted as a missed note: it scores with no press, as FL-31's grant says. When Star Power cannot be activated at that gem (it is already on, or the meter is under half), the same unhit gem is a missed note. On Petal the player declined eight fills this way. With every press inside its band all eight were granted and the run hit every note; in a run that had left Hydra's path, three of them came while Star Power could not activate and are read as the run's three missed notes.
+Label: Proven in a live run
+Evidence: The schedule `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-prep\schedule.json` marks chords 80, 326, 370, 405, 668, 775, 800 and 829 `declined`, and each press log has `send` = declined on exactly those eight rows. In LS-P2 run 2 (`press-2.csv` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run2\`) the score rises by 260 between each declined row's `score_after` and the next row's `score_before`, and `scorestats-after-run.json` there reads `notes_hit` 1,390 of 1,390. LS-L1 run 1 (`press-1.csv` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-l1-run1\`, played as plain Drums, SP-50) shows a rise of 200 after each of the eight, and `scorestats-after-ls-l1.json` reads 1,390 of 1,390. The 260 and 200 fit a 65-point and a 50-point gem at 4x. In LS-P2 run 1 (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-p2-run1\`) the activation at chord 692 did not happen (SC-39), and the score rises by 260 after the declined rows of chords 80 to 668 but by 0 after those of 775, 800 and 829. In `sp_watch-1.csv` there, 100 ms before each of those three chords, `sp_active_byte` reads 1 at 775 (Star Power on), and the meter `sp_amount_u32` reads 0 at 800 and 3,600 at 829, under the half mark of 7,200 (`sp_half_u64`). Run 2's watch at the same three moments reads Star Power off with the meter at 7,200, 7,200 and 10,800. The run's `scorestats-CHON_-_Petal_B-20261122-110230.json` reads `notes_hit` 1,387 of 1,390 and `end_streak` 332, and 332 is the number of gems after chord 829 in the schedule. No file lists which notes were missed; the three are read from these rows.
+Game code (6142): the miss handler, RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16 (FL-31).
+Hydra: no owner in `src/`: Hydra's paths hit every note (FL-31). The schedule's `declined` chords come from tools/replay_schedule.cpp.
+Ruling: none needed: Hydra's paths hit every note, so the grant changes nothing they score
+Found: 2026-11-22, session 1390758e (LS-P2 runs 1 and 2, LS-L1 run 1).
 
 ## When a fill shows up
 

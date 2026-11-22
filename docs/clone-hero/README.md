@@ -2,7 +2,7 @@
 
 This folder is the one home of what the project knows about how Clone Hero works.
 It describes build 1.1 (v1.1.0.6142) unless a page says otherwise; the fills page also covers 1.0 (v1.0.0.4045).
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-22.
 
 This page is the index. It says what each page holds and how the pages are kept honest. It states no rule of the game; the rules live on the area pages.
 
@@ -50,18 +50,18 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-12, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the all-toms work added CR-54, plus IN-93 from LS-G1 and IN-94 from the dump added by hand. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
+These counts were taken from the pages on 2026-11-22, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the live runs of that day added TM-54, TM-55, FL-46, SP-49, SP-50, SC-39, IN-95 and IN-96. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
 | 01 reading a chart | 54 | 36 | 4 | 8 | 6 |
 | 02 note list | 77 | 55 | 7 | 2 | 13 |
-| 03 timing | 53 | 33 | 8 | 5 | 7 |
-| 04 fills | 45 | 36 | 2 | 4 | 3 |
-| 05 Star Power | 48 | 31 | 5 | 9 | 3 |
-| 06 scoring | 38 | 21 | 13 | 2 | 2 |
-| 07 internals | 94 | 64 | 18 | 0 | 12 |
-| All pages | 409 | 276 | 57 | 30 | 46 |
+| 03 timing | 55 | 33 | 10 | 5 | 7 |
+| 04 fills | 46 | 36 | 3 | 4 | 3 |
+| 05 Star Power | 50 | 31 | 7 | 9 | 3 |
+| 06 scoring | 39 | 21 | 14 | 2 | 2 |
+| 07 internals | 96 | 64 | 20 | 0 | 12 |
+| All pages | 417 | 276 | 65 | 30 | 46 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
 
