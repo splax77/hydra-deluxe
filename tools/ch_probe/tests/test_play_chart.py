@@ -27,6 +27,7 @@ import io
 import json
 import math
 import os
+import queue
 import re
 import sys
 import tempfile
@@ -2484,6 +2485,488 @@ class SplitChordTimesTest(unittest.TestCase):
             self.assertEqual(first[column] != "", column in rows[0], column)
             for row in rest:
                 self.assertEqual(row[column], "", column)
+
+
+# --- the judge-time schedule: T3 of the squeeze timing plan
+# (docs/superpowers/plans/2026-11-21-squeeze-timing-fix.md) ----------------------
+
+# Three hand-picked read offsets, in ms from the end the file planned: one
+# earlier and two later. Each test checks the reads stay inside the press's
+# read range and short of its fallback threshold.
+_READ_OFFSETS_MS = (-6.0, 3.0, 9.0)
+
+
+class LateGemBandTest(unittest.TestCase):
+    """A kept late gem's band runs from its own end as the read moved it,
+    strict, to its window's back edge, and the gem is aimed at the middle."""
+
+    def test_the_target_is_midway_between_the_own_end_now_and_the_back_edge(self):
+        # Mouths chord 740's late gem, read at three ends. It fails if the
+        # gem still sat a fixed lag after its end (the target would move one
+        # for one with the end) or kept the file's planned end (it would not
+        # move at all).
+        from tools.ch_mcp import kit_tools as K
+        late = _press_of(play_chart.load_schedule(_MOUTHS_SCHEDULE).chords, 740,
+                         "squeeze_out_late")
+        seen = []
+        for offset in _READ_OFFSETS_MS:
+            with self.subTest(offset):
+                read_ms = late.aim_end_ms + offset
+                self.assertTrue(play_chart._in_read_range(late, read_ms))
+                self.assertLessEqual(read_ms, late.fallback["if_end_after_ms"])
+                (moved,) = play_chart.retime_from_end([late], late.end_read_after, read_ms)
+                own_now = play_chart.own_end_now_ms(late, read_ms)
+                self.assertEqual(moved.retimed, play_chart.RETIMED_LATE)
+                self.assertEqual(moved.band, {"from_ms": own_now, "to_ms": late.window_to_ms,
+                                              "from_strict": True})
+                self.assertAlmostEqual(moved.at_ms - own_now, late.window_to_ms - moved.at_ms,
+                                       delta=1e-9)
+                # The entry the agent gets carries that target and band.
+                entry = K.play_entry(7, moved, None)
+                self.assertEqual((entry["at_ms"], entry["band"]), (moved.at_ms, moved.band))
+                seen.append((own_now, moved.at_ms))
+        for (own_a, at_a), (own_b, at_b) in zip(seen, seen[1:]):
+            self.assertNotAlmostEqual(own_a, own_b, delta=1.0)
+            self.assertAlmostEqual(at_b - at_a, (own_b - own_a) / 2, delta=1e-9)
+
+    def test_a_read_past_the_threshold_joins_the_inside_group(self):
+        # Mouths chord 740, with the read after 704 5 ms past the late gem's
+        # threshold (a hand-picked input). The gem goes down in one press
+        # with its chord's last inside group, which keeps that group's own
+        # moved band, and the run's row for it says retimed=inside.
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        inside = _press_of(chords, 740, "squeeze_out_inside")
+        late = _press_of(chords, 740, "squeeze_out_late")
+        read_ms = late.fallback["if_end_after_ms"] + 5.0
+        self.assertTrue(play_chart._in_read_range(late, read_ms))
+        lanes = {c.index: c.lanes for c in chords}
+        (joined,) = play_chart.retime_from_end([inside, late], 704, read_ms, lanes)
+        self.assertEqual(sorted(joined.lanes), sorted(inside.lanes + late.lanes))
+        self.assertEqual(joined.retimed, play_chart.RETIMED_INSIDE)
+        _assert_aimed_in_band(self, inside, joined, play_chart.own_end_now_ms(inside, read_ms))
+        result, _game = _play_schedule(chords, _reads(chords, {704: read_ms}))
+        self.assertEqual(result.stop, "done")
+        (row,) = _rows_of(result, 740)
+        self.assertEqual(row["retimed"], play_chart.RETIMED_INSIDE)
+
+    def test_a_lone_late_gem_past_its_threshold_takes_an_end_band_to_its_own_end(self):
+        # Freak chord 387's late gem has no inside group. Read past its
+        # threshold at three ends, it gets a band from its window's front
+        # edge to its own end now, stopped at the back edge, aimed at the
+        # middle; no block of the file and no line of the player names
+        # `before_end_ms`, the retired fixed distance before the end.
+        late = _press_of(play_chart.load_schedule(_FREAK_SCHEDULE).chords, 387)
+        self.assertEqual(late.fallback["action"], play_chart.FALLBACK_END_BAND)
+        for path in (_FREAK_SCHEDULE, _MOUTHS_SCHEDULE):
+            for entry in _read_json(path)["presses"]:
+                self.assertNotIn("before_end_ms", entry.get("fallback") or {}, entry["chord"])
+        self.assertNotRegex(inspect.getsource(play_chart), r"\bbefore_end_ms\b")
+        for past_ms in (0.5, 4.0, 12.0):
+            with self.subTest(past_ms):
+                read_ms = late.fallback["if_end_after_ms"] + past_ms
+                self.assertTrue(play_chart._in_read_range(late, read_ms))
+                (moved,) = play_chart.retime_from_end([late], late.end_read_after, read_ms)
+                own_now = play_chart.own_end_now_ms(late, read_ms)
+                self.assertEqual(moved.retimed, play_chart.RETIMED_INSIDE)
+                to_ms = min(own_now, late.window_to_ms)
+                self.assertEqual(moved.band, {"from_ms": late.window_from_ms, "to_ms": to_ms,
+                                              "from_strict": False})
+                self.assertAlmostEqual(moved.at_ms, (late.window_from_ms + to_ms) / 2, delta=1e-9)
+
+
+class EndBandPressTest(unittest.TestCase):
+    """Each of the four end-band presses (a chord on a final end, a
+    squeeze-out's inside group, a squeeze-in, and a chord paid inside
+    before an end that moved earlier) has its band's upper edge moved to
+    its own end as the read moved it, its lower edge kept at its window's
+    front edge, and is aimed at the middle."""
+
+    def _presses(self):
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        # No committed fixture has a chord paid inside before a moved end,
+        # so that one is hand-built, with hand-picked times.
+        moved_end = _timed_press(rule="inside_moved_end", aim_end_ms=1000.0, own_end_ms=1000.0,
+                                 read_stored_end_ms=1000.0, own_stored_end_ms=1000.0,
+                                 conversion={"early": 1.0, "late": 1.0}, read_range_ms=None)
+        return {"sp_end": _press_of(chords, 465), "inside": _press_of(chords, 740,
+                                                                        "squeeze_out_inside"),
+                "squeeze_in": _press_of(chords, 431), "inside_moved_end": moved_end}
+
+    def test_each_band_moves_to_its_own_end_now_and_the_target_to_its_middle(self):
+        # It fails if a press still moved by a fixed lead before its end
+        # (the target would not be the middle) or kept the schedule's planned
+        # end (the upper edge would not move).
+        for name, press in self._presses().items():
+            self.assertFalse(press.band["from_strict"], name)
+            seen = []
+            for offset in _READ_OFFSETS_MS:
+                with self.subTest(name, offset=offset):
+                    read_ms = press.aim_end_ms + offset
+                    self.assertTrue(play_chart._in_read_range(press, read_ms))
+                    own_now = play_chart.own_end_now_ms(press, read_ms)
+                    self.assertTrue(press.window_from_ms < own_now < press.window_to_ms)
+                    (moved,) = play_chart.retime_from_end([press], press.end_read_after, read_ms)
+                    self.assertIsNone(moved.retimed)
+                    self.assertEqual(moved.band, {"from_ms": press.window_from_ms,
+                                                  "to_ms": own_now, "from_strict": False})
+                    self.assertNotEqual(moved.band["to_ms"], press.band["to_ms"])
+                    self.assertAlmostEqual(moved.at_ms, (press.window_from_ms + own_now) / 2,
+                                           delta=1e-9)
+                    seen.append((own_now, moved.at_ms))
+            for (own_a, at_a), (own_b, at_b) in zip(seen, seen[1:]):
+                self.assertAlmostEqual(at_b - at_a, (own_b - own_a) / 2, delta=1e-9, msg=name)
+
+    def test_an_end_before_the_window_leaves_no_band_and_says_so(self):
+        # A chord on a final end whose own end the read puts before its
+        # window's front edge has no band left: it goes to the agent aimed
+        # at that edge, so it is hit on the window's first frame and paid
+        # without Star Power, and it is marked no_frame_in_band.
+        press = self._presses()["sp_end"]
+        read_ms = press.aim_end_ms - (press.own_end_ms - press.window_from_ms) - 5.0
+        self.assertTrue(play_chart._in_read_range(press, read_ms))
+        self.assertLess(play_chart.own_end_now_ms(press, read_ms), press.window_from_ms)
+        (moved,) = play_chart.retime_from_end([press], press.end_read_after, read_ms)
+        self.assertIsNone(moved.band)
+        self.assertEqual(moved.at_ms, press.window_from_ms)
+        self.assertTrue(moved.no_frame_in_band)
+
+    def test_a_squeeze_in_read_before_its_threshold_is_pressed_plain(self):
+        # Mouths chord 431's squeeze-in, with the read after 340 1 ms before
+        # its threshold (a hand-picked input): pressed at its chord's own
+        # time with its window as its band, and its row says retimed=plain.
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        squeeze = _press_of(chords, 431)
+        read_ms = squeeze.fallback["if_end_before_ms"] - 1.0
+        self.assertTrue(play_chart._in_read_range(squeeze, read_ms))
+        (plain,) = play_chart.retime_from_end([squeeze], 340, read_ms)
+        self.assertEqual(plain.retimed, play_chart.RETIMED_PLAIN)
+        self.assertEqual(plain.at_ms, squeeze.chart_ms + squeeze.fallback["aim_ms"])
+        self.assertEqual(plain.band, {"from_ms": squeeze.window_from_ms,
+                                      "to_ms": squeeze.window_to_ms, "from_strict": False})
+        result, _game = _play_schedule(chords, _reads(chords, {340: read_ms}))
+        self.assertEqual(result.stop, "done")
+        (row,) = _rows_of(result, 431)
+        self.assertEqual(row["retimed"], play_chart.RETIMED_PLAIN)
+
+
+class PressMessagesByGroupTest(unittest.TestCase):
+    """press_messages joins a later group to the message that holds the
+    group its `follows` names."""
+
+    def _press(self, group, follows, aim_ms):
+        # Hand-picked test inputs: chord 7 at 1000 ms, one gem per group.
+        return play_chart.Press(index=7, chart_ms=1000.0, aim_ms=aim_ms, lanes=[Lane.RED + group],
+                                dynamics=["none"], axes=None, declined=False, rule="plain",
+                                group=group, follows=follows)
+
+    def test_a_chord_with_two_heads_keeps_each_later_group_with_its_own(self):
+        # Two heads of one chord, as a squeeze-out's inside group and its
+        # late gem are: group 1 follows group 0 and group 3 follows group 2.
+        # Joining by the chord alone, or by firing order, would put group 3
+        # with group 0. The presses have no gap in ms to join by.
+        g0, g1, g2, g3 = (self._press(0, None, -10.0), self._press(1, 0, -10.0),
+                          self._press(2, None, 30.0), self._press(3, 2, 30.0))
+        self.assertFalse(hasattr(g1, "after_ms"))
+        messages = play_chart.press_messages([g3, g2, g1, g0])
+        self.assertEqual(messages, [(g0, [g1]), (g2, [g3])])
+        self.assertNotRegex(inspect.getsource(play_chart.press_messages), r"\bafter_ms\b")
+
+    def test_the_mouths_fixture_joins_each_later_group_to_the_group_it_names(self):
+        plan = play_chart.press_plan(play_chart.load_schedule(_MOUTHS_SCHEDULE).chords)
+        messages = play_chart.press_messages(plan)
+        later = [p for p in plan if p.follows is not None]
+        self.assertTrue(later)
+        for head, rest in messages:
+            groups = [head.group]
+            for p in rest:
+                self.assertEqual(p.index, head.index)
+                self.assertIn(p.follows, groups)
+                groups.append(p.group)
+        self.assertEqual(sum(len(rest) for _h, rest in messages), len(later))
+
+
+class _GridClock:
+    """A song clock read every `step_ms`, from `start_ms`: read k gives
+    start_ms + k * step_ms, in song seconds. `reads` counts the reads, and
+    `now` is the timer, a step of wall time per read."""
+
+    def __init__(self, start_ms, step_ms):
+        from tools.ch_probe import constants as C
+        self._s, self.start_ms, self.step_ms, self.reads = C.ms_to_s, start_ms, step_ms, 0
+
+    def value_s(self, k):
+        return self._s(self.start_ms + k * self.step_ms)
+
+    def read(self):
+        value = self.value_s(self.reads)
+        self.reads += 1
+        return value, value
+
+    def now(self):
+        return self.reads * self.step_ms / 1000.0
+
+
+class KeysRouteJudgeTargetTest(unittest.TestCase):
+    """The keys loop sends each press on the first clock read at or past its
+    judge target, adds no delay of its own, and drops a press read past its
+    chord's window."""
+
+    def _chords(self):
+        # Hand-picked test inputs: a plain chord at 1000 ms, a chord at
+        # 1500 ms split in two groups (the second follows the first), and a
+        # chord at 2001 ms whose window ends at its own time, so a read past
+        # 2001 ms is too late for it.
+        score = {"chords": [
+            {"index": 0, "ms": 1000.0, "notes": [_gem("Red", "none")]},
+            {"index": 1, "ms": 1500.0, "notes": [_gem("Kick", "none"), _gem("Blue", "none")]},
+            {"index": 2, "ms": 2001.0, "notes": [_gem("Green", "none")]},
+        ]}
+        doc = _schedule_of(score)
+        head = doc["presses"][1]
+        later = dict(head, gems=[1], group=1, follows=0)
+        head["gems"] = [0]
+        doc["presses"].insert(2, later)
+        last = doc["presses"][3]
+        last["window_to_ms"] = 2001.0
+        last["band"] = {"from_ms": last["window_from_ms"], "to_ms": 2001.0, "from_strict": False}
+        return _write_and_load(doc, play_chart.load_schedule).chords
+
+    def _run(self, step_ms):
+        chords = self._chords()
+        clock = _GridClock(500.0, step_ms)
+        calls = []
+
+        def press(lanes, _axes=None, then=()):
+            # The read count when the call went out: the read that sent it
+            # is the one before.
+            calls.append((list(lanes), clock.reads - 1))
+
+        result = play_chart.play_chords(chords, clock, lambda: 0, press, now=clock.now,
+                                        sleep=lambda _s: None, out=io.StringIO())
+        return chords, clock, calls, result
+
+    def test_each_press_goes_on_the_first_read_at_or_past_its_judge_target(self):
+        # Two read spacings; reads at 3.0 and 0.75 ms never land on 2001 ms.
+        from tools.ch_probe import constants as C
+        for step_ms in (3.0, 0.75):
+            with self.subTest(step_ms=step_ms):
+                chords, clock, calls, result = self._run(step_ms)
+                self.assertEqual(result.stop, play_chart.STOP_DONE)
+                plan = play_chart.press_plan(chords)
+                head = next(p for p in plan if p.index == 1 and p.follows is None)
+                later = next(p for p in plan if p.index == 1 and p.follows is not None)
+                firsts = {}
+                for p in plan:
+                    if p.follows is None:
+                        k = next(k for k in range(10 ** 6)
+                                 if C.ms_to_s(p.at_ms) - clock.value_s(k) <= 0)
+                        firsts[p.index] = k
+                by_index = {}
+                for r in result.rows:
+                    by_index.setdefault(r["index"], []).append(r)
+                # The plain chord and the split chord's head went on the
+                # first read at or past their targets, with no delay added.
+                for index in (0, 1):
+                    self.assertEqual(by_index[index][0]["clock_ms_at_press"],
+                                     C.s_to_ms(clock.value_s(firsts[index])), index)
+                    self.assertEqual(by_index[index][0][play_chart.SEND_COLUMN], play_chart.SENT)
+                # The later group went on the very next read, never the head's.
+                self.assertEqual([c for c in calls if c[0] == later.lanes],
+                                 [(later.lanes, firsts[1] + 1)])
+                self.assertEqual([c for c in calls if c[0] == head.lanes],
+                                 [(head.lanes, firsts[1])])
+                self.assertEqual(by_index[1][1]["clock_ms_at_press"],
+                                 C.s_to_ms(clock.value_s(firsts[1] + 1)))
+                # The read for chord 2 is past its window's back edge: no
+                # press, and its row says DROPPED.
+                (dropped,) = by_index[2]
+                self.assertGreater(dropped["clock_ms_at_press"], 2001.0)
+                self.assertEqual(dropped[play_chart.SEND_COLUMN], play_chart.DROPPED)
+                self.assertNotIn([Lane.GREEN], [c[0] for c in calls])
+
+
+class EdgeProbeTargetTest(unittest.TestCase):
+    """An edge probe's asked lead is the judge time the probe wants, counted
+    from the chord's own time, and goes to the agent as a target with no
+    band."""
+
+    def test_a_probe_of_plus_10_ms_aims_10_ms_before_the_chord(self):
+        from tools.ch_mcp import kit_tools as K
+        from tools.ch_probe.experiments import edge_probe
+        chords = _freak_chords()
+        chord = next(c for c in chords if len(c.presses) == 1 and not c.declined
+                     and c.presses[0].rule == "plain" and c.presses[0].end_read_after is None
+                     and c.ms > 10000.0)
+        moved, run = edge_probe.probe_chords(chords, [edge_probe.Probe(chord.index, 10.0)])
+        (press,) = [p for c in moved if c.index == chord.index for p in c.presses]
+        self.assertAlmostEqual(press.at_ms, chord.ms - 10.0, delta=1e-6)
+        self.assertIsNone(press.band)
+        entry = K.play_entry(3, press, None)
+        self.assertNotIn("band", entry)
+        self.assertAlmostEqual(entry["at_ms"], chord.ms - 10.0, delta=1e-6)
+        # The row's probe column still holds the asked lead, and its time is
+        # the chord's own again.
+        row = {"index": press.index, "chart_ms": press.chart_ms, "lead_ms": press.lead_ms}
+        run.mark_row(row)
+        self.assertEqual(row[edge_probe.PROBE_COLUMN], 10.0)
+        self.assertAlmostEqual(row["chart_ms"], chord.ms, delta=1e-6)
+
+
+class _FakeKitPlayer:
+    """kit_tools.GamePlayer as play_in_game uses it: `posts` keeps every
+    message posted, and `events` hands out the events the test queued."""
+
+    def __init__(self, events):
+        self.posts = []
+        self.events = queue.Queue()
+        for event in events:
+            self.events.put(event)
+
+    def post(self, message):
+        self.posts.append(message)
+        return {}
+
+    def alive(self):
+        return True
+
+
+def _press_event(seq, index, **over):
+    """A sent event in the shape the kit agent sends, every field a
+    hand-picked test input unless `over` gives it."""
+    from tools.ch_mcp import kit_tools as K
+    event = {"kind": K.EVENT_SENT, "seq": seq, "index": index, "clock_ms_at_press": 1000.0,
+             "down_frame": 10, "up_frame": 12, "down_ms": 5000.0, "up_ms": 5006.0,
+             "score_before": 0, "score_after": 100, "frame_gap_ms": 3.0, "agent_note": "",
+             "step_ms": 3.0, "predicted_judge_ms": 1006.0, "judged_ms": 1007.5,
+             "judged_in_band": True, "no_frame_in_band": False}
+    event.update(over)
+    assert set(K.PRESS_EVENT_FIELDS) <= set(event)
+    return event
+
+
+def _stop_event():
+    from tools.ch_mcp import kit_tools as K
+    return {"kind": K.EVENT_STOP, "reason": K.STOP_REASON_STOPPED}
+
+
+class KitEntryTest(unittest.TestCase):
+    """play_in_game sends the agent judge targets and bands, never a send
+    time, and makes each row from the agent's event."""
+
+    def _run(self, chords, events, read_sp_end=None):
+        player = _FakeKitPlayer(events)
+        result = play_chart.play_in_game(chords, player, clock_addr=1, score_addr=2,
+                                         out=io.StringIO(), read_sp_end=read_sp_end)
+        return player, result
+
+    def test_the_entries_hold_judge_targets_and_bands_and_no_send_time(self):
+        # The Mouths plan, with the event of the press its end is first read
+        # after and an end read 3 ms later than planned (a hand-picked
+        # input): the play message and the retime that follows. It fails if
+        # an entry still holds `last_send_ms` or a gap in ms.
+        from tools.ch_probe import constants as C
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        plan = play_chart.press_plan(chords)
+        seq, reader = next((k, p) for k, p in enumerate(plan) if p.planned_end_ms is not None)
+        read_ms = reader.planned_end_ms + 3.0
+        player, result = self._run(chords, [_press_event(seq, reader.index), _stop_event()],
+                                   read_sp_end=lambda: C.ms_to_s(read_ms))
+        self.assertEqual(result.stop, "stopped")
+        play, retime = player.posts[0], player.posts[1]
+        self.assertEqual(len(play["entries"]), len(plan))
+        seq_of = {(p.index, p.group): k for k, p in enumerate(plan)}
+        for entry, p in zip(play["entries"], plan):
+            self.assertFalse({"last_send_ms", "after_ms", "send_ms"} & set(entry), entry)
+            self.assertEqual(entry["at_ms"], p.at_ms)
+            self.assertEqual(entry.get("band"), p.band)
+            self.assertEqual(entry["window_to_ms"], p.window_to_ms)
+            self.assertEqual(entry["after_seq"], None if p.follows is None
+                             else seq_of[(p.index, p.follows)])
+        # The retime moves the presses timed from that read to the middle of
+        # their moved bands, still with no send time.
+        moved = 0
+        for entry in retime["entries"]:
+            self.assertFalse({"last_send_ms", "after_ms", "send_ms"} & set(entry), entry)
+            p = plan[entry["seq"]]
+            if p.end_read_after != reader.index:
+                self.assertEqual(entry["at_ms"], p.at_ms)
+                continue
+            moved += 1
+            band = _band_for(p, play_chart.own_end_now_ms(p, C.s_to_ms(C.ms_to_s(read_ms))))
+            self.assertEqual(entry["band"], band)
+            self.assertAlmostEqual(entry["at_ms"], (band["from_ms"] + band["to_ms"]) / 2,
+                                   delta=1e-9)
+        self.assertTrue(moved)
+
+    def test_a_row_holds_the_events_step_and_judge_times(self):
+        # It fails if the row left out the frame step, the predicted judge
+        # time or the judge time that really followed.
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        plan = play_chart.press_plan(chords)
+        seq = next(k for k, p in enumerate(plan) if p.planned_end_ms is None)
+        event = _press_event(seq, plan[seq].index, step_ms=0.75, predicted_judge_ms=1001.5,
+                             judged_ms=1002.25)
+        _player, result = self._run(chords, [event, _stop_event()])
+        (row,) = result.rows
+        self.assertEqual((row["step_ms"], row["predicted_judge_ms"], row["judged_ms"]),
+                         (0.75, 1001.5, 1002.25))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, result.rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                (logged,) = list(csv.DictReader(f))
+        self.assertEqual((logged["step_ms"], logged["predicted_judge_ms"], logged["judged_ms"]),
+                         ("0.75", "1001.5", "1002.25"))
+
+    def test_no_frame_in_band_shows_on_the_row(self):
+        # A late gem (740), a squeeze-in (431) and a chord on a final end
+        # (465) of the Mouths plan, each reported by the agent with
+        # no_frame_in_band; one of them also says retime_missed, which keeps
+        # its place beside it. A plain press reported without it has an
+        # empty note.
+        from tools.ch_mcp import kit_tools as K
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        plan = play_chart.press_plan(chords)
+        seqs = {name: next(k for k, p in enumerate(plan) if p.index == index and p.rule == rule)
+                for name, index, rule in (("late", 740, "squeeze_out_late"),
+                                          ("squeeze_in", 431, "squeeze_in"),
+                                          ("final_end", 465, "sp_end"))}
+        plain = next(k for k, p in enumerate(plan) if p.rule == "plain")
+        events = [_press_event(seqs["late"], 740, no_frame_in_band=True),
+                  _press_event(seqs["squeeze_in"], 431, no_frame_in_band=True,
+                               agent_note=K.NOTE_RETIME_MISSED),
+                  _press_event(seqs["final_end"], 465, no_frame_in_band=True),
+                  _press_event(plain, plan[plain].index), _stop_event()]
+        _player, result = self._run(chords, events)
+        notes = {r["index"]: r["agent_note"] for r in result.rows}
+        self.assertEqual(notes[740], K.NOTE_NO_FRAME_IN_BAND)
+        self.assertEqual(notes[431], f"{K.NOTE_RETIME_MISSED} {K.NOTE_NO_FRAME_IN_BAND}")
+        self.assertEqual(notes[465], K.NOTE_NO_FRAME_IN_BAND)
+        self.assertEqual(notes[plan[plain].index], "")
+
+    def test_a_press_the_read_left_no_band_says_so_on_its_row(self):
+        # Chord 465 as retime_from_end leaves it when the read puts its own
+        # end before its window: the agent's event says nothing, and the row
+        # still says no_frame_in_band.
+        from tools.ch_mcp import kit_tools as K
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        marked = [replace_press(c, 465) for c in chords]
+        plan = play_chart.press_plan(marked)
+        seq = next(k for k, p in enumerate(plan) if p.index == 465)
+        _player, result = self._run(marked, [_press_event(seq, 465), _stop_event()])
+        (row,) = result.rows
+        self.assertEqual(row["agent_note"], K.NOTE_NO_FRAME_IN_BAND)
+
+
+def replace_press(chord, index):
+    """`chord`, with its presses marked no_frame_in_band and their band
+    taken away when it is chord `index`, as retime_from_end leaves a press
+    whose end-band the read left empty."""
+    import dataclasses
+    if chord.index != index:
+        return chord
+    return dataclasses.replace(chord, presses=tuple(
+        dataclasses.replace(p, band=None, no_frame_in_band=True) for p in chord.presses))
 
 
 if __name__ == "__main__":
