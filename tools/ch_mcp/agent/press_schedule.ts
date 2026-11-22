@@ -209,6 +209,11 @@ interface Slot {
     // Step calls since its down frame, until the judge time is read.
     stepsSinceDown: number;
     judgedMs: number | null;
+    // Its place in `slots`' order, which the releases and reports of one
+    // frame keep.
+    order: number;
+    // For a head, see wakeMs().
+    wakeMs: number;
 }
 
 const RETIME_MISSED = "retime_missed";
@@ -457,11 +462,26 @@ function readEntries(raw: unknown): Entry[] {
     return entries;
 }
 
-function freshSlot(entry: Entry): Slot {
+// A head that is not yet in its fallback pick does nothing on a frame whose
+// next-frame judge time is below this: it cannot fire before its window's
+// front edge (or, with no window, its band's front edge, or with neither its
+// at_ms), and cannot turn to its fallback or be dropped before its band's or
+// window's back edge. step() looks at no head before this, which is what keeps
+// a frame's work to the presses near the clock.
+function wakeMs(e: Entry): number {
+    const b = bandOf(e);
+    if (e.window !== null) {
+        return Math.min(e.window.from_ms, (b as Band).to_ms);
+    }
+    return b === null ? e.at_ms : b.from_ms;
+}
+
+function freshSlot(entry: Entry, order: number): Slot {
     return {
         entry, state: "pending", outcome: null, clockMs: null, downFrame: null, downMs: null,
         upFrame: null, upMs: null, scoreBefore: null, frameGapMs: null, note: "",
         stepMs: null, predictedMs: null, noFrameInBand: false, stepsSinceDown: 0, judgedMs: null,
+        order, wakeMs: wakeMs(entry),
     };
 }
 
@@ -469,6 +489,14 @@ function freshSlot(entry: Entry): Slot {
 // head always comes before its later groups, then by seq.
 function byPlan(a: Slot, b: Slot): number {
     return a.entry.at_ms - b.entry.at_ms || a.entry.seq - b.entry.seq;
+}
+
+function byOrder(a: Slot, b: Slot): number {
+    return a.order - b.order;
+}
+
+function byWake(a: Slot, b: Slot): number {
+    return a.wakeMs - b.wakeMs || byPlan(a, b);
 }
 
 export class PressSchedule {
@@ -492,6 +520,32 @@ export class PressSchedule {
     // The clock of the frame before, every frame, and the steps measured.
     frameClock: number | null;
     steps: RunningMedian;
+    // The queues a frame reads instead of every slot, so its work follows the
+    // presses near the clock, not the schedule's length. queue() builds them
+    // at load and after each retime; step() keeps them.
+    //   heads       pending heads by wakeMs, from headsFrom on; slots done
+    //               since are dropped as a frame's walk reaches them
+    //   planHeads   pending heads by plan, for the first frame's skip
+    //   fallback    pending heads in their fallback pick
+    //   waiting     head seq -> its pending later groups, while it is pending
+    //   ready       pending later groups whose head is settled
+    //   down, up    slots held down, and lifted but not yet reported
+    //   judging     slots written whose judge time is not yet read
+    //   open        how many slots are not yet reported
+    heads: Slot[];
+    headsFrom: number;
+    planHeads: Slot[];
+    fallback: Set<Slot>;
+    waiting: Map<number, Slot[]>;
+    ready: Set<Slot>;
+    down: Set<Slot>;
+    up: Set<Slot>;
+    judging: Set<Slot>;
+    open: number;
+    nextOrder: number;
+    // How many slots the last step() looked at, counting each look; the test
+    // of a frame's cost reads it.
+    examined: number;
 
     // `config` is the play message; `readScore` reads the game's score, and
     // is called at most once per step.
@@ -509,7 +563,8 @@ export class PressSchedule {
         this.jumpBackMs = needNumber(c, "jump_back_ms", "play");
         this.readScore = readScore;
         const entries = readEntries(c.entries);
-        this.slots = new Map(entries.map((e): [number, Slot] => [e.seq, freshSlot(e)]));
+        this.slots = new Map(entries.map((e, i): [number, Slot] => [e.seq, freshSlot(e, i)]));
+        this.nextOrder = entries.length;
         this.checkHeads(this.slots);
         this.retimedReads = new Set();
         this.held = new Map();
@@ -520,6 +575,120 @@ export class PressSchedule {
         this.stopReason = null;
         this.frameClock = null;
         this.steps = new RunningMedian();
+        this.heads = [];
+        this.headsFrom = 0;
+        this.planHeads = [];
+        this.fallback = new Set();
+        this.waiting = new Map();
+        this.ready = new Set();
+        this.down = new Set();
+        this.up = new Set();
+        this.judging = new Set();
+        this.open = 0;
+        this.examined = 0;
+        this.queue();
+    }
+
+    // Builds the pending queues from `slots`. The held, lifted and judging
+    // sets hold no pending slot, so a retime leaves them as they are.
+    queue(): void {
+        const heads: Slot[] = [];
+        this.fallback = new Set();
+        this.waiting = new Map();
+        this.ready = new Set();
+        this.open = 0;
+        for (const s of this.slots.values()) {
+            if (s.state !== "done") {
+                this.open += 1;
+            }
+            if (s.state !== "pending") {
+                continue;
+            }
+            const head = s.entry.after_seq;
+            if (head === null) {
+                heads.push(s);
+                if (s.noFrameInBand) {
+                    this.fallback.add(s);
+                }
+            } else if ((this.slots.get(head) as Slot).outcome === null) {
+                const list = this.waiting.get(head);
+                if (list === undefined) {
+                    this.waiting.set(head, [s]);
+                } else {
+                    list.push(s);
+                }
+            } else {
+                this.ready.add(s);
+            }
+        }
+        this.planHeads = this.startWall === null ? [...heads].sort(byPlan) : [];
+        this.heads = heads.sort(byWake);
+        this.headsFrom = 0;
+    }
+
+    // A slot leaves the pending queues for good.
+    markDone(s: Slot): void {
+        s.state = "done";
+        this.open -= 1;
+        this.ready.delete(s);
+        this.fallback.delete(s);
+        this.up.delete(s);
+    }
+
+    // `s` has its outcome: its later groups stop waiting on it, and are
+    // returned.
+    settle(s: Slot): Slot[] {
+        const list = this.waiting.get(s.entry.seq);
+        if (list === undefined) {
+            return [];
+        }
+        this.waiting.delete(s.entry.seq);
+        const out: Slot[] = [];
+        for (const f of list) {
+            this.examined += 1;
+            if (f.state === "pending") {
+                this.ready.add(f);
+                out.push(f);
+            }
+        }
+        return out;
+    }
+
+    // The pending slots that may act on this frame, by plan: the heads whose
+    // wakeMs the next frame's judge time has reached, the heads in their
+    // fallback pick, and the later groups whose head is settled.
+    candidates(nextMs: number | null): Slot[] {
+        const out: Slot[] = [];
+        if (nextMs !== null) {
+            const live: Slot[] = [];
+            let j = this.headsFrom;
+            while (j < this.heads.length && this.heads[j].wakeMs <= nextMs) {
+                this.examined += 1;
+                if (this.heads[j].state === "pending") {
+                    live.push(this.heads[j]);
+                }
+                j += 1;
+            }
+            // The live ones move up against the first head not yet reached,
+            // in their order, so the done ones fall out of the queue.
+            const from = j - live.length;
+            for (let k = 0; k < live.length; k++) {
+                this.heads[from + k] = live[k];
+            }
+            this.headsFrom = from;
+            for (const s of live) {
+                if (!s.noFrameInBand) {
+                    out.push(s);
+                }
+            }
+        }
+        for (const s of this.fallback) {
+            out.push(s);
+        }
+        for (const s of this.ready) {
+            out.push(s);
+        }
+        return out.sort(byPlan);
     }
 
     // Every later group names a head the schedule holds.
@@ -536,6 +705,7 @@ export class PressSchedule {
     // and `wallMs` the wall time, both in ms.
     step(frame: number, clockMs: number, wallMs: number): Step {
         const out: Step = { write: [], release: [], events: [] };
+        this.examined = 0;
         if (this.stopReason !== null) {
             return out;
         }
@@ -579,29 +749,49 @@ export class PressSchedule {
 
         // The clock read JUDGE_FRAMES frames after a down frame is the song
         // time its press was judged at (IN-93).
-        for (const s of this.slots.values()) {
-            if (s.downFrame !== null && s.judgedMs === null) {
-                s.stepsSinceDown += 1;
-                if (s.stepsSinceDown === JUDGE_FRAMES) {
-                    s.judgedMs = clockMs;
-                }
+        for (const s of this.judging) {
+            this.examined += 1;
+            s.stepsSinceDown += 1;
+            if (s.stepsSinceDown === JUDGE_FRAMES) {
+                s.judgedMs = clockMs;
+                this.judging.delete(s);
             }
         }
 
         // Releases come first; a pad lifted on this frame takes no new press
         // until the next one.
         const busy = new Set<number>();
-        for (const s of this.slots.values()) {
-            if (s.state === "down" && frame >= (s.downFrame as number) + this.holdFrames) {
-                this.lift(s, frame, wallMs, out);
-                for (const e of s.entry.elements) {
-                    busy.add(e.id);
-                }
+        const lifting: Slot[] = [];
+        for (const s of this.down) {
+            this.examined += 1;
+            if (frame >= (s.downFrame as number) + this.holdFrames) {
+                lifting.push(s);
+            }
+        }
+        for (const s of lifting.sort(byOrder)) {
+            this.lift(s, frame, wallMs, out);
+            for (const e of s.entry.elements) {
+                busy.add(e.id);
             }
         }
 
-        const pending = [...this.slots.values()].filter((s) => s.state === "pending").sort(byPlan);
-        for (const s of pending) {
+        const pending = this.candidates(nextMs);
+        // A slot settled on this frame frees its later groups; one that comes
+        // after it by plan is looked at on this frame too, in its place.
+        const settled = (s: Slot, at: number): void => {
+            for (const f of this.settle(s)) {
+                if (byPlan(f, s) > 0) {
+                    let k = at + 1;
+                    while (k < pending.length && byPlan(pending[k], f) < 0) {
+                        k += 1;
+                    }
+                    pending.splice(k, 0, f);
+                }
+            }
+        };
+        for (let i = 0; i < pending.length; i++) {
+            const s = pending[i];
+            this.examined += 1;
             const e = s.entry;
             let headLost = false;
             if (e.after_seq !== null) {
@@ -617,7 +807,7 @@ export class PressSchedule {
             const note = e.end_read_after !== null && !this.retimedReads.has(e.end_read_after)
                 ? RETIME_MISSED : "";
             const drop = (): void => {
-                s.state = "done";
+                this.markDone(s);
                 s.outcome = "dropped";
                 s.clockMs = clockMs;
                 s.scoreBefore = scoreNow();
@@ -626,6 +816,7 @@ export class PressSchedule {
                 s.stepMs = stepMs;
                 s.predictedMs = nowMs;
                 out.events.push(this.event(s, s.scoreBefore));
+                settled(s, i);
             };
             if (headLost) {
                 drop();
@@ -650,6 +841,7 @@ export class PressSchedule {
                     // This frame is past the band, or before it with the next
                     // one past it: no frame lands inside.
                     s.noFrameInBand = true;
+                    this.fallback.add(s);
                 }
                 if (e.window !== null && now > e.window.to_ms) {
                     drop();
@@ -663,6 +855,10 @@ export class PressSchedule {
                 continue;
             }
             s.state = "down";
+            this.ready.delete(s);
+            this.fallback.delete(s);
+            this.down.add(s);
+            this.judging.add(s);
             s.outcome = "sent";
             s.clockMs = clockMs;
             s.downFrame = frame;
@@ -677,14 +873,19 @@ export class PressSchedule {
                 busy.add(el.id);
             }
             out.write.push({ seq: e.seq, elements: e.elements });
+            settled(s, i);
         }
 
-        for (const s of this.slots.values()) {
-            if (s.state === "up" && s.judgedMs !== null
-                && wallMs >= (s.upMs as number) + this.scoreDelayMs) {
-                s.state = "done";
-                out.events.push(this.event(s, scoreNow()));
+        const reporting: Slot[] = [];
+        for (const s of this.up) {
+            this.examined += 1;
+            if (s.judgedMs !== null && wallMs >= (s.upMs as number) + this.scoreDelayMs) {
+                reporting.push(s);
             }
+        }
+        for (const s of reporting.sort(byOrder)) {
+            this.markDone(s);
+            out.events.push(this.event(s, scoreNow()));
         }
 
         if (this.allReported()) {
@@ -723,13 +924,25 @@ export class PressSchedule {
             if (s !== undefined && s.state !== "pending") {
                 ignored.push(e.seq);
             } else {
-                next.set(e.seq, freshSlot(e));
+                // A replaced slot keeps its place in the Map, so its order;
+                // a new one gets its order below.
+                next.set(e.seq, freshSlot(e, s === undefined ? -1 : s.order));
             }
         }
         // Checked before anything changes, so a bad retime leaves the
         // schedule as it was.
         this.checkHeads(next);
+        // New slots go after every slot there was, in the order listed.
+        let order = this.nextOrder;
+        for (const s of next.values()) {
+            if (!this.slots.has(s.entry.seq)) {
+                s.order = order;
+                order += 1;
+            }
+        }
+        this.nextOrder = order;
         this.slots = next;
+        this.queue();
         this.retimedReads.add(readAfter);
         return { removed, ignored };
     }
@@ -757,23 +970,33 @@ export class PressSchedule {
 
     // On the first frame: every head whose at_ms is less than the start
     // lead ahead of the clock, and every later group of a skipped head.
+    // The heads skipped are the front of planHeads. Heads are judged first, so
+    // every later group of a skipped head is skipped; a later group that
+    // follows a later group is skipped when that one is skipped and comes
+    // before it by plan. One that is not skipped is left ready, and the frame
+    // drops it.
     skipAtLoad(clockMs: number, out: Step): void {
         const seqs: number[] = [];
-        const pending = [...this.slots.values()].sort(byPlan);
-        // Heads first, so a later group never looks at a head not yet judged.
-        for (const heads of [true, false]) {
-            for (const s of pending) {
-                const e = s.entry;
-                if ((e.after_seq === null) !== heads) {
-                    continue;
-                }
-                const skip = e.after_seq === null
-                    ? e.at_ms < clockMs + this.startLeadMs
-                    : (this.slots.get(e.after_seq) as Slot).outcome === "skipped";
-                if (skip) {
-                    s.state = "done";
-                    s.outcome = "skipped";
-                    seqs.push(e.seq);
+        const skipped: Slot[] = [];
+        const skip = (s: Slot): void => {
+            this.markDone(s);
+            s.outcome = "skipped";
+            seqs.push(s.entry.seq);
+            skipped.push(s);
+        };
+        for (const s of this.planHeads) {
+            this.examined += 1;
+            if (!(s.entry.at_ms < clockMs + this.startLeadMs)) {
+                break;
+            }
+            skip(s);
+        }
+        this.planHeads = [];
+        for (let k = 0; k < skipped.length; k++) {
+            const x = skipped[k];
+            for (const f of this.settle(x)) {
+                if (x.entry.after_seq === null || byPlan(x, f) < 0) {
+                    skip(f);
                 }
             }
         }
@@ -783,6 +1006,8 @@ export class PressSchedule {
 
     lift(s: Slot, frame: number | null, wallMs: number, out: Step): void {
         s.state = "up";
+        this.down.delete(s);
+        this.up.add(s);
         s.upFrame = frame;
         s.upMs = wallMs;
         for (const el of s.entry.elements) {
@@ -794,28 +1019,21 @@ export class PressSchedule {
     }
 
     allReported(): boolean {
-        for (const s of this.slots.values()) {
-            if (s.state !== "done") {
-                return false;
-            }
-        }
-        return true;
+        return this.open === 0;
     }
 
     // Lifts every element still down, reports every written entry not yet
     // reported (its score after unread), then the stop.
     finish(reason: string, frame: number | null, clockMs: number | null, wallMs: number,
            out: Step): void {
-        for (const s of this.slots.values()) {
-            if (s.state === "down") {
-                this.lift(s, frame, wallMs, out);
-            }
+        for (const s of [...this.down].sort(byOrder)) {
+            this.examined += 1;
+            this.lift(s, frame, wallMs, out);
         }
-        for (const s of this.slots.values()) {
-            if (s.state === "up") {
-                s.state = "done";
-                out.events.push(this.event(s, null));
-            }
+        for (const s of [...this.up].sort(byOrder)) {
+            this.examined += 1;
+            this.markDone(s);
+            out.events.push(this.event(s, null));
         }
         this.stopReason = reason;
         out.events.push({ kind: "stop", reason, frame, clock_ms: clockMs, wall_ms: wallMs });
