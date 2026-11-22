@@ -63,7 +63,7 @@ These counts were taken from the pages on 2026-11-22, by counting their `###` he
 | 07 internals | 96 | 64 | 20 | 0 | 12 |
 | All pages | 417 | 276 | 65 | 30 | 46 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 58 checks covering 62 rows.
 
 ## Names in obfuscated code
 

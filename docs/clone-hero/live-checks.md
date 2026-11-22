@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-22.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` (removed; `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`), took its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -107,8 +107,6 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 **SP-31.** Question: does Hydra's end match the game's on more activations and other charts? Pass: game end minus Hydra's end under 5 ms on at least two more activations, one not in 4/4; fail: a larger gap. Needs Star Power activation and a menu start.
 
 **SP-33.** Question: is a note exactly on an SP end, hit exactly on time, doubled? Pass: doubled (Hydra's reading); fail: single. Needs Star Power activation and a menu start.
-
-**SP-36.** Question: do squeezed_notes and squeeze_note_losses count the game's +0xE8 and +0xEC counters, and do they match Hydra's squeezes on the chords hit? Pass: equal counts; fail: they differ. Needs Star Power activation and a menu start.
 
 **SP-37.** Question: do game and Hydra agree on which early or late hits collect a phrase at the SP end? Pass: the meter rises only on the side Hydra's SqIn or SqOut rule says; fail: otherwise. Needs Star Power activation and a menu start.
 
