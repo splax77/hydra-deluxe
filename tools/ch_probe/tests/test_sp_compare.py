@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -555,6 +556,56 @@ class LastChordMultiplierTest(unittest.TestCase):
         self.assertEqual(report.fails, 0, report.text())
         self.assertTrue(report.lines[0].startswith("PASS multiplier at each chord: "),
                         report.lines[0])
+
+
+_SLIP_NOTE = "Missed notes from "
+
+
+class SlipNoteTest(unittest.TestCase):
+    """The note at the point the game's activations part from the path, on
+    the hand-written run. Its one activation is chord 4's (3000 ms)."""
+
+    def test_a_run_that_keeps_to_the_path_has_no_note(self):
+        report = run(build_rows())
+        self.assertFalse(_starting(report, "Multiplier not compared from chord "),
+                         report.text())
+        self.assertFalse(_starting(report, _SLIP_NOTE), report.text())
+
+    def test_an_activation_on_another_chord_names_that_chord(self):
+        # The game activates on chord 2 (2000 ms), a chord before the path's.
+        report = run(build_rows(act=(2010, 3100)))
+        notes = _starting(report, _SLIP_NOTE)
+        self.assertEqual(len(notes), 1, report.text())
+        self.assertTrue(notes[0].startswith(
+            f"{_SLIP_NOTE}{sp_compare._chord_label(SCORE['chords'][2])} on "), notes[0])
+
+    def test_a_missing_activation_names_the_paths_chord(self):
+        # The game never activates, so the run parts at the path's chord 4.
+        report = run(build_rows(act=None))
+        notes = _starting(report, _SLIP_NOTE)
+        self.assertEqual(len(notes), 1, report.text())
+        self.assertTrue(notes[0].startswith(
+            f"{_SLIP_NOTE}{sp_compare._chord_label(SCORE['chords'][4])} on "), notes[0])
+
+    def test_the_note_decides_nothing(self):
+        # The note is neither a PASS nor a FAIL line, and the summary still
+        # counts exactly the report's PASS and FAIL lines.
+        report = run(build_rows(act=(2010, 3100)))
+        note = _starting(report, _SLIP_NOTE)
+        self.assertEqual(len(note), 1, report.text())
+        alone = sp_compare.Report()
+        sp_compare._slip_note(alone, SCORE["chords"], 2010.0, _score_reach())
+        self.assertEqual((alone.passes, alone.fails), (0, 0))
+        self.assertEqual(alone.lines, note)
+        passes = len(_starting(report, "PASS "))
+        fails = len(_starting(report, "FAIL "))
+        self.assertEqual(report.lines[0], f"Summary: {passes} PASS, {fails} FAIL")
+        self.assertEqual((report.passes, report.fails), (passes, fails))
+        # With the note switched off, the report is the same less that line.
+        with unittest.mock.patch.object(sp_compare, "_slip_note", lambda *a: None):
+            without = run(build_rows(act=(2010, 3100)))
+        self.assertEqual(without.lines[0], report.lines[0])
+        self.assertEqual(without.lines, [ln for ln in report.lines if ln not in note])
 
 
 class FilesTest(unittest.TestCase):

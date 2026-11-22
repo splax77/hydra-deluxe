@@ -625,6 +625,25 @@ def _check_multipliers(report: Report, rows: list, chords: list,
                     f"the game's activations part from the path at {format_ms(parted_ms)}")
 
 
+def _slip_note(report: Report, chords: list, parted_ms, reach: dict) -> None:
+    """A note at the point _check_activations says the game's activations
+    part from the path, saying what that does to the missed notes after it.
+    It is a note only, so it changes no PASS or FAIL. Which unhit fill gems
+    the game counts as missed: docs/clone-hero/04-fills.md and 06-scoring.md.
+    The chord named is the one _landed_chord gives for parted_ms."""
+    if parted_ms is None:
+        return
+    chord_ms = [c["ms"] for c in chords]
+    chord = _landed_chord(chords, chord_ms, parted_ms, reach)
+    where = (_chord_label(chord) if chord is not None
+             else f"the chord at {format_ms(parted_ms)}")
+    report.note(f"Missed notes from {where} on may all come from this one slip. "
+                f"From here the game's Star Power is not the path's, so the fills "
+                f"the path skips are not fills in the game, and a gem the player "
+                f"leaves unhit on one counts as a missed note. "
+                f"Count them as one cause, not one each.")
+
+
 def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH,
             reach: dict, stop: str | None = None, stop_message: str = "") -> Report:
@@ -665,6 +684,7 @@ def _compare_into(report: Report, rows: list, score: dict, resolution: int,
     _check_sp_max(report, rows, max_col, resolution, sp_bar_ticks)
     parted_ms = _check_activations(report, rows, score, reach)
     _check_multipliers(report, rows, chords, parted_ms, reach)
+    _slip_note(report, chords, parted_ms, reach)
 
 
 def main(argv=None) -> int:
