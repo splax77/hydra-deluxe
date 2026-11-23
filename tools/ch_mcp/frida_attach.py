@@ -236,6 +236,11 @@ _READ = {"type": "read"}
 # What detach puts on the log writer's queue after the last line.
 _LOG_END = object()
 
+# The key under which a listener finds the binary data the agent sent beside
+# a payload (send(message, data) in the agent). The log keeps the payload
+# only, so a binary log never lands in the JSON lines.
+PAYLOAD_DATA = "_data"
+
 
 class LiveAgent:
     """One attach that stays open, with a request/response agent loaded.
@@ -475,7 +480,9 @@ class LiveAgent:
         Such a payload is no request's reply, so without a listener it is
         only logged. The listener runs outside the lock and must return
         quickly (a queue put), because Frida's thread waits for it. The
-        payload is still written to the log as every message is."""
+        payload is still written to the log as every message is. A payload
+        the agent sent with binary data reaches the listener as a copy that
+        also holds those bytes under PAYLOAD_DATA."""
         with self._lock:
             self._listener = listener
 
@@ -492,7 +499,7 @@ class LiveAgent:
             listener = self._listener
         payload = message.get("payload") if message.get("type") == "send" else None
         if listener is not None and isinstance(payload, dict) and "id" not in payload:
-            listener(payload)
+            listener(payload if data is None else {**payload, PAYLOAD_DATA: data})
 
     def _hand_over(self, message: dict) -> None:
         """Give `message` to the waiting request, when it is that request's

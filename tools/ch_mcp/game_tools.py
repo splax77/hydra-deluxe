@@ -1783,13 +1783,15 @@ class GameTools:
     def _end_frame_clock_log(play: _PlaySession) -> str:
         """Write the run's frame clock log (RunResult.frame_clock) when the
         agent sent one, and say what became of it. A run with none writes no
-        file, so a missing log is never mistaken for an empty one."""
+        file, so a missing log is never mistaken for an empty one; the line
+        says why, from frame_clock_error (a log that did not come within its
+        cap, or came unreadable) or because the play sent no stop event."""
         result = play.result
         frames = result.frame_clock if result is not None else None
         if frames is None:
             why = (result.frame_clock_error if result is not None
                    and result.frame_clock_error is not None
-                   else "the kit agent's play sent no end reply carrying it")
+                   else "the kit agent's play sent no stop event, so no log followed it")
             return f"frame clock log missing, not written to {play.frame_clock_path}: {why}"
         try:
             play_chart.write_frame_clock_log(play.frame_clock_path, frames)

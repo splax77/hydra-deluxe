@@ -963,6 +963,57 @@ function faultOf(e: unknown): object | null {
     };
 }
 
+// The frame clock log of one play: the frame and the song clock (ms) of every
+// frame its hook ran, in order. It sits outside the timing block because its
+// sizes are storage, not numbers a play runs by. The play hook adds one row a
+// frame, which is two stores into typed arrays; when they fill, they double,
+// so a long song costs a few copies, never a packing of every row. pack()
+// makes the binary the frame_clock message carries, in FRAME_CLOCK_LAYOUT;
+// kit_tools.py's contract block reads it.
+const FRAME_CLOCK_LAYOUT = "clock_ms f64le[count], then frame i32le[count]";
+// Rows the log holds before its first doubling: about 18 s at the 3,582
+// frames a second docs/clone-hero/03-timing.md measured at multiplier 16.
+// Any size works; a smaller one only doubles more often.
+const FRAME_CLOCK_FIRST_ROWS = 65536;
+const GROWTH = 2;
+
+class FrameClockLog {
+    count = 0;
+    private frames = new Int32Array(FRAME_CLOCK_FIRST_ROWS);
+    private clocks = new Float64Array(FRAME_CLOCK_FIRST_ROWS);
+
+    add(frame: number, clockMs: number): void {
+        if (this.count === this.frames.length) {
+            const frames = new Int32Array(this.frames.length * GROWTH);
+            const clocks = new Float64Array(this.clocks.length * GROWTH);
+            frames.set(this.frames);
+            clocks.set(this.clocks);
+            this.frames = frames;
+            this.clocks = clocks;
+        }
+        this.frames[this.count] = frame;
+        this.clocks[this.count] = clockMs;
+        this.count++;
+    }
+
+    // The rows as one buffer: every clock as a little-endian double, then
+    // every frame as a little-endian 32-bit integer. Typed arrays store in
+    // the machine's own order, so a big-endian machine is refused rather
+    // than sent a log in the wrong order.
+    pack(): ArrayBuffer {
+        if (new Uint8Array(new Uint16Array([1]).buffer)[0] !== 1) {
+            throw new Error("this machine is not little-endian, so the frame clock log "
+                            + "cannot be packed as " + FRAME_CLOCK_LAYOUT);
+        }
+        const n = this.count;
+        const clockBytes = n * Float64Array.BYTES_PER_ELEMENT;
+        const out = new ArrayBuffer(clockBytes + n * Int32Array.BYTES_PER_ELEMENT);
+        new Float64Array(out, 0, n).set(this.clocks.subarray(0, n));
+        new Int32Array(out, clockBytes, n).set(this.frames.subarray(0, n));
+        return out;
+    }
+}
+
 // ---- in-game timing --------------------------------------------------------
 // The play messages and frame_probe (task IG2 of the in-game timing plan).
 // press_schedule.ts decides every frame; this block reads the clock and the
@@ -974,6 +1025,7 @@ function faultOf(e: unknown): object | null {
 // The song clock is a double in seconds; the scheduler takes ms.
 const MS_PER_S = 1000;
 const PLAY_EVENTS = "play_events";
+const FRAME_CLOCK = "frame_clock";
 
 interface Play {
     kit: Il2Cpp.Object;
@@ -982,11 +1034,10 @@ interface Play {
     stallMs: number;
     lastFrameWall: number;
     timer: ReturnType<typeof setTimeout> | null;
-    // The frame and the song clock (ms) of every frame the hook ran, in
-    // order. Nothing the scheduler reads; endPlay sends them once, on the
-    // stop event, and kit_tools.py's contract block names the field.
-    frames: number[];
-    clocks: number[];
+    // The frame clock log. Nothing the scheduler reads; sendFrameClock sends
+    // it once the hook is out, and kit_tools.py's contract block names the
+    // message.
+    log: FrameClockLog;
 }
 
 let play: Play | null = null;
@@ -1133,7 +1184,7 @@ function startPlay(m: Message) {
     const stallMs = needAbove0(m, "stall_ms");
     const schedule = new PressSchedule(m as unknown as PlayConfig, () => score.readU32());
     const p: Play = { kit, schedule, clock, stallMs, lastFrameWall: Date.now(), timer: null,
-                      frames: [], clocks: [] };
+                      log: new FrameClockLog() };
     for (const s of schedule.slots.values()) {
         addPads(s.entry.elements);
     }
@@ -1156,8 +1207,7 @@ function onPlayFrame(p: Play): void {
         p.lastFrameWall = wall;
         const frame = frameCount();
         const clockMs = p.clock.readDouble() * MS_PER_S;
-        p.frames.push(frame);
-        p.clocks.push(clockMs);
+        p.log.add(frame, clockMs);
         s = p.schedule.step(frame, clockMs, wall);
     } catch (e) {
         s = p.schedule.stop(Date.now());
@@ -1195,10 +1245,12 @@ function applyStep(p: Play, s: Step, cause: string | null, reason: string | null
 // then the last events go, the stop among them. The stop event also carries
 // `cause`, null when the scheduler or stop_play stopped the play, else what
 // stopped it from outside the scheduler, and `lift_error`, null unless
-// unhook failed, and `frame_clock`, the play's frame clock log (Play.frames
-// and Play.clocks), sent here and nowhere else. `reason`, when given,
-// replaces the stop event's reason: the stall timer's stop is the
-// scheduler's "frozen", not its "stopped".
+// unhook failed. `reason`, when given, replaces the stop event's reason: the
+// stall timer's stop is the scheduler's "frozen", not its "stopped".
+// endPlay often runs inside the play hook, on the game's main thread, so the
+// frame clock log is not sent here: a timer hands it to sendFrameClock on
+// Frida's own thread, after the hook is out, so the game's frame never waits
+// on a send of the whole log.
 function endPlay(p: Play, events: object[], cause: string | null, reason: string | null): void {
     play = null;
     if (p.timer !== null) {
@@ -1214,10 +1266,25 @@ function endPlay(p: Play, events: object[], cause: string | null, reason: string
     const out = events.map((e) => {
         const ev = e as { [key: string]: unknown };
         return ev.kind === "stop"
-            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError,
-                frame_clock: { frame: p.frames, clock_ms: p.clocks } } : ev;
+            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError }
+            : ev;
     });
     send({ type: PLAY_EVENTS, events: out });
+    setTimeout(() => { sendFrameClock(p); }, 0);
+}
+
+// Sends the play's frame clock log as one binary message, after its stop
+// event: {type: "frame_clock", count, layout} with the rows as the message's
+// data, in FrameClockLog.pack's layout. Every play's stop is followed by
+// exactly one such message, so a log that cannot be packed or sent still
+// sends one, carrying `error` and no data.
+function sendFrameClock(p: Play): void {
+    try {
+        send({ type: FRAME_CLOCK, count: p.log.count, layout: FRAME_CLOCK_LAYOUT },
+             p.log.pack());
+    } catch (e) {
+        send({ type: FRAME_CLOCK, error: `the frame clock log was not sent: ${e}` });
+    }
 }
 
 // The scheduler's cap and frozen checks run only inside step(), so a game

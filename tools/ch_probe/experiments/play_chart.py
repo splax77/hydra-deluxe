@@ -699,14 +699,21 @@ class RunResult:
     words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
     threshold live_in_game read, None when it read none (the keys route reads none).
 
+    `frame_plays` counts the agent's plays that ended in a stop event the
+    run read, the jumped-back ones included, when the run ended on a stop
+    event; it is 0 when the run ended on none (a lost session, a run
+    play_in_game ended itself). The agent sends one frame clock log after
+    each such stop, off the game's frame, so play_in_game never waits for
+    them; collect_frame_clock does.
+
     `frame_clock` is the kit route's frame clock log: the (frame, clock_ms)
-    of every frame the agent's hook ran, from the frame_clock of each stop
-    event of the run in order (kit_tools.frame_clock_rows), so a play the
-    song clock's jump back restarted keeps both parts. It is None when the
-    run ended on no stop event (a lost session, a run play_in_game ended
-    itself) or any of them carried none; `frame_clock_error` then says why
-    a log the agent sent could not be read, and is None otherwise. Neither
-    changes a press or the stop."""
+    of every frame the agent's hook ran, from each play's frame_clock
+    message in order (kit_tools.frame_clock_rows), so a play the song
+    clock's jump back restarted keeps both parts. collect_frame_clock fills
+    it; it is None when the run ended on no stop event, or any log did not
+    come or could not be read, and `frame_clock_error` then says why a log
+    is missing (None when the run ended on no stop). Neither changes a
+    press or the stop."""
     sent: int = 0
     declined: int = 0
     dropped: int = 0
@@ -715,6 +722,7 @@ class RunResult:
     stop: str = ""
     message: str = ""
     dyn_threshold: Optional[int] = None
+    frame_plays: int = 0
     frame_clock: Optional[list] = None
     frame_clock_error: Optional[str] = None
 
@@ -1123,7 +1131,10 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     plays: the run reads the queued events as the agent sent them, ends with
     the stop word their stop gives, and names the refused retime in the
     run's message. Any other failure of a retime's post ends the run as
-    "reply"."""
+    "reply".
+
+    It reads no frame clock log: RunResult.frame_plays says how many the
+    agent owes, and collect_frame_clock waits for them."""
     from collections import deque
     from tools.ch_mcp import frida_attach as FA
     from tools.ch_mcp import kit_tools as K
@@ -1151,6 +1162,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         return {p.seq: p for p in plan}
 
     by_seq = start()
+    # A frame clock log still queued now is an earlier run's, late past its
+    # cap; the agent sends this run's after this run's stop.
+    player.drop_frame_clocks()
     every_seq = dict(by_seq)
     result = RunResult()
     reported: set = set()
@@ -1162,10 +1176,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     backlog: deque = deque()
     last_score: Optional[int] = None
     stopping_since: Optional[float] = None
-    # The frame clock log of the stop events so far (RunResult.frame_clock):
-    # None once one stop carried none or a broken one, with the reason.
-    frame_clock: Optional[list] = []
-    frame_clock_error: Optional[str] = None
+    # How many of the agent's plays have ended in a stop event so far
+    # (RunResult.frame_plays).
+    plays_ended = 0
 
     def play_ended() -> bool:
         # The agent sends its stop before it answers any later message, and
@@ -1219,12 +1232,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             continue
         if kind == K.EVENT_STOP:
             reason = event.get("reason")
-            try:
-                part_log = K.frame_clock_rows(event)
-            except K.FrameClockBroken as e:
-                part_log, frame_clock_error = None, str(e)
-            frame_clock = (None if frame_clock is None or part_log is None
-                           else frame_clock + part_log)
+            plays_ended += 1
             if reason == K.STOP_REASON_JUMPED_BACK:
                 print("\n  Song clock jumped back. Re-syncing.", file=out)
                 by_seq = start()
@@ -1235,9 +1243,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_PAST_END: "past_end",
                      K.STOP_REASON_STOPPED: "stopped", K.STOP_REASON_CAP: "cap",
                      K.STOP_REASON_FROZEN: "frozen"}
-            # A stop event ends the agent's play whatever its reason, so its
-            # frame clock log is the whole play's.
-            result.frame_clock, result.frame_clock_error = frame_clock, frame_clock_error
+            # A stop event ends the agent's play whatever its reason, so the
+            # logs owed are one per play that ended.
+            result.frame_plays = plays_ended
             if reason not in words:
                 return fail("reply", f"the kit agent stopped for a reason this run does "
                                      f"not know: {reason!r}")
@@ -1367,6 +1375,44 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             print(f"  {result.sent:4d}  {C.ms_to_s(part.chart_ms):7.2f}  "
                   f"{C.ms_to_s(row['clock_ms_at_press']):7.2f}  {send:8} {note}",
                   file=out)
+
+
+def collect_frame_clock(result: RunResult, player, *,
+                        cap_s: Optional[float] = None,
+                        now: Callable[[], float] = time.monotonic) -> RunResult:
+    """Fill `result`'s frame_clock from the frame clock logs the kit agent
+    sends after its stop events: one log per play that ended
+    (RunResult.frame_plays), taken in order from `player.frame_clocks` (a
+    kit_tools.GamePlayer's queue) and joined, so a jumped-back play keeps
+    both parts. It waits at most `cap_s` (kit_tools.FRAME_CLOCK_WAIT_S when
+    None) for all of them together. A log that did not come within the cap,
+    or that frame_clock_rows refuses, leaves frame_clock None, with
+    frame_clock_error saying which play's log and why, so a missing log is
+    never read as an empty one. A run that ended on no stop event waits for
+    nothing and keeps both None."""
+    from tools.ch_mcp import kit_tools as K
+    cap_s = K.FRAME_CLOCK_WAIT_S if cap_s is None else cap_s
+    plays = result.frame_plays
+    if plays == 0:
+        return result
+    deadline = now() + cap_s
+    rows: list = []
+    for k in range(1, plays + 1):
+        which = f"play {k} of {plays}"
+        try:
+            message = player.frame_clocks.get(timeout=max(0.0, deadline - now()))
+        except queue.Empty:
+            result.frame_clock_error = (f"the frame clock log of {which} did not come "
+                                        f"within the cap of {cap_s:g} s "
+                                        f"(kit_tools.FRAME_CLOCK_WAIT_S)")
+            return result
+        try:
+            rows.extend(K.frame_clock_rows(message))
+        except K.FrameClockBroken as e:
+            result.frame_clock_error = f"the frame clock log of {which}: {e}"
+            return result
+    result.frame_clock = rows
+    return result
 
 
 def write_press_log(path: str, rows: Sequence[dict]) -> None:
@@ -1539,7 +1585,9 @@ def live_in_game(chords: Sequence[Chord], *, player,
     strengths (with_axes), and hand the run to play_in_game on `player` (a
     kit_tools.GamePlayer), with the engine's clock and score addresses and
     its Star Power end read, so the game times each press on its own frames.
-    The keys route is live_play. LIVE-ONLY."""
+    Then it waits for the play's frame clock logs (collect_frame_clock),
+    before the caller closes `player`. The keys route is live_play.
+    LIVE-ONLY."""
     out = sys.stdout if out is None else out
     if find_engine is None:
         def find_engine(proc) -> int:
@@ -1559,7 +1607,7 @@ def live_in_game(chords: Sequence[Chord], *, player,
                               on_press=on_press, should_stop=should_stop, out=out,
                               cap_s=cap_s, read_sp_end=engine.sp_end)
         result.dyn_threshold = threshold
-        return result
+        return collect_frame_clock(result, player)
     finally:
         proc.close()
 

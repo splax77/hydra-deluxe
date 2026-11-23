@@ -2842,6 +2842,9 @@ class _FakeKitPlayer:
         self.posts.append(message)
         return {}
 
+    def drop_frame_clocks(self):
+        pass
+
     def alive(self):
         return True
 

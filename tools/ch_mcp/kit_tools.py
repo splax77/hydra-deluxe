@@ -34,6 +34,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import os
+import struct
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -706,12 +707,20 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #   dropped  the same fields, the down and up ones and judged_ms null
 #   stop     reason, frame, clock_ms, wall_ms, cause (null, or what stopped
 #            the play from outside the scheduler), lift_error (null unless
-#            lifting the pads failed), frame_clock ({frame: [...], clock_ms:
-#            [...]}, the frame and song clock of every frame the play's hook
-#            ran, in order; sent on this event only)   (always last)
+#            lifting the pads failed)   (always last)
 # agent_note is "" or retime_missed. A batch may also carry `error` (the
 # agent's own failure outside any play step, with no stop after it): GamePlayer
 # turns it into an EVENT_ERROR event.
+#
+# After each play's stop event, once its hook is out, the agent sends that
+# play's frame clock log as one more payload with no id, off the game's frame:
+#   {"type": "frame_clock", "count": n, "layout": FRAME_CLOCK_LAYOUT} with
+#   binary data: the song clock (ms) of every frame the play's hook ran, as
+#   n little-endian doubles, then those frames' numbers, as n little-endian
+#   32-bit integers, in order
+#   or {"type": "frame_clock", "error": "..."} with no data, when the agent
+#   could not pack or send it
+# GamePlayer queues each on `frame_clocks`; frame_clock_rows reads one.
 PLAY_TYPE = "play"
 RETIME_TYPE = "retime"
 STOP_PLAY_TYPE = "stop_play"
@@ -737,33 +746,66 @@ PRESS_EVENT_FIELDS = ("seq", "index", "clock_ms_at_press", "down_frame", "up_fra
                       "down_ms", "up_ms", "score_before", "score_after",
                       "frame_gap_ms", "agent_note", "step_ms", "predicted_judge_ms",
                       "judged_ms", "judged_in_band", "no_frame_in_band")
-# The stop event's frame clock log, and the two lists it holds.
-STOP_FRAME_CLOCK = "frame_clock"
-FRAME_CLOCK_FRAME = "frame"
-FRAME_CLOCK_CLOCK_MS = "clock_ms"
+# The frame clock log's message, its fields, and the layout of its binary
+# data. The layout words match kit.ts's FRAME_CLOCK_LAYOUT; a message naming
+# any other layout is refused, never guessed at.
+FRAME_CLOCK_TYPE = "frame_clock"
+FRAME_CLOCK_COUNT = "count"
+FRAME_CLOCK_LAYOUT_KEY = "layout"
+FRAME_CLOCK_ERROR = "error"
+FRAME_CLOCK_LAYOUT = "clock_ms f64le[count], then frame i32le[count]"
+_CLOCK_FORMAT = "<{}d"
+_FRAME_FORMAT = "<{}i"
+# How long play_chart.live_in_game waits, after the run's last stop event,
+# for the frame clock logs the agent still owes; it only keeps a run from
+# waiting forever on a log that never comes. The agent sends each log right
+# after its stop. The biggest log measured is a 9.5-minute song at frame
+# multiplier 16, 2,647,130 frames (about 32 MB as binary), whose packing as
+# JSON took about 5.5 s; a binary copy of the same rows is far cheaper.
+# No user decision names this value; the agent that wrote it picked it.
+FRAME_CLOCK_WAIT_S = 10.0
 
 
 class FrameClockBroken(ValueError):
-    """A stop event's frame_clock is not two lists of one length."""
+    """A frame_clock message the run cannot read: an error from the agent, a
+    layout this module does not know, or data whose size is not its count's."""
 
 
-def frame_clock_rows(stop_event: dict) -> Optional[List[Tuple[Any, Any]]]:
-    """The (frame, clock_ms) of each frame a stop event's frame_clock holds,
-    in the order the agent sent them; None when the event carries none.
-    Raises FrameClockBroken, naming what is wrong, when it is not two lists
-    of one length."""
-    log = stop_event.get(STOP_FRAME_CLOCK)
-    if log is None:
-        return None
-    frames = log.get(FRAME_CLOCK_FRAME) if isinstance(log, dict) else None
-    clocks = log.get(FRAME_CLOCK_CLOCK_MS) if isinstance(log, dict) else None
-    if not isinstance(frames, list) or not isinstance(clocks, list):
-        raise FrameClockBroken(f"the stop event's {STOP_FRAME_CLOCK} is not lists "
-                               f"{FRAME_CLOCK_FRAME!r} and {FRAME_CLOCK_CLOCK_MS!r}: {log!r}")
-    if len(frames) != len(clocks):
-        raise FrameClockBroken(f"the stop event's {STOP_FRAME_CLOCK} holds {len(frames)} "
-                               f"frames and {len(clocks)} clocks")
-    return list(zip(frames, clocks))
+def frame_clock_rows(message: dict) -> List[Tuple[int, Any]]:
+    """The (frame, clock_ms) of each frame a frame_clock message holds, in
+    the order the agent sent them. The binary data is the one GamePlayer got
+    beside it (frida_attach.PAYLOAD_DATA). Each clock is the agent's double
+    exactly; a whole one comes back as an int, as JSON would have given it,
+    so the CSV writes 1000 where the agent's number is 1000. Raises
+    FrameClockBroken, naming what is wrong, for an error message, another
+    layout, a count that is not a whole number of 0 or more, or data whose
+    size is not that count's."""
+    if message.get(FRAME_CLOCK_ERROR) is not None:
+        raise FrameClockBroken(f"the kit agent sent no frame clock log: "
+                               f"{message[FRAME_CLOCK_ERROR]}")
+    layout = message.get(FRAME_CLOCK_LAYOUT_KEY)
+    if layout != FRAME_CLOCK_LAYOUT:
+        raise FrameClockBroken(f"the frame clock log's layout is {layout!r}, not "
+                               f"{FRAME_CLOCK_LAYOUT!r}")
+    count = message.get(FRAME_CLOCK_COUNT)
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        raise FrameClockBroken(f"the frame clock log's count is not a whole number of 0 "
+                               f"or more: {count!r}")
+    data = message.get(FA.PAYLOAD_DATA)
+    # Frida may hand an empty buffer over as no data.
+    data = b"" if data is None and count == 0 else data
+    clock_format, frame_format = _CLOCK_FORMAT.format(count), _FRAME_FORMAT.format(count)
+    want = struct.calcsize(clock_format) + struct.calcsize(frame_format)
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise FrameClockBroken(f"the frame clock log says {count} frames, which is {want} "
+                               f"bytes, but came with no data")
+    if len(data) != want:
+        raise FrameClockBroken(f"the frame clock log says {count} frames, which is {want} "
+                               f"bytes, but holds {len(data)} bytes")
+    clocks = struct.unpack_from(clock_format, data, 0)
+    frames = struct.unpack_from(frame_format, data, struct.calcsize(clock_format))
+    return [(frame, int(clock) if clock.is_integer() else clock)
+            for frame, clock in zip(frames, clocks)]
 
 
 # What a press row's agent_note says when no frame could land in its band:
@@ -874,10 +916,15 @@ class GamePlayer:
         self._agent = agent
         self._lock = request_lock if request_lock is not None else threading.Lock()
         self.events: "queue.Queue[dict]" = queue.Queue()
+        # Each frame_clock message, with its binary data, in the order the
+        # agent sent them: one follows each play's stop event.
+        self.frame_clocks: "queue.Queue[dict]" = queue.Queue()
         agent.listen(self._take)
 
     def _take(self, payload: dict) -> None:
-        if payload.get("type") == PLAY_EVENTS_TYPE:
+        if payload.get("type") == FRAME_CLOCK_TYPE:
+            self.frame_clocks.put(payload)
+        elif payload.get("type") == PLAY_EVENTS_TYPE:
             for event in payload.get("events") or []:
                 self.events.put(event)
             if payload.get("error"):
@@ -887,6 +934,19 @@ class GamePlayer:
 
     def alive(self) -> bool:
         return self._agent.alive
+
+    def drop_frame_clocks(self) -> None:
+        """Forget the frame clock logs queued so far. The agent sends a log
+        right after its play's stop, and Frida hands messages over in the
+        order they were sent, so a log queued before the reply to a run's
+        first play message is an earlier run's, one that came after that
+        run's cap. A run calls this once, right after that reply."""
+        import queue
+        while True:
+            try:
+                self.frame_clocks.get_nowait()
+            except queue.Empty:
+                return
 
     def post(self, message: dict) -> dict:
         """Post one play message and return the agent's reply, waiting at

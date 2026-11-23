@@ -1601,6 +1601,33 @@ class GamePlayerTest(unittest.TestCase):
                          {"kind": K.EVENT_ERROR, "error": "the stall check failed: boom"})
         self.assertTrue(player.events.empty())
 
+    def test_frame_clock_logs_queue_apart_from_the_events_in_their_order(self):
+        # A log with its binary data, as LiveAgent hands it on, and an
+        # agent's error log: both go to frame_clocks, none to events.
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        log = {"type": K.FRAME_CLOCK_TYPE, K.FRAME_CLOCK_COUNT: 0,
+               K.FRAME_CLOCK_LAYOUT_KEY: K.FRAME_CLOCK_LAYOUT, K.FA.PAYLOAD_DATA: b""}
+        failed = {"type": K.FRAME_CLOCK_TYPE, K.FRAME_CLOCK_ERROR: "boom"}
+        stop = {"kind": K.EVENT_STOP, "reason": K.STOP_REASON_DONE}
+        agent.listener({"type": K.PLAY_EVENTS_TYPE, "events": [stop]})
+        agent.listener(log)
+        agent.listener(failed)
+        self.assertEqual(player.events.get_nowait(), stop)
+        self.assertTrue(player.events.empty())
+        self.assertEqual([player.frame_clocks.get_nowait(), player.frame_clocks.get_nowait()],
+                         [log, failed])
+
+    def test_drop_frame_clocks_forgets_the_queued_logs_and_keeps_the_events(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        agent.listener({"type": K.FRAME_CLOCK_TYPE, K.FRAME_CLOCK_ERROR: "late"})
+        agent.listener({"kind": K.EVENT_SKIPPED, "seqs": [], "count": 0, "clock_ms": 0.0})
+        player.drop_frame_clocks()
+        self.assertTrue(player.frame_clocks.empty())
+        self.assertFalse(player.events.empty())
+        player.drop_frame_clocks()
+
     def test_post_waits_the_press_cap_and_close_stops_the_listener(self):
         agent = FakeListenAgent()
         player = K.GamePlayer(agent)

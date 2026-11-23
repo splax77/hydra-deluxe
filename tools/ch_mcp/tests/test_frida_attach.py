@@ -673,6 +673,24 @@ class LiveAgentTest(Workspace):
         # Both copies of the event reach the log, heard or not.
         self.assertEqual(self.written().count(event_msg), 2)
 
+    def test_binary_data_reaches_the_listener_beside_its_payload_but_not_the_log(self):
+        # A frame_clock message as kit.ts's sendFrameClock sends it: a
+        # payload with no id and binary data (send(message, data)).
+        reply = recorded("2026-11-06-ls-d2b-run1", "state-4.jsonl")
+        session = ReplySession([reply])
+        agent = self.live(FakeFrida(session), wait=FA._default_wait)
+        agent.start(30.0)
+        heard = []
+        agent.listen(heard.append)
+        payload = {"type": "frame_clock", "count": 1, "layout": "x"}
+        message = {"type": "send", "payload": payload}
+        data = bytes(range(12))
+        session.script.handlers["message"](message, data)
+        self.assertEqual(heard, [{**payload, FA.PAYLOAD_DATA: data}])
+        # The payload the agent sent is left as it was.
+        self.assertNotIn(FA.PAYLOAD_DATA, payload)
+        self.assertEqual(self.written()[-1], message)
+
     def real_started(self, run, name):
         """A LiveAgent started, with the real wait, on a recorded log's first
         message, delivered as the agent sent it. Returns the agent, its
