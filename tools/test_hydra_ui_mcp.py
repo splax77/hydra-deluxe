@@ -532,9 +532,10 @@ class TransportLayer(unittest.TestCase):
         self.helper.stop()
         [rec] = realapp_lines(self.repo)
         self.assertEqual(sorted(rec), sorted(
-            ["kind", "commit", "dirty", "commands", "shots", "started", "stopped"]))
+            ["kind", "commit", "tree", "dirty", "commands", "shots", "started", "stopped"]))
         self.assertEqual(rec["kind"], "realapp")
         self.assertEqual(rec["commit"], self.head())
+        self.assertEqual(rec["tree"], git(self.repo, "rev-parse", "HEAD^{tree}"))
         self.assertIs(rec["dirty"], False)
         # Every line Hydra answered counts, the screenshot too.
         self.assertEqual(rec["commands"], 3)
