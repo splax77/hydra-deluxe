@@ -580,10 +580,12 @@
 - 2026-11-22 97245ab7 Clone Hero replay precision (2026-11-22) | clone-hero, squeeze, planning, review | The session ended at 04:12 UTC with a handoff written on its own branch and the plan still unmerged, waiting for the user's go. [write-back]
 - 2026-11-22 2588d344 Squeeze safety precision (2026-11-22) | squeeze, frontend-squeeze, backend-squeeze, chart | The session ended at 04:17 UTC with exact margins reported for four squeezes. All four are positive, and each is under 0.004 ms. No code was changed.
 - 2026-11-22 7ff4eef0 Squeeze timing fix handoff (2026-11-22) | clone-hero, squeeze, planning, review | The session ended at 05:18 UTC on the user's stop order, with a handoff written and committed on its own branch and no agent running. [stale] [write-back]
-- 2026-11-22 7adc3712 Merge gate review recognition (2026-11-22) | review, hooks, planning, docs, agents | The session ended at 04:42 UTC with two handoffs written and committed, each on its own branch cut from main. Neither was merged or pushed.
+- 2026-11-22 7adc3712 Merge gate review recognition (2026-11-22) | review, hooks, planning, docs, agents | The session ended at 04:42 UTC with two handoffs written and committed, each on its own branch cut from main. Neither was merged or pushed. [stale]
 - 2026-11-22 b76a5e05 Squeeze timing fix handoff (2026-11-22) | clone-hero, squeeze, agents, planning, performance | The first Petal try (LS-P2 run 1) failed: the game scored 413,615 against Hydra's 442,735, and the squeeze never got its chance. [write-back]
-- 2026-11-22 1390758e Squeeze frame cost plan handoff (2026-11-22) | clone-hero, squeeze, agents, review, performance | The Petal squeeze landed in a real game run on Pro Drums: the game scored 442,735, the same as Hydra's path total, and every press landed in its judged band.
+- 2026-11-22 1390758e Squeeze frame cost plan handoff (2026-11-22) | clone-hero, squeeze, agents, review, performance | The Petal squeeze landed in a real game run on Pro Drums: the game scored 442,735, the same as Hydra's path total, and every press landed in its judged band. [stale]
 - 2026-11-22 6ad668f7 Second Petal run (2026-11-22) | clone-hero, squeeze, docs | The second Petal run scored 442,735 in the game, matching Hydra's path total, with 1,390 of 1,390 notes hit.
+- 2026-11-23 537dcff7 Precision and song run (2026-11-23) | clone-hero, performance, agents, chart | The session ended with the post-song freeze fixed, and a full run of As Icicles Fall at multiplier 16 matched Hydra's score of 2,402,090 exactly.
+- 2026-11-23 79f5f652 First icicles squeeze leeway precision (2026-11-23) | clone-hero, squeeze, library-search, chart | The session ended with the exact leeway and the library's smallest positive safe value reported, and nothing committed.
 
 ## Proposed tags
 
