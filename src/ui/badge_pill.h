@@ -1,5 +1,6 @@
-// The badge pill: the rounded box a badge sits in, on a Paths-tab activation
-// row and as the tag of a Dynamic Hit Window row. This header owns its look
+// The badge pill: the rounded box a badge sits in on a Paths-tab activation
+// row, both a timing badge and the Dynamic Hit Window tag under it. This
+// header owns its look
 // (fill, border, corner radius, padding), its size (shared_pill_width, one
 // width for every pill, D262) and where the text sits in it (centred). It also
 // owns the Dynamic Hit Window tag's own colours (window_tag_pill), the one

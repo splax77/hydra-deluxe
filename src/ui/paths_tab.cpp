@@ -278,13 +278,15 @@ void render_timeline(const app::ActivationsView& view) {
 
 // One activation's line: a full-width Selectable (##act<number>) with the fold
 // arrow, the number in a circle, the notation, the measure, the bars and the
-// badges laid over it. A click opens it alone, or closes it. The bars start
+// badges, each with its Dynamic Hit Window tag when it has one, laid over it.
+// The tags are drawn whether the row is open or closed. A click opens it alone, or
+// closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
 // (activation_row_layout.h). Every badge pill is sized for text
 // `pill_text_w` wide. When the layout puts the badges under the
-// measure, the row grows to hold their lines and the first line stays where it
-// was. The whole row is one Figure scope, and the notation inside it is
+// measure, or a tag under a badge, the row grows to hold them and the first
+// line stays where it was. The whole row is one Figure scope, and the notation inside it is
 // Notation; both roles draw in one font (text_role.h, D257), so the pieces
 // share one baseline and the layout measures what is drawn.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
@@ -295,12 +297,17 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     const float line = ImGui::GetTextLineHeight();
     // The layout comes first: it says how tall the row is.
     std::vector<float> badge_ws;
+    std::vector<std::optional<float>> tag_ws;
     badge_ws.reserve(a.badges.size());
-    for (const app::ActivationBadge& b : a.badges)
+    tag_ws.reserve(a.badges.size());
+    for (const app::ActivationBadge& b : a.badges) {
         badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
+        tag_ws.push_back(b.tag ? std::optional<float>(ImGui::CalcTextSize(b.tag->text.c_str()).x)
+                               : std::nullopt);
+    }
     const ActivationRowLayout l =
         activation_row_layout(widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws,
-                              pill_text_w, width, line, px(1.0f));
+                              pill_text_w, width, line, px(1.0f), tag_ws);
     char id[32];
     std::snprintf(id, sizeof(id), "##act%d", a.number);
     const ImVec2 top = ImGui::GetCursorScreenPos();
@@ -323,10 +330,18 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
             TextRole::Notation);
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), TextRole::Figure);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str(), TextRole::Figure);
-    // Each badge drawn by its owner (badge_pill.h), in its own colour.
-    for (size_t k = 0; k < a.badges.size(); ++k)
-        draw_badge(dl, top.x + l.pill_x[k], top.y + l.badge_y[k], l.pill_w,
-                   a.badges[k].text.c_str(), warn_or_dim(a.badges[k].warn), px(1.0f));
+    // Each badge drawn by its owner (badge_pill.h), in its own colour, and its
+    // Dynamic Hit Window tag under it where the layout put one, in the tag's
+    // own colours (window_tag_pill).
+    for (size_t k = 0; k < a.badges.size(); ++k) {
+        const app::ActivationBadge& b = a.badges[k];
+        draw_badge(dl, top.x + l.pill_x[k], top.y + l.badge_y[k], l.pill_w, b.text.c_str(),
+                   warn_or_dim(b.warn), px(1.0f));
+        if (b.tag && l.tag_y[k])
+            draw_badge(dl, top.x + l.pill_x[k], top.y + *l.tag_y[k], l.pill_w,
+                       b.tag->text.c_str(), window_tag_ink(b.tag->is_short), px(1.0f),
+                       window_tag_pill(b.tag->is_short));
+    }
     font.reset();
     end_overlay(top, l.row_h);
 }
@@ -340,13 +355,12 @@ constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's 
 const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
 // One Dynamic Hit Window row, the bottom line of its timing's box: a divider,
-// the label, each end in the Figure role (its word when it has one, its
-// window, its chord), then the tag (badge_pill.h) at the right edge, as the
-// mockup places it.
+// the label, then each end in the Figure role (its word when it has one, its
+// window, its chord). The row's tag is not here: it is drawn under the
+// timing's badge on the activation row (render_activation_row).
 // An end that does not fit beside the last piece starts the next line whole,
-// and the tag keeps to the right edge there too, so nothing is cut off at the
-// narrowest panel. The chord draws in the box's text colour (timing_box),
-// which is the mockup's colour for a chord.
+// so nothing is cut off at the narrowest panel. The chord draws in the box's
+// text colour (timing_box), which is the mockup's colour for a chord.
 void window_row(const app::WindowRowView& w) {
     ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
     ImGui::Separator();
@@ -368,15 +382,6 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
-    // The tag is a badge: the same pill width as every activation badge, in
-    // the tag's own colours (window_tag_pill).
-    const float tag_w =
-        shared_pill_width(badge_pill_text_w(), ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
-    if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
-    place_control_at_right_edge(tag_w);
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    draw_badge(ImGui::GetWindowDrawList(), pos.x, pos.y, tag_w, w.tag.c_str(),
-               window_tag_ink(w.is_short), px(1.0f), window_tag_pill(w.is_short));
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a
