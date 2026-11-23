@@ -1618,6 +1618,16 @@ class GamePlayerTest(unittest.TestCase):
         self.assertEqual([player.frame_clocks.get_nowait(), player.frame_clocks.get_nowait()],
                          [log, failed])
 
+    def test_drop_frame_clocks_forgets_the_queued_logs_and_keeps_the_events(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        agent.listener({"type": K.FRAME_CLOCK_TYPE, K.FRAME_CLOCK_ERROR: "late"})
+        agent.listener({"kind": K.EVENT_SKIPPED, "seqs": [], "count": 0, "clock_ms": 0.0})
+        player.drop_frame_clocks()
+        self.assertTrue(player.frame_clocks.empty())
+        self.assertFalse(player.events.empty())
+        player.drop_frame_clocks()
+
     def test_post_waits_the_press_cap_and_close_stops_the_listener(self):
         agent = FakeListenAgent()
         player = K.GamePlayer(agent)

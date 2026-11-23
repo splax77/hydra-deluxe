@@ -935,6 +935,19 @@ class GamePlayer:
     def alive(self) -> bool:
         return self._agent.alive
 
+    def drop_frame_clocks(self) -> None:
+        """Forget the frame clock logs queued so far. The agent sends a log
+        right after its play's stop, and Frida hands messages over in the
+        order they were sent, so a log queued before the reply to a run's
+        first play message is an earlier run's, one that came after that
+        run's cap. A run calls this once, right after that reply."""
+        import queue
+        while True:
+            try:
+                self.frame_clocks.get_nowait()
+            except queue.Empty:
+                return
+
     def post(self, message: dict) -> dict:
         """Post one play message and return the agent's reply, waiting at
         most KIT_PRESS_CAP_S. Raises frida_attach.ReadFailed as kit_press

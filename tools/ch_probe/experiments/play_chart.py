@@ -1162,6 +1162,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         return {p.seq: p for p in plan}
 
     by_seq = start()
+    # A frame clock log still queued now is an earlier run's, late past its
+    # cap; the agent sends this run's after this run's stop.
+    player.drop_frame_clocks()
     every_seq = dict(by_seq)
     result = RunResult()
     reported: set = set()

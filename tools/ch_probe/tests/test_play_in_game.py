@@ -94,6 +94,9 @@ class FakePlayer:
         self.posted = []
         self.script = {k: list(v) for k, v in script.items()}
 
+    def drop_frame_clocks(self):
+        pass
+
     def alive(self):
         return True
 
@@ -161,6 +164,9 @@ class RecordedPlayer:
                     if e["kind"] not in (K.EVENT_SENT, K.EVENT_DROPPED) or e["seq"] in keep)
         self.events = queue.Queue()
         self.posted = []
+
+    def drop_frame_clocks(self):
+        pass
 
     def alive(self):
         return not self.events.empty()
