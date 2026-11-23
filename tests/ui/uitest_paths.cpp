@@ -1245,13 +1245,12 @@ int check_row_tags(ImGuiTestContext* ctx, Harness& h, const hydra::app::Activati
     const std::string id = "**/##act" + std::to_string(a.number);
     const ImRect rect = ctx->ItemInfo(id.c_str()).RectFull;
     const std::vector<ImRect> badges = drawn_pills(rect);
-    IM_CHECK_EQ(badges.size(), a.badges.size());
-    if (badges.size() != a.badges.size()) return 0;
+    IM_CHECK_RETV(badges.size() == a.badges.size(), 0);
     int checked = 0;
     for (size_t b = 0; b < a.badges.size(); ++b) {
         if (!a.badges[b].tag) continue;
         const hydra::app::BadgeTag& tag = *a.badges[b].tag;
-        IM_CHECK(on_screen(h, tag.text));
+        IM_CHECK_RETV(on_screen(h, tag.text), checked);
         const ImRect& badge = badges[b];
         int under = 0;
         for (const ImRect& t : drawn_pills(rect, "##pathdetails",
@@ -1262,10 +1261,10 @@ int check_row_tags(ImGuiTestContext* ctx, Harness& h, const hydra::app::Activati
             ctx->LogInfo("badge \"%s\" pill %.1f,%.1f..%.1f,%.1f, tag \"%s\" pill %.1f,%.1f..%.1f,%.1f",
                          a.badges[b].text.c_str(), badge.Min.x, badge.Min.y, badge.Max.x,
                          badge.Max.y, tag.text.c_str(), t.Min.x, t.Min.y, t.Max.x, t.Max.y);
-            IM_CHECK_LE(std::fabs(t.GetWidth() - badge.GetWidth()), 0.01f);
-            IM_CHECK_LE(std::fabs(t.GetHeight() - badge.GetHeight()), 0.01f);
+            IM_CHECK_RETV(std::fabs(t.GetWidth() - badge.GetWidth()) <= 0.01f, checked);
+            IM_CHECK_RETV(std::fabs(t.GetHeight() - badge.GetHeight()) <= 0.01f, checked);
         }
-        IM_CHECK_EQ(under, 1);
+        IM_CHECK_RETV(under == 1, checked);
         ++checked;
     }
     return checked;
