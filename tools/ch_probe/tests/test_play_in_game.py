@@ -12,8 +12,10 @@ import io
 import json
 import os
 import queue
+import struct
 import sys
 import tempfile
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +23,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments import live  # noqa: E402
@@ -449,12 +452,18 @@ class PlayInGameTest(unittest.TestCase):
             assert_rows_are_the_runs(self, f.read().splitlines(), lines)
 
 
-def with_frame_clock(stop_event, frames):
-    """A stop event carrying the frame clock log `frames`, (frame, clock_ms)
-    pairs, in the shape kit.ts's endPlay sends it."""
-    return {**stop_event, K.STOP_FRAME_CLOCK: {
-        K.FRAME_CLOCK_FRAME: [f for f, _c in frames],
-        K.FRAME_CLOCK_CLOCK_MS: [c for _f, c in frames]}}
+def frame_clock_message(frames, *, count=None, layout=K.FRAME_CLOCK_LAYOUT):
+    """A frame_clock message for the log `frames`, (frame, clock_ms) pairs,
+    as GamePlayer hands it on: the payload kit.ts's sendFrameClock sends,
+    with the binary data packed in the layout kit_tools' contract block
+    names (every clock as a little-endian double, then every frame as a
+    little-endian 32-bit integer). `count` overrides the count the message
+    says, for a log whose data does not match it."""
+    data = (struct.pack(f"<{len(frames)}d", *[c for _f, c in frames])
+            + struct.pack(f"<{len(frames)}i", *[f for f, _c in frames]))
+    return {"type": K.FRAME_CLOCK_TYPE, K.FRAME_CLOCK_COUNT:
+            len(frames) if count is None else count,
+            K.FRAME_CLOCK_LAYOUT_KEY: layout, FA.PAYLOAD_DATA: data}
 
 
 class GonePlayer(FakePlayer):
@@ -464,94 +473,158 @@ class GonePlayer(FakePlayer):
         return not self.events.empty()
 
 
+class LogQueue:
+    """A GamePlayer's frame_clocks queue holding `messages`, and nothing
+    else: collect_frame_clock reads only that part of the player."""
+
+    def __init__(self, *messages):
+        self.frame_clocks = queue.Queue()
+        for m in messages:
+            self.frame_clocks.put(m)
+
+
 class FrameClockTest(unittest.TestCase):
-    """The frame clock log the kit agent sends on its stop event
-    (RunResult.frame_clock). The agent's side is typed here: no recorded run
-    carries one yet."""
+    """The frame clock log the kit agent sends after each stop event, as
+    binary, off the game's frame (RunResult.frame_plays and frame_clock).
+    The agent's side is typed here: no recorded run carries one yet."""
 
     # Hand-picked frames and clocks: frame 7 is missing, as a frame the hook
     # did not run on would be, and the clock steps unevenly.
     FRAMES = [(5, 1000.0), (6, 1000.758), (8, 1002.274), (9, 1003.5)]
+    # Clocks a JSON round trip of a shorter number text would change: the
+    # nearest double to 0.1 + 0.2, one with all 17 digits and a tiny one.
+    EXACT = [(1, 0.1 + 0.2), (2, 123456.78901234567), (3, 5e-324), (2147483647, 2.5)]
 
     def _one_press(self):
         return [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
 
-    def test_the_stop_events_frame_clock_is_written_row_for_row(self):
-        batch = [started(), sent_event(0, 0, 1001.0, 0, 50),
-                 with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]
-        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [batch]}))
-        self.assertEqual(result.stop, P.STOP_DONE, result.message)
-        self.assertEqual(result.frame_clock, self.FRAMES)
-        self.assertIsNone(result.frame_clock_error)
+    def _played(self, batches):
+        return run(self._one_press(), FakePlayer({K.PLAY_TYPE: batches}))
+
+    def _written(self, rows):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
-        written = os.path.join(scratch.name, "frame_clock.csv")
-        P.write_frame_clock_log(written, result.frame_clock)
-        with open(written, encoding="utf-8", newline="") as f:
-            table = list(csv.reader(f))
-        self.assertEqual(table, [list(P.FRAME_CLOCK_COLUMNS)]
-                         + [[str(frame), str(clock)] for frame, clock in self.FRAMES])
+        path = os.path.join(scratch.name, "frame_clock.csv")
+        P.write_frame_clock_log(path, rows)
+        with open(path, encoding="utf-8", newline="") as f:
+            return list(csv.reader(f))
 
-    def test_every_stop_reason_hands_its_frame_clock_on(self):
+    def test_every_stop_reason_counts_one_play_and_waits_for_no_log(self):
+        # play_in_game reads no log; FakePlayer has no frame_clocks at all.
         for reason in (K.STOP_REASON_DONE, K.STOP_REASON_STOPPED, K.STOP_REASON_CAP,
                        K.STOP_REASON_FROZEN, K.STOP_REASON_PAST_END):
-            batch = [started(), sent_event(0, 0, 1001.0, 0, 50),
-                     with_frame_clock(stopped(reason), self.FRAMES)]
-            result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [batch]}))
-            self.assertEqual(result.frame_clock, self.FRAMES, reason)
+            result = self._played([[started(), sent_event(0, 0, 1001.0, 0, 50),
+                                    stopped(reason)]])
+            self.assertEqual(result.frame_plays, 1, reason)
+            self.assertIsNone(result.frame_clock, reason)
 
-    def test_a_jump_back_keeps_both_plays_frames_in_order(self):
-        # The song clock's jump back ends the agent's play with its own log;
-        # the play started again sends the rest on its stop.
-        before, after = self.FRAMES[:2], [(20, 500.0), (21, 500.758)]
-        batches = [[started(), with_frame_clock(stopped(K.STOP_REASON_JUMPED_BACK), before)],
-                   [started(), sent_event(0, 0, 1001.0, 0, 50),
-                    with_frame_clock(stopped(K.STOP_REASON_DONE), after)]]
-        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: batches}))
+    def test_a_jump_back_counts_both_plays(self):
+        result = self._played([[started(), stopped(K.STOP_REASON_JUMPED_BACK)],
+                               [started(), sent_event(0, 0, 1001.0, 0, 50),
+                                stopped(K.STOP_REASON_DONE)]])
         self.assertEqual(result.stop, P.STOP_DONE, result.message)
-        self.assertEqual(result.frame_clock, before + after)
+        self.assertEqual(result.frame_plays, 2)
 
-    def test_a_jump_back_whose_first_play_sent_none_leaves_no_log(self):
-        # Half a log would read as the whole play's, so there is none.
-        batches = [[started(), stopped(K.STOP_REASON_JUMPED_BACK)],
-                   [started(), sent_event(0, 0, 1001.0, 0, 50),
-                    with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]]
-        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: batches}))
-        self.assertIsNone(result.frame_clock)
-
-    def test_a_play_with_no_end_reply_has_no_frame_clock(self):
-        # The session goes before the agent's stop: the log is missing, which
-        # None says, never an empty list.
-        batch = [started(), sent_event(0, 0, 1001.0, 0, 50)]
-        result = run(self._one_press(), GonePlayer({K.PLAY_TYPE: [batch]}))
+    def test_a_play_with_no_stop_event_owes_no_log(self):
+        # The session goes before the agent's stop: no log is waited for, and
+        # the log is missing, which None says, never an empty list.
+        result = run(self._one_press(),
+                     GonePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]]}))
         self.assertEqual(result.stop, "lost")
+        self.assertEqual(result.frame_plays, 0)
+        P.collect_frame_clock(result, LogQueue(frame_clock_message(self.FRAMES)), cap_s=0)
         self.assertIsNone(result.frame_clock)
         self.assertIsNone(result.frame_clock_error)
 
-    def test_a_broken_frame_clock_is_said_and_changes_no_press(self):
-        good = [started(), sent_event(0, 0, 1001.0, 0, 50),
-                with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)]
-        broken_stop = with_frame_clock(stopped(K.STOP_REASON_DONE), self.FRAMES)
-        broken_stop[K.STOP_FRAME_CLOCK][K.FRAME_CLOCK_CLOCK_MS].pop()
-        broken = [*good[:2], broken_stop]
-        with_log = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [good]}))
-        result = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [broken]}))
-        self.assertIsNone(result.frame_clock)
-        with self.assertRaises(K.FrameClockBroken) as caught:
-            K.frame_clock_rows(broken_stop)
-        self.assertEqual(result.frame_clock_error, str(caught.exception))
-        self.assertEqual((result.stop, result.message, result.rows),
-                         (with_log.stop, with_log.message, with_log.rows))
+    def test_the_log_is_written_row_for_row_with_every_double_exact(self):
+        result = P.collect_frame_clock(P.RunResult(stop=P.STOP_DONE, frame_plays=1),
+                                       LogQueue(frame_clock_message(self.EXACT)), cap_s=0)
+        self.assertIsNone(result.frame_clock_error)
+        self.assertEqual(result.frame_clock, self.EXACT)
+        table = self._written(result.frame_clock)
+        self.assertEqual(table[0], list(P.FRAME_CLOCK_COLUMNS))
+        self.assertEqual([(int(f), float(c)) for f, c in table[1:]], self.EXACT)
+
+    def test_a_whole_clock_is_written_as_the_agents_number_text(self):
+        # 1000.0 is the double the agent read; JSON would have written it 1000.
+        result = P.collect_frame_clock(P.RunResult(frame_plays=1),
+                                       LogQueue(frame_clock_message(self.FRAMES)), cap_s=0)
+        self.assertEqual(self._written(result.frame_clock)[1:],
+                         [["5", "1000"], ["6", "1000.758"], ["8", "1002.274"],
+                          ["9", "1003.5"]])
+
+    def test_an_empty_log_is_an_empty_list_not_a_missing_one(self):
+        for data in (b"", None):
+            message = {**frame_clock_message([]), FA.PAYLOAD_DATA: data}
+            result = P.collect_frame_clock(P.RunResult(frame_plays=1), LogQueue(message),
+                                           cap_s=0)
+            self.assertEqual(result.frame_clock, [], data)
+
+    def test_a_jump_back_keeps_both_plays_frames_in_order(self):
+        before, after = self.FRAMES[:2], [(20, 500.0), (21, 500.758)]
+        result = P.collect_frame_clock(
+            P.RunResult(frame_plays=2),
+            LogQueue(frame_clock_message(before), frame_clock_message(after)), cap_s=0)
+        self.assertEqual(result.frame_clock, before + after)
+
+    def test_a_log_that_never_comes_is_missing_and_names_the_cap(self):
+        # The second play's log never comes: half a log would read as the
+        # whole run's, so there is none, and the cap is named.
+        for messages, which in (((), "play 1 of 1"),
+                                ((frame_clock_message(self.FRAMES),), "play 2 of 2")):
+            plays = int(which.split()[-1])
+            result = P.collect_frame_clock(P.RunResult(frame_plays=plays),
+                                           LogQueue(*messages), cap_s=0)
+            self.assertIsNone(result.frame_clock, which)
+            self.assertIn(f"the frame clock log of {which} did not come within the cap",
+                          result.frame_clock_error)
+            self.assertIn("FRAME_CLOCK_WAIT_S", result.frame_clock_error)
+
+    def test_the_wait_ends_at_the_cap(self):
+        # A fake clock that jumps past the cap at once: the get is handed a
+        # timeout of 0, never a wait longer than what is left.
+        times = iter([0.0, 99.0])
+        started_at = time.monotonic()
+        result = P.collect_frame_clock(P.RunResult(frame_plays=1), LogQueue(), cap_s=5,
+                                       now=lambda: next(times))
+        self.assertLess(time.monotonic() - started_at, 1.0)
+        self.assertIn("within the cap of 5 s", result.frame_clock_error)
+
+    def test_a_broken_log_is_said_and_no_rows_are_kept(self):
+        cases = (
+            ("count above the data", frame_clock_message(self.FRAMES, count=5),
+             "says 5 frames, which is 60 bytes, but holds 48 bytes"),
+            ("count below the data", frame_clock_message(self.FRAMES, count=3),
+             "says 3 frames, which is 36 bytes, but holds 48 bytes"),
+            ("no data", {**frame_clock_message(self.FRAMES), FA.PAYLOAD_DATA: None},
+             "but came with no data"),
+            ("another layout", frame_clock_message(self.FRAMES, layout="frame i32le first"),
+             "layout is 'frame i32le first'"),
+            ("a count that is no number", frame_clock_message(self.FRAMES, count="4"),
+             "count is not a whole number"),
+            ("the agent's error", {"type": K.FRAME_CLOCK_TYPE,
+                                   K.FRAME_CLOCK_ERROR: "the frame clock log was not sent: x"},
+             "the kit agent sent no frame clock log: the frame clock log was not sent: x"),
+        )
+        for name, message, said in cases:
+            with self.subTest(case=name):
+                with self.assertRaises(K.FrameClockBroken) as caught:
+                    K.frame_clock_rows(message)
+                self.assertIn(said, str(caught.exception))
+                result = P.collect_frame_clock(P.RunResult(frame_plays=1), LogQueue(message),
+                                               cap_s=0)
+                self.assertIsNone(result.frame_clock)
+                self.assertEqual(result.frame_clock_error,
+                                 f"the frame clock log of play 1 of 1: {caught.exception}")
 
     def test_the_frame_clock_changes_no_press(self):
-        # The same play with and without the log gives the same rows, stop
-        # and message.
-        plain = [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(K.STOP_REASON_DONE)]
-        logged = [*plain[:2], with_frame_clock(plain[2], self.FRAMES)]
-        a = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [plain]}))
-        b = run(self._one_press(), FakePlayer({K.PLAY_TYPE: [logged]}))
+        # The same play read with and without its log gives the same rows,
+        # stop and message.
+        batch = [started(), sent_event(0, 0, 1001.0, 0, 50), stopped(K.STOP_REASON_DONE)]
+        a = self._played([batch])
+        b = P.collect_frame_clock(self._played([batch]),
+                                  LogQueue(frame_clock_message(self.FRAMES)), cap_s=0)
         self.assertEqual((a.stop, a.message, a.rows), (b.stop, b.message, b.rows))
-        self.assertIsNone(a.frame_clock)
         self.assertEqual(b.frame_clock, self.FRAMES)
 
 

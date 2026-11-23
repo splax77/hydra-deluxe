@@ -2206,11 +2206,16 @@ class GameToolsTest(unittest.TestCase):
     def test_a_play_with_no_end_reply_writes_no_frame_clock_and_says_it_is_missing(self):
         # A run that ended with no stop event from the agent (a lost
         # session) has no frame clock: no file, and the status says missing,
-        # not empty. A frame clock the agent sent broken says why.
+        # not empty. A log that came broken, or not within its cap, says why.
         cases = (("no end reply", play_chart.RunResult(stop="lost"),
-                  "the kit agent's play sent no end reply carrying it"),
-                 ("broken", play_chart.RunResult(stop="done", frame_clock_error="holds 3 frames "
-                                                 "and 2 clocks"), "holds 3 frames and 2 clocks"))
+                  "the kit agent's play sent no stop event, so no log followed it"),
+                 ("broken", play_chart.RunResult(stop="done", frame_clock_error="says 4 frames, "
+                                                 "which is 48 bytes, but holds 36 bytes"),
+                  "says 4 frames, which is 48 bytes, but holds 36 bytes"),
+                 ("past the cap", play_chart.RunResult(
+                     stop="done", frame_clock_error="the frame clock log of play 1 of 1 did not "
+                                                    "come within the cap of 10 s"),
+                  "the frame clock log of play 1 of 1 did not come within the cap of 10 s"))
         t = self._frame_clock_rig(*(result for _name, result, _why in cases))
         for n, (name, _result, why) in enumerate(cases, start=1):
             with self.subTest(case=name):
@@ -2230,7 +2235,8 @@ class GameToolsTest(unittest.TestCase):
         path = self._session_file(t, GT.FRAME_CLOCK_PREFIX, 1)
         self.assertFalse(os.path.exists(path))
         self.assertIn(f"frame clock log missing, not written to {path}: the kit agent's play "
-                      f"sent no end reply carrying it", t.tools.ch_play_status().splitlines())
+                      f"sent no stop event, so no log followed it",
+                      t.tools.ch_play_status().splitlines())
 
     # -- probes (task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md) ---
 
