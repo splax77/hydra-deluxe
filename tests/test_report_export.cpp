@@ -145,7 +145,7 @@ TableView<ReportRow> filtered_path_view() {
     return view;
 }
 
-uint8_t path_key(const ReportRow& r) { return static_cast<uint8_t>(r.acts); }
+uint8_t acts_key(const ReportRow& r) { return static_cast<uint8_t>(r.acts); }
 
 DmReportRow dm_row(std::string song, int64_t actual, const char* status, int percent) {
     DmReportRow r;
@@ -187,7 +187,7 @@ TableView<DmReportRow> filtered_dm_view() {
     return view;
 }
 
-uint8_t dm_key(const DmReportRow& r) { return static_cast<uint8_t>(r.percent); }
+uint8_t percent_key(const DmReportRow& r) { return static_cast<uint8_t>(r.percent); }
 
 // ---- checks ------------------------------------------------------------------------
 
@@ -275,7 +275,7 @@ std::optional<ErrorKind> kind_thrown(F f) {
 
 TEST_CASE("report export: the path sheet holds the rows the view shows, in its order") {
     const TableView<ReportRow> view = filtered_path_view();
-    const SheetLook<ReportRow> look = made_up_look<ReportRow>(path_key, std::make_shared<std::vector<xlsx::Rgb>>());
+    const SheetLook<ReportRow> look = made_up_look<ReportRow>(acts_key, std::make_shared<std::vector<xlsx::Rgb>>());
     const xlsx::Sheet sheet = report_export::build_sheet(view, look, "Path report");
 
     CHECK(sheet.name == "Path report");
@@ -288,7 +288,7 @@ TEST_CASE("report export: the path sheet holds the rows the view shows, in its o
 
 TEST_CASE("report export: the comparison sheet holds the rows the view shows, in its order") {
     const TableView<DmReportRow> view = filtered_dm_view();
-    const SheetLook<DmReportRow> look = made_up_look<DmReportRow>(dm_key, std::make_shared<std::vector<xlsx::Rgb>>());
+    const SheetLook<DmReportRow> look = made_up_look<DmReportRow>(percent_key, std::make_shared<std::vector<xlsx::Rgb>>());
     const xlsx::Sheet sheet = report_export::build_sheet(view, look, "dmleaderboards");
 
     REQUIRE(view.visible().size() == 2);
@@ -298,7 +298,7 @@ TEST_CASE("report export: the comparison sheet holds the rows the view shows, in
 
 TEST_CASE("report export: a changed sort changes the sheet's order") {
     TableView<ReportRow> view = filtered_path_view();
-    const SheetLook<ReportRow> look = made_up_look<ReportRow>(path_key, std::make_shared<std::vector<xlsx::Rgb>>());
+    const SheetLook<ReportRow> look = made_up_look<ReportRow>(acts_key, std::make_shared<std::vector<xlsx::Rgb>>());
     view.set_sort({{"score", SortDir::Ascending}});
     const xlsx::Sheet sheet = report_export::build_sheet(view, look, "Path report");
     CHECK(column_texts(sheet, view, "song") == std::vector<std::string>{"Alpha One", "Beta One"});
@@ -374,7 +374,7 @@ TEST_CASE("report export: a width is held to Excel's widest column") {
 TEST_CASE("report export: the sheet's default style is the look's background and text") {
     const TableView<ReportRow> view = filtered_path_view();
     const xlsx::Sheet sheet = report_export::build_sheet(
-        view, made_up_look<ReportRow>(path_key, std::make_shared<std::vector<xlsx::Rgb>>()), "Path report");
+        view, made_up_look<ReportRow>(acts_key, std::make_shared<std::vector<xlsx::Rgb>>()), "Path report");
     CHECK(sheet.default_style.fill == kBackground);
     CHECK(sheet.default_style.font == kText);
     CHECK_FALSE(sheet.default_style.border.has_value());
@@ -382,7 +382,7 @@ TEST_CASE("report export: the sheet's default style is the look's background and
 
 TEST_CASE("report export: a row's fill follows its place and its font follows the row after a sort") {
     TableView<ReportRow> view = filtered_path_view();
-    const SheetLook<ReportRow> look = made_up_look<ReportRow>(path_key, std::make_shared<std::vector<xlsx::Rgb>>());
+    const SheetLook<ReportRow> look = made_up_look<ReportRow>(acts_key, std::make_shared<std::vector<xlsx::Rgb>>());
     const size_t song = column_index(view, "song");
 
     // Score high to low: Beta One (2 acts) at place 0, Alpha One (1 act) at 1.
@@ -406,14 +406,14 @@ TEST_CASE("report export: a row's fill follows its place and its font follows th
 TEST_CASE("report export: a cell has a border exactly when the look gives one") {
     const TableView<ReportRow> path = filtered_path_view();
     const xlsx::Sheet path_sheet = report_export::build_sheet(
-        path, made_up_look<ReportRow>(path_key, std::make_shared<std::vector<xlsx::Rgb>>()), "Path report");
+        path, made_up_look<ReportRow>(acts_key, std::make_shared<std::vector<xlsx::Rgb>>()), "Path report");
     // The made-up look borders the chip columns only: Timing here.
     CHECK(path_sheet.rows[1][column_index(path, "tier")].style.border == xlsx::Rgb{201, 202, 2});
     CHECK_FALSE(path_sheet.rows[1][column_index(path, "song")].style.border.has_value());
 
     const TableView<DmReportRow> dm = filtered_dm_view();
     const xlsx::Sheet dm_sheet = report_export::build_sheet(
-        dm, made_up_look<DmReportRow>(dm_key, std::make_shared<std::vector<xlsx::Rgb>>()), "dmleaderboards");
+        dm, made_up_look<DmReportRow>(percent_key, std::make_shared<std::vector<xlsx::Rgb>>()), "dmleaderboards");
     // Status is the comparison's chip; Song South's percent is 92.
     CHECK(dm_sheet.rows[1][column_index(dm, "status")].style.border == xlsx::Rgb{201, 202, 92});
     CHECK_FALSE(dm_sheet.rows[1][column_index(dm, "song")].style.border.has_value());
@@ -434,7 +434,7 @@ TEST_CASE("report export: every colour in the sheet is one the look gave") {
     const Handed handed = std::make_shared<std::vector<xlsx::Rgb>>();
     const TableView<DmReportRow> view = filtered_dm_view();
     const xlsx::Sheet sheet =
-        report_export::build_sheet(view, made_up_look<DmReportRow>(dm_key, handed), "dmleaderboards");
+        report_export::build_sheet(view, made_up_look<DmReportRow>(percent_key, handed), "dmleaderboards");
 
     std::vector<xlsx::Rgb> given = *handed;
     for (const xlsx::Rgb& c : {kBackground, kText, kHeaderFill, kHeaderText}) given.push_back(c);
