@@ -93,7 +93,7 @@ inline constexpr RetiredKey kRetiredSettingsKeys[] = {
     {"sp_cap_value", "1.6.0"},    // replaced by sp_cap
     {"check_updates", "2.12.0"},      // every installed start checks (D260)
     {"last_update_check", "2.12.0"},  // every installed start checks (D260)
-    {"hit_window_ms", "2.14.0"},      // one fixed hit window, kHitWindowMs (D270 call 8)
+    {"hit_window_ms", "2.14.0"},      // one fixed timing step, kTimingStepMs (D270 call 8)
 };
 
 // Opens the store at `db`. `rules` gates Ready: a row analyzed

@@ -24,7 +24,7 @@
 #include "core/model.h"  // kMaxEarlyFillWindowMs
 #include "app/dm_report.h"  // why_not_comparable
 #include "app/html_page.h"  // kNothingMatches
-#include "app/report.h"  // hit_window_text
+#include "app/report.h"  // timing_step_text
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
                                 // library_scan_blocked_notice
 #include "core/error_kind.h"
@@ -408,14 +408,14 @@ void test_settings_reset(ImGuiTestContext* ctx) {
 }
 
 // The panel's "Early fill window" row: its (?) shows the help text, whose top
-// edge is the hit window as the reports print it; the box moves the setting
+// edge is the timing step as the reports print it; the box moves the setting
 // and the button's label; a value outside the key table's range lands on its
 // nearest edge (Settings::clamp).
 void test_settings_early_fill(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app_at_default_settings(ctx, h);
     const std::string help = hydra::ui::detail::early_fill_window_help_text();
-    IM_CHECK(help.find(hydra::app::report::hit_window_text() + " ms, the hit window") !=
+    IM_CHECK(help.find(hydra::app::report::timing_step_text() + " ms is the most it allows") !=
              std::string::npos);
 
     ImGuiWindow* panel = open_settings_panel(ctx);

@@ -82,7 +82,7 @@ std::string whole_ms_text(double ms) { return std::to_string(static_cast<int64_t
 
 std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }
 
-std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }
+std::string timing_step_text() { return whole_ms_text(kTimingStepMs); }
 
 LibraryLookup library_lookup(store::StoreReads& store, const store::Profile& profile,
                              const store::ChartIndex& library) {
@@ -338,7 +338,7 @@ GeneratedReport generate_report(store::StoreReads& store, const ReportOptions& o
     // the page's Beyond chip and "Past N ms" tile print it.
     std::string footer = "Generated from " + dbname +
                          ". Timing tiers measure how big each squeeze is, in steps "
-                         "of the " + hit_window_text() + " ms hit window. The Paths "
+                         "of " + timing_step_text() + " ms. The Paths "
                          "tab's row labels measure how far a hit lands from the Star "
                          "Power end, so the two can differ. 'Beyond' means past the " +
                          beyond_edge_text() + " ms window.";

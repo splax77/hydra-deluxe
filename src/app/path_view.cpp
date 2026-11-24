@@ -83,7 +83,7 @@ std::string longest_activation_badge() {
     // +kSqueezeWindowMs. An early fill is named only on an E-critical
     // activation, so its figure lies within the early-fill window on either
     // side (is_e0, fill_refuses). That window is never wider than
-    // kHitWindowMs, which is narrower than the squeeze window, so the figure
+    // kTimingStepMs, which is narrower than the squeeze window, so the figure
     // lies inside the squeeze window too. A squeeze that needs no timing
     // (SPSqueeze::needs_no_timing) has a
     // figure below 0 (D80, D302), so the widest figure is the window's, minus

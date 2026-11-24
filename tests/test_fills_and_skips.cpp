@@ -138,7 +138,7 @@ constexpr int64_t kEfChartEnd = 28800;
 // How far from fill A's deadline SP comes ready in the window cases: between
 // the 60 ms default and the 85 ms widest window, so one input splits them.
 constexpr double kBetweenWindowsMs = 70.0;
-static_assert(kDefaultEarlyFillWindowMs < kBetweenWindowsMs && kBetweenWindowsMs < kHitWindowMs,
+static_assert(kDefaultEarlyFillWindowMs < kBetweenWindowsMs && kBetweenWindowsMs < kTimingStepMs,
               "the input must sit between the two windows");
 
 static Song early_fill_song(int64_t ready, bool second_fill = false) {
@@ -193,7 +193,7 @@ TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the reach edge is
         return paths.front().activations.front().skipped_fill_ticks;
     };
     const double deadline = fill_a_deadline_ms();
-    for (const double window : {kHitWindowMs, kDefaultEarlyFillWindowMs}) {
+    for (const double window : {kTimingStepMs, kDefaultEarlyFillWindowMs}) {
         CAPTURE(window);
         const int64_t edge = ef_tick_at(deadline + window);
         CHECK((passed_over(edge, window) == std::vector<int64_t>{kEfFillA}));
@@ -244,14 +244,14 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken at an 85 ms wind
     const Song song = early_fill_song(ready);
     const double ready_ms = song.timecode(ready).ms();
 
-    const HydraRecord wide = analyze_chart(song, window_settings(kHitWindowMs));
+    const HydraRecord wide = analyze_chart(song, window_settings(kTimingStepMs));
     REQUIRE(!wide.paths.empty());
     CAPTURE(wide.best_path().pathstring());
     REQUIRE(test::act_ticks(wide.best_path()) == std::vector<int64_t>{kEfFillA});
     const Activation& act = wide.best_path().activations.front();
     CHECK(act.is_E0());
     CHECK(act.e_difficulty() == std::optional<double>{ready_ms - deadline});
-    check_window_carried(wide, kHitWindowMs);
+    check_window_carried(wide, kTimingStepMs);
 
     const HydraRecord narrow = analyze_chart(song, window_settings(kDefaultEarlyFillWindowMs));
     CHECK_FALSE(activates_at(narrow, kEfFillA));
@@ -260,12 +260,12 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken at an 85 ms wind
     // search_target on the graph search_graph builds: the pinned activation
     // is realizable at 85 and not at 60, and the 60 search names fill A as
     // the activation it could not place.
-    const ScoreGraph wide_graph = search_graph(song, window_settings(kHitWindowMs));
+    const ScoreGraph wide_graph = search_graph(song, window_settings(kTimingStepMs));
     const TargetResult wide_pin = search_target(wide_graph, activation_pins({kEfFillA}));
     REQUIRE(wide_pin.paths.size() >= 1);
     for (const Path& p : wide_pin.paths) {
         CHECK(test::act_ticks(p) == std::vector<int64_t>{kEfFillA});
-        check_window_carried(p, kHitWindowMs);
+        check_window_carried(p, kTimingStepMs);
     }
     const ScoreGraph narrow_graph = search_graph(song, window_settings(kDefaultEarlyFillWindowMs));
     const TargetResult narrow_pin = search_target(narrow_graph, activation_pins({kEfFillA}));
@@ -277,7 +277,7 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken at an 85 ms wind
     const std::string text = wide.best_path().pathstring();
     const Path read = paths_from_pathstring_on_graph(song, wide_graph, text);
     CHECK(test::act_ticks(read) == std::vector<int64_t>{kEfFillA});
-    check_window_carried(read, kHitWindowMs);
+    check_window_carried(read, kTimingStepMs);
     try {
         paths_from_pathstring_on_graph(song, narrow_graph, text);
         FAIL("the 60 ms graph placed the path text");
@@ -295,7 +295,7 @@ TEST_CASE("search: SP ready 70 ms before a fill's deadline marks the activation 
     const int64_t ready = ef_tick_at(deadline - kBetweenWindowsMs);
     const Song song = early_fill_song(ready);
     const double ready_ms = song.timecode(ready).ms();
-    for (const double w : {kHitWindowMs, kDefaultEarlyFillWindowMs}) {
+    for (const double w : {kTimingStepMs, kDefaultEarlyFillWindowMs}) {
         CAPTURE(w);
         const HydraRecord record = analyze_chart(song, window_settings(w));
         REQUIRE(!record.paths.empty());
@@ -303,7 +303,7 @@ TEST_CASE("search: SP ready 70 ms before a fill's deadline marks the activation 
         REQUIRE(test::act_ticks(record.best_path()) == std::vector<int64_t>{kEfFillA});
         const Activation& act = record.best_path().activations.front();
         CHECK(act.e_offset == fill_e_offset(deadline, ready_ms));
-        const bool wide = w == kHitWindowMs;
+        const bool wide = w == kTimingStepMs;
         CHECK(act.is_e_critical() == wide);
         CHECK(act.is_E0() == wide);
         CHECK(act.e_difficulty().has_value() == wide);
@@ -324,14 +324,14 @@ TEST_CASE("all-0 pass: passing over a fill with 70 ms to spare is an E1 at 85, a
     const Song song = early_fill_song(ready, /*second_fill=*/true);
 
     // At 85 the best path passes A over as an E1, so it is the all-0 answer.
-    const HydraRecord wide = analyze_chart(song, window_settings(kHitWindowMs));
+    const HydraRecord wide = analyze_chart(song, window_settings(kTimingStepMs));
     REQUIRE(!wide.paths.empty());
     CAPTURE(wide.best_path().pathstring());
     CHECK(test::act_ticks(wide.best_path()) == std::vector<int64_t>{kEfFillC});
     const std::vector<const Path*> wide_allzero = best_allzero_paths(wide);
     REQUIRE(!wide_allzero.empty());
     CHECK(wide_allzero.front() == &wide.best_path());
-    check_window_carried(wide, kHitWindowMs);
+    check_window_carried(wide, kTimingStepMs);
 
     // At 60 passing A over is a plain skip, so the best path is not all-0 and
     // the all-0 answer is another path, one that activates at A.

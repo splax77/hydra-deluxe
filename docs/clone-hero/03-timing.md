@@ -236,7 +236,7 @@ Rule: The drums engine constructor sets the byte at `#8255+0x41` to 1 in both no
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` line 78 (`mov byte ptr [rbx + 0x41], 1`) and `code/6142/note_window_20F3A90.asm` lines 4 and 9.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`; the per-note window routine of class #8288 (scrambled name), RVA `0x20F3A90`.
-Hydra: the per-note window is src/core/note_window.h (`window_side_ms`, `chord_sides_ms`), read by the press schedule and by the Paths tab's Dynamic Hit Window row, which is display only. Hydra's own judging holds one fixed number, `kHitWindowMs` in src/core/model.h line 105.
+Hydra: the per-note window is src/core/note_window.h (`window_side_ms`, `chord_sides_ms`), read by the press schedule and by the Paths tab's Dynamic Hit Window row, which is display only. Hydra's own judging holds one fixed number, `kTimingStepMs` in src/core/model.h line 114.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -246,7 +246,7 @@ Rule: With bit 0x1000 of the engine flags at `#8288+0x198` clear, the constructo
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` lines 78 to 91 (the four constants read at lines 80, 81, 83 and 84, the stores at lines 85, 87 and 91). The decompile `ghidra_decompile_all.txt` lines 1807 to 1822 agree. The four constants are `RVA_CONST_NORMAL_FRONT`, `RVA_CONST_NORMAL_BACK`, `RVA_CONST_PRECISION_FRONT` and `RVA_CONST_PRECISION_BACK` in tools/ch_probe/constants.py. `dump.cs` line 547692 names the bit `PrecisionMode = 4096`.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`, `code/6142/engine_ctor_20DF680.asm` lines 78 to 91.
-Hydra: `kWindowFrontMs` and `kWindowBackMs` in src/core/note_window.h hold the normal-mode front and back; no Hydra code holds the precision-mode pair. `kHitWindowMs` (src/core/model.h line 105) is a separate number that equals the normal back value.
+Hydra: `kWindowFrontMs` and `kWindowBackMs` in src/core/note_window.h hold the normal-mode front and back; no Hydra code holds the precision-mode pair. `kTimingStepMs` (src/core/model.h line 114) is a separate number that equals the normal back value.
 Ruling: open split: see questions page Q-32
 Found: 2026-09-25, session 8157f2dc; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -294,9 +294,9 @@ Found: 2026-09-25, session 28e6f29d; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: In normal mode the formula's input is held between 75 and 170 ms, so the whole window runs from 96.2932 to 171.4313 ms, and each side gets half: from 48.15 ms when both neighbours are close to 85.72 ms when both are far. A note whose neighbours are both 80 ms away gets 102.26 ms, 51.13 ms a side. Hydra judges every note at a fixed 85 ms a side, which is the game's back clamp for one half-gap, not its per-side window.
 Label: Proven in the game's code
-Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 105) is read by the squeeze badges, Ratings and timing tiers (TM-29).
+Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kTimingStepMs` (src/core/model.h line 114) is read by the squeeze badges, Ratings and timing tiers (TM-29).
 Game code (6142): RVAs `0x20F3A90`, `0x20F7210` and `0x20DDDA0`, the three listings above.
-Hydra: `kHitWindowMs` in src/core/model.h line 105 for judging; the game's per-side window is `window_side_ms` in src/core/note_window.h, shown only on the Paths tab's Dynamic Hit Window row.
+Hydra: `kTimingStepMs` in src/core/model.h line 114 for judging; the game's per-side window is `window_side_ms` in src/core/note_window.h, shown only on the Paths tab's Dynamic Hit Window row.
 Ruling: open split: see questions page Q-32. D270 item 8 ("yes it should use one nuimbers eerywhere", and "Fixed 85, no setting (Recommended)") rules on Hydra's own two numbers, and D28 records the game's cap and floor with "Steps 4-6 are shelved". On 2026-11-12 (session 375e58cd) the user ruled "just show it alongside. try again with a maximum of 8 words for the new info.", so the Paths tab shows the game's window beside the 85 and nothing else moves, and "ok well i am ruling it now: hydra searching for squeezes up to 500 ms is an intentional deviation from the game, not a bug." Neither says whether the ratings, tiers or early fill reach should ever follow the game's window, so Q-32 stays open.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -346,7 +346,7 @@ Rule: Measured at the song clock the player read just before it sent a press, th
 Label: Proven in a live run
 Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`, the rows of chords 10, 20, 30, 40, 50, 60, 70 and 80 (the ones with a `probe` value): `chart_ms` minus `clock_ms_at_press` gives each press's lead, and `hit` gives the verdict. The asked leads are in `probes.json` there, and `replies.txt` there lists the eight results. The code part is the committed listing `docs/audit/drum-lanes/play/f20f5810_base_update.asm`: line 59 loads the clock at `+0x100`, lines 69 and 72 take the note time at `+0x28` minus the clock, lines 74 to 85 store the two sides, and lines 98 to 102 admit the note only when that difference is not above `+0x10` and not below `+0x18`.
 Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 59 to 102.
-Hydra: one number for both sides, `kHitWindowMs` in src/core/model.h line 105.
+Hydra: one number for both sides, `kTimingStepMs` in src/core/model.h line 114.
 Ruling: none found
 Found: 2026-10-30, session b02ab3e6 (the reference build); the live result 2026-11-07, session d0a3868c; the listing 2026-11-08, session 77057df2 (docs-gaps search).
 
@@ -356,7 +356,7 @@ Rule: Measured at the song clock the player read just before it sent a press, th
 Label: Proven in a live run
 Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`: chord 60 (chart 63,000 ms, sent at clock 62,911.57, hit 1) and chord 70 (chart 73,000 ms, sent at clock 73,084.92, hit 0, score unchanged at 6,550). The chart is `C:\Clone Hero\songs\Hydra Probe\Edge Walk Pair\notes.chart`, every note a kick 1,000 ms from the next except the last pair. In the code, the per-frame update admits a note to its window list only while (note time - clock) lies inside the stored sides (TM-26): `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 98 to 102 test the sides, lines 127 and 131 append the note to the list at `+0x58` and count it at `+0x8C`. That the press handler takes notes only from that list was not read.
 Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 98 to 131; the press-side compare not found: looked at `0x100DAE0` and `0x20DE770`.
-Hydra: `kHitWindowMs` in src/core/model.h line 105: every note at a fixed 85 ms a side.
+Hydra: `kTimingStepMs` in src/core/model.h line 114: every note at a fixed 85 ms a side.
 Ruling: open split: see questions page Q-32
 Found: 2026-09-25, session 28e6f29d; the live result 2026-11-07, session d0a3868c; the listing 2026-11-08, session 77057df2 (docs-gaps search).
 
@@ -384,9 +384,9 @@ Found: 2026-09-25, session 28e6f29d; line cites re-pinned 2026-11-08, session 77
 
 Rule: Hydra judges every note at a fixed 85 ms a side, and the squeeze badges, Rating words and the report's timing tiers all read that one constant. The early-fill window is a separate setting whose top edge is that constant (FL-24).
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs = 85.0` in src/core/model.h; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. `fill_refuses` and `is_e0` take the early-fill window as an argument instead (`Settings::early_fill_window_ms`, default `kDefaultEarlyFillWindowMs`). The single `kHitWindowMs` is what D270 item 8 asked for.
+Evidence: `kTimingStepMs = 85.0` in src/core/model.h; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. `fill_refuses` and `is_e0` take the early-fill window as an argument instead (`Settings::early_fill_window_ms`, default `kDefaultEarlyFillWindowMs`). The single `kTimingStepMs` is what D270 item 8 asked for.
 Game code (6142): see TM-22.
-Hydra: `kHitWindowMs` in src/core/model.h line 105.
+Hydra: `kTimingStepMs` in src/core/model.h line 114.
 Ruling: D270 item 8: the user asked "why are there two different numbers for hit window? who approved that? did you ever tell me you were using two different numbers?", then "yes it should use one nuimbers eerywhere", and chose "Fixed 85, no setting (Recommended)".
 Found: 2026-10-30, session 9a82ff65.
 
@@ -426,9 +426,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Hydra's fixed 85 ms window is used for every chart whatever the player's precision setting, while the game's precision windows are narrower (TM-31).
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs` at src/core/model.h line 105; a grep of `src/` finds no precision-mode input.
+Evidence: `kTimingStepMs` at src/core/model.h line 114; a grep of `src/` finds no precision-mode input.
 Game code (6142): see TM-18 and TM-31.
-Hydra: `kHitWindowMs` in src/core/model.h line 105.
+Hydra: `kTimingStepMs` in src/core/model.h line 114.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 

@@ -53,8 +53,8 @@ inline constexpr const char* kEarlyFillWindowName = "Early fill window";
 inline constexpr const char* kProDrumsName = "Pro Drums";
 inline constexpr const char* kBass2xName = "2x Bass";
 inline constexpr const char* kNoteShuffleName = "Note Shuffle";
-// The help text beside the "Early fill window" box. Its top edge is the hit
-// window, as report::hit_window_text prints it.
+// The help text beside the "Early fill window" box. Its top edge is the
+// timing step, as report::timing_step_text prints it.
 std::string early_fill_window_help_text();
 
 // library_table.cpp: the whole library pane (heading, search, chips, table).
