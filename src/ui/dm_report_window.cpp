@@ -103,6 +103,15 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }
 
+// Whose scores the window shows: the one place that picks between the last
+// player picked (AppState::dm_player_name, set before that player's scores
+// fetch) and the report's own username. Anything that names the
+// comparison's player asks here rather than choosing again.
+std::string comparison_player(const std::string& picked, const GeneratedDmReport* result) {
+    if (!picked.empty()) return picked;
+    return result ? result->username : std::string();
+}
+
 }  // namespace
 
 void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) {
@@ -115,8 +124,7 @@ void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) 
     }
     if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
     const GeneratedDmReport* result = input.result.get();
-    const std::string player =
-        !input.player.empty() ? input.player : result ? result->username : std::string();
+    const std::string player = comparison_player(input.player, result);
 
     report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "dmleaderboards: " + player + " \xE2\x80\x94 Hydra###dmreport";  // U+2014
