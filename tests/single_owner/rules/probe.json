@@ -30,7 +30,7 @@
     },
     {
       "question": "How do raw engine bytes become numbers?",
-      "owner": "decode_double, decode_f32, decode_u32 and decode_u64 in tools/ch_probe/process.py",
+      "owner": "decode_double, decode_f32, decode_u32, decode_u64, decode_doubles and decode_i32s in tools/ch_probe/process.py",
       "owner_file": "tools/ch_probe/process.py",
       "owner_symbol": "decode_double",
       "date": "2026-10-05",
@@ -66,6 +66,16 @@
           "file": "tools/ch_probe/process.py",
           "line_text": "return struct.unpack(\"<Q\", raw)[0]",
           "why": "decode_u64, the owner"
+        },
+        {
+          "file": "tools/ch_probe/process.py",
+          "line_text": "return struct.unpack(f\"<{len(raw) // DOUBLE_BYTES}d\", raw)",
+          "why": "decode_doubles, the owner"
+        },
+        {
+          "file": "tools/ch_probe/process.py",
+          "line_text": "return struct.unpack(f\"<{len(raw) // I32_BYTES}i\", raw)",
+          "why": "decode_i32s, the owner"
         }
       ],
       "scope": [

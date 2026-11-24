@@ -35,6 +35,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe.constants import ms_to_s  # noqa: E402
 from tools.ch_probe.experiments import play_chart, sp_compare  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
     PRESS_COLUMNS_BEFORE_FRAME_PICK, PRESS_LOG_COLUMNS, WATCH_CLOCK_COLUMNS,
@@ -965,8 +966,8 @@ class JudgedReachTest(unittest.TestCase):
     def judged_before_plan(self, index):
         """The clock ms of a row a fraction of a ms before chord `index`'s
         planned press, as the watcher's clock reads it."""
-        return sp_compare._ms({"clock_s": (self.planned[index].earliest_ms
-                                           - self.EARLY_MS) / 1000})
+        return sp_compare._ms({"clock_s": ms_to_s(self.planned[index].earliest_ms
+                                                  - self.EARLY_MS)})
 
     def log(self, judged_by_index, columns=PRESS_LOG_COLUMNS):
         """A press log judging every chord at its planned press, except the

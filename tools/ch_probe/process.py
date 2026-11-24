@@ -68,6 +68,27 @@ def decode_u64(raw: bytes) -> int:
     return struct.unpack("<Q", raw)[0]
 
 
+# The byte size of each value the array decoders below read.
+DOUBLE_BYTES = 8
+I32_BYTES = 4
+
+
+def decode_doubles(raw: bytes) -> tuple:
+    """Turn packed raw bytes into one float per 8 bytes, little-endian, in
+    one call, for arrays too long to decode a value at a time."""
+    if len(raw) % DOUBLE_BYTES:
+        raise ValueError(f"packed doubles need a multiple of 8 bytes, got {len(raw)}")
+    return struct.unpack(f"<{len(raw) // DOUBLE_BYTES}d", raw)
+
+
+def decode_i32s(raw: bytes) -> tuple:
+    """Turn packed raw bytes into one signed 32-bit integer per 4 bytes,
+    little-endian, in one call."""
+    if len(raw) % I32_BYTES:
+        raise ValueError(f"packed i32s need a multiple of 4 bytes, got {len(raw)}")
+    return struct.unpack(f"<{len(raw) // I32_BYTES}i", raw)
+
+
 def check_normal_constants(
     back_s: float,
     front_s: float,
