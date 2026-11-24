@@ -595,7 +595,7 @@ The search box matches the song, artist and charter. The table starts sorted by 
 
 Clicking a row selects its song, as in the path report. A `Not in your library` row has no song to select, so clicking it does nothing, the `Up` and `Down` arrows pass over it, and hovering it says `Not in your library`.
 
-The comparison goes out of date the same way the path report does, with the same strips. A batch marks it, and so does opening a song that saves a new result. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
+The comparison goes out of date the same way the path report does, with the same strips. A batch marks it, and so does opening a song that saves a new result. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the early fill window, the score range, the path limit or Safe paths, because those decide which of your results it compared against.
 
 ## Path Builder
 
