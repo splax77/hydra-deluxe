@@ -382,34 +382,30 @@ ImVec4 header_text() { return window_text(); }
 
 namespace {
 
-// `c`'s four channels, each 0 to 255, as ImGui rounds them.
-struct Bytes {
-    int r, g, b, a;
-};
-Bytes bytes_of(const ImVec4& c) {
-    const ImU32 u = ImGui::ColorConvertFloat4ToU32(c);
-    return {static_cast<int>((u >> IM_COL32_R_SHIFT) & 0xFFu),
-            static_cast<int>((u >> IM_COL32_G_SHIFT) & 0xFFu),
-            static_cast<int>((u >> IM_COL32_B_SHIFT) & 0xFFu),
-            static_cast<int>((u >> IM_COL32_A_SHIFT) & 0xFFu)};
-}
+// One 0-255 channel of a colour ImGui packed (ColorConvertFloat4ToU32), at
+// that channel's IM_COL32_*_SHIFT.
+int packed_channel(ImU32 packed, int shift) { return static_cast<int>((packed >> shift) & 0xFFu); }
 
-// One channel of `top` at strength `alpha` (of 255) over `under`, to the
-// nearest whole value.
-uint8_t blend(int top, int under, int alpha) {
+// One channel of `top` at strength `alpha` (of 255) laid over `under`, to
+// the nearest whole value.
+uint8_t channel_over(int top, int under, int alpha) {
     return static_cast<uint8_t>((top * alpha + under * (255 - alpha) + 127) / 255);
 }
 
 }  // namespace
 
 Rgb to_rgb(const ImVec4& c) {
-    const Bytes b = bytes_of(c);
-    return {static_cast<uint8_t>(b.r), static_cast<uint8_t>(b.g), static_cast<uint8_t>(b.b)};
+    const ImU32 packed = ImGui::ColorConvertFloat4ToU32(c);
+    return {static_cast<uint8_t>(packed_channel(packed, IM_COL32_R_SHIFT)),
+            static_cast<uint8_t>(packed_channel(packed, IM_COL32_G_SHIFT)),
+            static_cast<uint8_t>(packed_channel(packed, IM_COL32_B_SHIFT))};
 }
 
 Rgb lay_over(const ImVec4& top, Rgb under) {
-    const Bytes t = bytes_of(top);
-    return {blend(t.r, under.r, t.a), blend(t.g, under.g, t.a), blend(t.b, under.b, t.a)};
+    const Rgb t = to_rgb(top);
+    const int alpha = packed_channel(ImGui::ColorConvertFloat4ToU32(top), IM_COL32_A_SHIFT);
+    return {channel_over(t.r, under.r, alpha), channel_over(t.g, under.g, alpha),
+            channel_over(t.b, under.b, alpha)};
 }
 
 Rgb row_fill(size_t place) {
