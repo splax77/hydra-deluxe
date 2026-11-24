@@ -146,6 +146,7 @@ int batch_main() {
     std::printf("Score range: %s\n", described.depth.c_str());
     std::printf("SP cap     : %s\n", described.cap.c_str());
     std::printf("Path limit : %s\n", described.timing.c_str());
+    std::printf("Safe paths : %s\n", described.safe_paths.c_str());
     std::printf("Squeeze win: %d ms\n", static_cast<int>(hydra::kSqueezeWindowMs));
     std::printf("Fills      : %s\n",
                 hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long));

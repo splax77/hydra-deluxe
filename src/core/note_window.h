@@ -6,9 +6,10 @@
 // is worked out here only. The hydra_replay schedule tool and the Paths tab's
 // row both call it.
 //
-// The row is display only. Hydra's ratings, tiers, badges and search keep
-// kTimingStepMs (core/model.h), a separate number (D270 call 8): the user
-// ruled "just show it alongside."
+// Three readers ask the row: the Paths tab, the hydra_replay schedule tool
+// and the safe-paths search (EngineOptions::safe_paths, search/engine.h).
+// Hydra's ratings, tiers and badges still keep kTimingStepMs (core/model.h),
+// a separate number (D270 call 8).
 
 #ifndef HYDRA_CORE_NOTE_WINDOW_H
 #define HYDRA_CORE_NOTE_WINDOW_H
@@ -157,8 +158,15 @@ std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, c
 // (Activation::sp_ready_tick), as the SpReady end.
 // Unset when the record holds too few bar arrivals to name that note, or no
 // chord sits on its tick (a bar that arrived at the previous SP end). Whether
-// the row shows at all is the caller's question.
+// the row shows at all is early_fill_row's question.
 std::optional<WindowEnds> early_fill_window_end(const Activation& act, const ChordTimes& chords);
+
+// The early fill row `act` shows: early_fill_window_end on an activation that
+// shows the early fill badge and the "Early fill" line
+// (Activation::is_e_critical, the test badge_timings uses), required,
+// optional or with time to spare alike; unset on any other. The Paths tab and
+// the safe-paths search both ask it.
+std::optional<WindowEnds> early_fill_row(const Activation& act, const ChordTimes& chords);
 
 }  // namespace hydra
 

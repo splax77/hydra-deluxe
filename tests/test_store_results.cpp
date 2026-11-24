@@ -394,6 +394,11 @@ TEST_CASE("Profile compares on every part of the identity") {
     // A lens left to its default names the setting's default window.
     CHECK(Lens{}.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));
     CHECK(kLensA.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));
+    // Safe paths is part of it too, and a lens left to its default has it off.
+    CHECK(kLensA != Lens::from(10, 0, 20, false, static_cast<int>(kDefaultEarlyFillWindowMs),
+                               kNormalSpeedPercent, /*safe_paths=*/true));
+    CHECK(Lens{}.safe_paths == 0);
+    CHECK(kLensA.safe_paths == 0);
 
     // ...except the ms value when the limit is off: an off limit stores 0.
     CHECK(Lens::from(std::nullopt, 0, 4).ms_value == 0);

@@ -214,11 +214,17 @@ void render_paths_group(AppState& app, bool locked) {
     ImGui::SameLine();
     ImGui::TextUnformatted("ms");
     end_disabled_input(off);
+
+    // Its own switch: the Path limit above neither reads it nor is read by it.
+    begin_row(kSafePathsName,
+              "Drop every path that holds a squeeze or early fill whose Dynamic Hit Window "
+              "row reads short, even the best path. Separate from the Path limit.");
+    if (setting_checkbox("##safepaths", &app.settings.safe_paths, locked)) app.commit_settings();
     ImGui::EndTable();
 }
 
-// "Reset to defaults": puts the panel's nine settings back in one change,
-// so the open song re-analyzes once. Greyed out while locked or when there
+// "Reset to defaults": puts every panel setting (app::kAnalysisFields) back
+// in one change, so the open song re-analyzes once. Greyed out while locked or when there
 // is nothing to undo; the tooltip says which, or what the click undoes.
 void render_reset_button(AppState& app, bool locked) {
     const bool off = locked || settings_at_defaults(app.settings);

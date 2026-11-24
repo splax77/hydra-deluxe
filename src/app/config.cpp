@@ -195,6 +195,7 @@ const std::vector<Key>& keys() {
         number("depth_mode", &Settings::depth_mode, 0, 1),
         on_off("mslimit_enabled", &Settings::mslimit_enabled),
         number("mslimit_value", &Settings::mslimit_value, -kWindowMs, kWindowMs),
+        on_off("safe_paths", &Settings::safe_paths),
         on_off("backendlimit_enabled", &Settings::backendlimit_enabled),
         number("backendlimit_value", &Settings::backendlimit_value, 0, kWindowMs),
         number("preview_volume", &Settings::preview_volume, 0, 100),
@@ -417,6 +418,7 @@ AnalysisSettings Settings::to_analysis_settings() const {
     s.depth_mode = search_depth_mode();
     s.depth_value = depth_value;
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;
+    s.safe_paths = safe_paths;
     s.sp_cap = sp_cap;
     s.legacy_fills = legacy_fills;
     s.early_fill_window_ms = early_fill_window_ms;
@@ -440,7 +442,7 @@ store::Lens Settings::lens() const {
         // The unit the search runs with (search_depth_mode), not the raw int,
         // so the lens stays canonical (concept audit M14).
         search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills,
-        early_fill_window_ms, speed_percent);
+        early_fill_window_ms, speed_percent, safe_paths);
 }
 
 store::Profile Settings::profile() const {
@@ -481,6 +483,7 @@ SettingsText describe_settings(const AnalysisSettings& settings) {
     text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("off");
     text.early_fill = format_ms_whole(settings.early_fill_window_ms);
     text.speed = std::to_string(settings.reading().speed_percent) + "%";
+    text.safe_paths = settings.safe_paths ? "on" : "off";
     return text;
 }
 
