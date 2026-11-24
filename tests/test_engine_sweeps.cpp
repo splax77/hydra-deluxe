@@ -17,7 +17,9 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
@@ -901,38 +903,82 @@ TEST_CASE("safe paths: no main-list path holds a short row, and the search never
     CHECK(plain_acts > 0);
 }
 
-// Test B. With every path kept, the safe search's list is exactly the plain
-// list with its short-row paths taken out by the owners, and the safe top is
-// the best of those. A path judged too late could knock a safe path out
-// before it was dropped, and this fails then.
+// Test B, on real corpus charts. With every path kept (kKeepEveryPathBand,
+// option off), the safe search's list is exactly that list with its
+// short-row paths taken out by the owners, the same path strings at the same
+// scores, and the safe top is the best of those. A path judged too late could
+// knock a safe path out before it was dropped, and this fails then.
+//
+// Which charts: every corpus chart, in corpus order, that passes two rules.
+// Size: a keep-everything search keeps every distinct score, so it is run
+// only where the sweeps' own "Within kSweepDepthScores scores" search of the
+// same chart (cached by corpus::analyzed) kept fewer scores than that depth
+// allows, which means its depth cut nothing and the keep-everything search is
+// no bigger than the one every sweep already runs. Short row: the
+// keep-everything list holds at least one path with a short row, so there is
+// something for the option to take out. A test that found no such chart
+// would check nothing, so it fails.
 TEST_CASE("safe paths: nothing safe is lost at the keep-everything band") {
-    const std::vector<std::pair<const char*, Song>> songs = {
-        {"late sqin", test::make_late_sqin_song()},
-        {"early sqout", test::make_early_sqout_song()},
-        {"sqin then collect", test::sqin_then_collect_song()},
-        {"clamp", test::clamp_song()},
-        {"mid sp phrase", test::mid_sp_phrase_song()},
-        {"banked phrase fold", test::banked_phrase_fold_song()},
-        {"ready time fold", test::ready_time_fold_song()},
+    // Each of `paths` as its path string and score. A multiset, so two paths
+    // that read alike both count.
+    const auto strings_and_scores = [](const std::vector<const Path*>& paths) {
+        std::multiset<std::pair<std::string, int64_t>> out;
+        for (const Path* p : paths) out.insert({p->pathstring(), p->totalscore()});
+        return out;
     };
-    for (const auto& [name, song] : songs) {
-        CAPTURE(name);
-        const ScoreGraph graph(song, kCloneHeroSpCap);
+    int used = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (!loads_notes(song, path)) continue;
+        CAPTURE(path);
+        const SearchSettings sweep = sweep_settings(kSweepDepthScores, std::nullopt);
+        // The size rule above. Which scores the band cuts is
+        // Engine::outside_depth_band's; a list with no more roots than the
+        // depth is one it never had to cut.
+        if (corpus::analyzed(path, sweep).paths.size() > static_cast<size_t>(kSweepDepthScores))
+            continue;
+
+        const ScoreGraph graph = search_graph(song, sweep);
         const ChordTimes chords = chord_times(song);
         EngineOptions off = test::wide_search();
         EngineOptions on = off;
         on.safe_paths = true;
         const std::vector<Path> plain = run_search(graph, off);
-        const std::vector<Path> safe = run_search(graph, on);
+
+        std::vector<const Path*> kept;
+        int filtered_out = 0;
+        for (const Path* p : flatten_paths(plain)) {
+            if (short_rows(*p, chords) == 0)
+                kept.push_back(p);
+            else
+                ++filtered_out;
+        }
+        if (filtered_out == 0) continue;  // the short-row rule above
+        ++used;
+        MESSAGE("safe paths keep-everything chart: " << path << ", " << filtered_out
+                                                     << " short paths filtered out of "
+                                                     << static_cast<size_t>(filtered_out) + kept.size());
+
+        std::vector<Path> safe;
+        try {
+            safe = run_search(graph, on);
+        } catch (const std::runtime_error& e) {
+            // The safe search may come up empty only when no path is safe.
+            CHECK_MESSAGE(kept.empty(), "the safe search emptied with safe paths left: " << e.what());
+            continue;
+        }
         CHECK(identities(safe) == safe_identities(plain, chords));
-        std::optional<int64_t> best_safe;
-        for (const Path* p : flatten_paths(plain))
-            if (short_rows(*p, chords) == 0 && (!best_safe || p->totalscore() > *best_safe))
-                best_safe = p->totalscore();
-        REQUIRE(best_safe.has_value());
+        CHECK(strings_and_scores(flatten_paths(safe)) == strings_and_scores(kept));
+
+        REQUIRE_FALSE(kept.empty());
         REQUIRE_FALSE(safe.empty());
-        CHECK(safe.front().totalscore() == *best_safe);
+        int64_t best_safe = kept.front()->totalscore();
+        for (const Path* p : kept) best_safe = std::max(best_safe, p->totalscore());
+        CHECK(safe.front().totalscore() == best_safe);
     }
+    MESSAGE("safe paths keep-everything: " << used << " charts used");
+    // A walk that found no chart with a short row tested nothing.
+    REQUIRE(used > 0);
 }
 
 // Test C. Off is the default, and an explicit off runs the same search.
