@@ -12,16 +12,18 @@ A plan that wants a run holds a section headed `## Plan run`. It names the run's
 ## Plan run
 
 Slug: <slug>
-Repo: <full path of the repo's main checkout>
+Repo: <the repo the run works in>
 
 | Phase | Builds |
 |---|---|
 | all | 1 |
 ```
 
-The plan's task table carries three columns the run reads. `Branch` is the task's own branch, the one its executor commits on. `Phase` is the name of the phase the task belongs to, as written in the `## Plan run` table. `Owned files` lists the files the task may change.
+The spelling is exact. The section heading is `## Plan run`. Its two lines start `Slug:` and `Repo:`. `Slug:` is the short name used for the run's file and its branches. `Repo:` is the repo the run works in. The phase table has the columns `Phase` and `Builds`; each row holds one phase name and its build count, `0` or `1`.
 
-The opener fills nothing in. It refuses a plan with no `## Plan run` section, a task table without one of the three columns, a branch named twice, a phase with no build count, or a build count other than 0 or 1. It also refuses a plan in which two tasks of the same phase own the same file, because those two tasks would then have to be merged by hand. Give the file to one task, or put the two tasks in different phases.
+The plan's task table carries three columns the run reads, headed `Branch`, `Phase` and `Owned files`. `Branch` is the task's own branch, the one its executor commits on. `Phase` is the name of the phase the task belongs to, as written in the `## Plan run` table. `Owned files` lists the files the task may change, which the run records.
+
+The opener fills nothing in. It refuses a plan with no `## Plan run` section, a task table without one of the three columns, a branch named twice, a phase with no build count, a build count other than 0 or 1, or a run already open for the slug. It also refuses a plan in which two tasks of the same phase own the same file, because those two tasks would then have to be merged by hand. Give the file to one task, or put the two tasks in different phases.
 
 ## The plan branch
 
