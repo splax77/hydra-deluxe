@@ -51,6 +51,9 @@ inline constexpr const char* kEarlyFillWindowName = "Early fill window";
 // The song speed's name, as the settings button's phrase and the batch
 // confirm's line both print it.
 inline constexpr const char* kSongSpeedName = "Song speed";
+// The safe-paths switch's name, as the panel row, the settings button's
+// phrase and the batch confirm's line all print it.
+inline constexpr const char* kSafePathsName = "Safe paths";
 // The three chart-mode switches' names, as the settings button's phrase and
 // the batch confirm's difficulty line both print them.
 inline constexpr const char* kProDrumsName = "Pro Drums";
@@ -90,6 +93,7 @@ struct BatchSettingsSummary {
     std::string speed;        // "100%"
     std::string score_range;  // "2 scores" or "2,000 points"
     std::string path_limit;   // "10 ms" or "off"
+    std::string safe_paths;   // "on" or "off"
 };
 BatchSettingsSummary batch_settings_summary(const app::Settings& s);
 

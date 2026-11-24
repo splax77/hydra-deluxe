@@ -407,6 +407,61 @@ void test_settings_reset(ImGuiTestContext* ctx) {
     close_settings_panel(ctx);
 }
 
+// The panel's "Safe paths" row (Safe paths plan, S3 checks A, B and D): the
+// box is there and unticked on a fresh settings file; ticking it puts the
+// switch's phrase in the settings button and the Reset tooltip, and Reset
+// unticks it; it and the Path limit's checkbox and number move apart.
+void test_settings_safe_paths(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app_at_default_settings(ctx, h);
+    using hydra::ui::detail::kSafePathsName;
+    const hydra::app::Settings at_defaults = h.app->settings;
+    // A: off on a fresh settings file.
+    IM_CHECK(!at_defaults.safe_paths);
+    IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).safe_paths);
+
+    ImGuiWindow* panel = open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(on_screen(h, kSafePathsName));
+    const ImGuiTestItemInfo box = ctx->ItemInfo("**/##safepaths");
+    if (ctx->IsError()) return;
+    IM_CHECK((box.ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((box.StatusFlags & ImGuiItemStatusFlags_Checked) == 0);
+
+    // B and D: the tick names the switch, and leaves the Path limit alone.
+    hydra::app::Settings safe = at_defaults;
+    safe.safe_paths = true;
+    IM_CHECK(!button_reads(h, safe));  // the tick must change the words
+    ctx->ItemCheck("**/##safepaths");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.safe_paths && button_reads(h, safe); }, 5));
+    IM_CHECK(hydra::ui::detail::settings_button_label(h.app->settings, false).find(kSafePathsName) !=
+             std::string::npos);
+    IM_CHECK(hydra::ui::detail::reset_settings_tooltip(h.app->settings, false).find(kSafePathsName) !=
+             std::string::npos);
+    IM_CHECK(h.app->settings.mslimit_enabled == at_defaults.mslimit_enabled);
+    IM_CHECK(h.app->settings.mslimit_value == at_defaults.mslimit_value);
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).safe_paths);
+
+    // D, the other way round: the Path limit's checkbox leaves the switch on.
+    ctx->ItemClick("**/##mslimit");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->settings.mslimit_enabled != at_defaults.mslimit_enabled;
+    }, 5));
+    IM_CHECK(h.app->settings.safe_paths);
+    IM_CHECK(h.app->settings.mslimit_value == at_defaults.mslimit_value);
+
+    // B: Reset unticks it.
+    ctx->ItemClick("**/Reset to defaults");
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_defaults); }, 5));
+    IM_CHECK(!h.app->settings.safe_paths);
+    IM_CHECK(h.app->settings.mslimit_enabled == at_defaults.mslimit_enabled);
+    IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).safe_paths);
+    ctx->Yield(2);
+    IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
+    IM_CHECK((ctx->ItemInfo("**/##safepaths").StatusFlags & ImGuiItemStatusFlags_Checked) == 0);
+    close_settings_panel(ctx);
+}
+
 // The panel's "Early fill window" row: its (?) shows the help text, whose top
 // edge is the timing step as the reports print it; the box moves the setting
 // and the button's label; a value outside the key table's range lands on its
@@ -2373,6 +2428,7 @@ const std::vector<TestEntry>& library_tests() {
         {"settings-button", test_settings_button},
         {"engine-wildcard-patches", test_engine_wildcard_patches},
         {"settings-reset", test_settings_reset},
+        {"settings-safe-paths", test_settings_safe_paths},
         {"settings-early-fill", test_settings_early_fill},
         {"rules-error", test_rules_error},
         {"settings-error", test_settings_error},

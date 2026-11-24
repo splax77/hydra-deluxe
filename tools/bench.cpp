@@ -97,8 +97,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
     gui.rules = rules;
     const app::AnalysisSettings settings = gui.to_analysis_settings();
     const app::SettingsText words = app::describe_settings(settings);
-    std::printf("Settings: the GUI default (SP cap %s, depth %s, timing cap %s).\n\n",
-                words.cap.c_str(), words.depth.c_str(), words.timing.c_str());
+    std::printf(
+        "Settings: the GUI default (SP cap %s, depth %s, timing cap %s, safe paths %s).\n\n",
+        words.cap.c_str(), words.depth.c_str(), words.timing.c_str(), words.safe_paths.c_str());
 
     store::RecordStore store(":memory:", store::OldFilePolicy::Refuse, core::RulesStamp::of(rules));
 
