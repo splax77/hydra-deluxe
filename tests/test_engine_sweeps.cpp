@@ -951,10 +951,9 @@ TEST_CASE("safe paths: off changes nothing") {
         const std::vector<Path> plain = run_search(graph, EngineOptions{});
         const std::vector<Path> off = run_search(graph, explicit_off);
         REQUIRE(plain.size() == off.size());
-        for (size_t i = 0; i < plain.size(); ++i) {
+        for (size_t i = 0; i < plain.size(); ++i)
             CHECK(path_identity(plain[i]) == path_identity(off[i]));
-            CHECK(plain[i].tied_pathcount() == off[i].tied_pathcount());
-        }
+        CHECK(identities(plain) == identities(off));
     }
     CHECK(charts == corpus_chart_count());
 }
