@@ -48,7 +48,7 @@ The sections below explain each difference.
 
 **The library is one table you scroll and sort by any column.** The search box takes quoted phrases and ignores accents and colour tags. It also takes filters: `artist:`, `album:`, `charter:`, `folder:`, `title:`, `stars:7`, `squeeze<=20` and `squeeze>20`. The `Search tips` link under the box lists every filter with an example. Chips above the table filter by state, with a count on each: `All`, `Not analyzed`, `Stale`, `Analyzed` and `Can't analyze`.
 
-**One button holds the analysis settings.** The toolbar's `Analysis settings` button names the settings you've changed from their defaults, or reads `defaults`. Click it to open a panel with all nine settings. A change applies as you make it. `Reset to defaults` puts all nine back in one click and leaves your song folders alone.
+**One button holds the analysis settings.** The toolbar's `Analysis settings` button names the settings you've changed from their defaults, or reads `defaults`. Click it to open a panel with all ten settings. A change applies as you make it. `Reset to defaults` puts all ten back in one click and leaves your song folders alone.
 
 **The song panel opens beside the library**, instead of in its own window. `<` and `>` step through the list without closing it. `Hide library` gives the song the whole window.
 
