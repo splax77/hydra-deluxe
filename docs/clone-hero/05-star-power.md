@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-22.
+Last write-back: 2026-11-23.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -273,6 +273,16 @@ Game code (6142): none (a display)
 Hydra: `Activation::meter_bars_at` in src/core/model.h gives the bars left at a tick, from the record's stored SP-end steps; `Activation::window_end_tick` in src/core/model.h gives where Star Power ends; `build_sp_meter_curve` in src/app/preview_view.cpp draws the gauge from the two
 Ruling: none needed: a display that reads the engine's level and end (cards 13441c5f and a28ef5f2 hold the user's derive-from-the-engine rule; the filed ruling in docs/agents/rulings/code-and-engine.md says "there should never be two different answers for where star power ends. ever.")
 Found: 2026-10-30, session b02ab3e6 (the reference build); the drain until Star Power ends and the dropped remainder 2026-11-19, session d85370f4 (the one SP end owner plan)
+
+### SP-51 The meter and the drain do not change with the speed
+
+Rule: The full bar and its quarters come from the file's own resolution, and the drain counts the clock's chart ticks, so at any song speed a phrase adds the same quarter bar and Star Power lasts the same number of beats. Only how long that takes in real time changes.
+Label: Proven in the game's code
+Evidence: `code/6142/engine_ctor_20F79E0.asm` lines 157 to 170 build the bars from chart +0xB8, which `code/6142/song_resolution_set_212C0B0.asm` stores as the file's value; the speed-scaled resolution is +0xB0 (page 3, TM-56). The drain reads the clock's tick at engine+0x108 (SP-22), which `code/6142/engine_clock_update_20F4950.asm` lines 42 and 74 make with the chart's time-to-tick method `0x212BCC0`; that method reads +0xB0 (`code/6142/time_to_tick_212BCC0.asm` lines 74 to 92), so a time in game seconds gives the file's own tick. The one +0xB0 value the engine constructor keeps, at +0x1C8, is read only by guitar code (page 7, IN-97).
+Game code (6142): the base engine constructor, RVA `0x20F79E0`; the engine clock update, RVA `0x20F4950`; time to tick, RVA `0x212BCC0`.
+Hydra: no owner for a speed rule (page 3, TM-44)
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-23, session 46353d99.
 
 ## The Star Power end
 

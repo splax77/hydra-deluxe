@@ -2,7 +2,7 @@
 
 This page covers the game's classes and fields that the tools read, the per-note hooks, the bot, the game's MIDI kit, and how the two builds name things.
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
-Last write-back: 2026-11-22.
+Last write-back: 2026-11-23.
 
 Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are in the repo.
 
@@ -209,6 +209,16 @@ Game code (6142): #8255 constructor, RVA `0x20DF680`; `#8255+0x2E0`; fill clears
 Hydra: no owner, except +0x300: Hydra's fill lead is `kCh11FillLeadBeats` of 4 beats times the chart's resolution (src/search/graph.h line 71, src/search/graph.cpp lines 66 to 70). How each side uses it is page 04's FL-23.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-11-08, session 77057df2 (docs-gaps search); the readers, 2026-11-08, session 428cf079 (unknowns audit).
+
+### IN-97 The engine's quarter of the working resolution is read only by guitar code
+
+Rule: The base engine constructor stores the chart's speed-scaled resolution, truncated and divided by 4, at +0x1C8. The only reader found is a `BaseGuitarPlayer` method, which plays a sound through the audio manager when a note's +0x48 is greater than it. No drums code reads it, so it plays no part in drums timing at any speed.
+Label: Proven in the game's code
+Evidence: the store is `code/6142/engine_ctor_20F79E0.asm` lines 151 to 156. The reader is `code/6142/guitar_length_check_115BB30.asm` lines 22 to 27, compiled three times, at `0x115BB30`, `0x115BC80` and `0x115BDD0`. Searched: every method of the engine classes #8288, #8253 and #8255, where only the constructor writes it, and a byte search of the code section for the offset 0x1C8 in methods whose class name holds Player, Drum, Note, Track, Sustain, Star, Highway, GameManager, Lane or Fill. A reader in a class with another name would have been missed. What the note's +0x48 holds and what the sound is were not read.
+Game code (6142): the base engine constructor, RVA `0x20F79E0`; the `BaseGuitarPlayer` method (scrambled name), RVA `0x115BB30`.
+Hydra: no owner: Hydra models drums only.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-23, session 46353d99.
 
 ## The per-note hooks
 

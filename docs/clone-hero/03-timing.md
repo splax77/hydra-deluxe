@@ -2,7 +2,7 @@
 
 This page covers chart Offset and song.ini delay, the song clock, the hit window, calibration and playback speed.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-22.
+Last write-back: 2026-11-23.
 
 ## Offset and delay
 
@@ -498,13 +498,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### TM-40 At another speed the clock divides the audio position and the delay
 
-Rule: At a ratio other than 1 the clock divides both the audio position and the delay by the ratio. Whether the audio position is in file seconds or in stretched real seconds is not known.
+Rule: At a ratio other than 1 the clock divides both the audio position and the delay by the ratio. For the clock to agree with its own frame timer, which runs at wall-clock pace (TM-57), the audio position has to be in the audio file's seconds, not the stretched seconds played. That is what the code needs; that BASS_FX reports it so has not been seen.
 Label: Unknown
-Evidence: The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32. The position getter `0x365F10` returns 0 unless a song is loaded, then asks BASS for the byte position of the channel whose handle is at the audio manager's `+0x58` and converts it to seconds (`code/6142/audio_position_365F10.asm` lines 17 to 45; the externs match BASS's position and bytes-to-seconds calls by shape and error text). Which channel that is: the mixer builder `0x368590` stores `+0x58` (`code/6142/mixer_create_368590.asm` line 31). When its int argument is not -1 it builds a tempo stream over the mixer (lines 21 to 28) and `+0x58` gets the tempo stream; when the argument is -1, `+0x58` gets the mixer. The tempo stream's starting tempo is set to that argument (`code/6142/tempo_create_366FC0.asm` lines 112 to 117). The song-load method passes the song speed's whole percent minus 100, but only when its own byte at `+0x68` is set, and -1 otherwise (`code/6142/audio_load_36B700.asm` lines 112 to 125); what writes that byte was not searched. So once that byte is set, any speed, 100 included, gets a tempo stream, and a speed of 99% gives 99 - 100 = -1, the "no tempo" value, so no tempo stream. One side fact: when a bool setting is on, the tempo builder also sets the pitch to 12 x log2(speed / 100) (`code/6142/tempo_create_366FC0.asm` lines 68 to 106). Not in the game's code: whether BASS reports a tempo stream's position in source seconds or in played seconds. That is the BASS_FX library's behaviour; a run at 50% speed comparing the getter's result with real time would settle it.
+Evidence: The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32. The position getter `0x365F10` returns 0 unless a song is loaded, then asks BASS for the byte position of the channel whose handle is at the audio manager's `+0x58` and converts it to seconds (`code/6142/audio_position_365F10.asm` lines 17 to 45; the externs match BASS's position and bytes-to-seconds calls by shape and error text). Which channel that is: the mixer builder `0x368590` stores `+0x58` (`code/6142/mixer_create_368590.asm` line 31). When its int argument is not -1 it builds a tempo stream over the mixer (lines 21 to 28) and `+0x58` gets the tempo stream; when the argument is -1, `+0x58` gets the mixer. The tempo stream's starting tempo is set to that argument (`code/6142/tempo_create_366FC0.asm` lines 112 to 117). The song-load method passes the song speed's whole percent minus 100, but only when its own byte at `+0x68` is set, and -1 otherwise (`code/6142/audio_load_36B700.asm` lines 112 to 125); what writes that byte was not searched. So once that byte is set, any speed, 100 included, gets a tempo stream, and a speed of 99% gives 99 - 100 = -1, the "no tempo" value, so no tempo stream. One side fact: when a bool setting is on, the tempo builder also sets the pitch to 12 x log2(speed / 100) (`code/6142/tempo_create_366FC0.asm` lines 68 to 106). Not in the game's code: whether BASS reports a tempo stream's position in source seconds or in played seconds. That is the BASS_FX library's behaviour; a run at 50% speed comparing the getter's result with real time would settle it. On 2026-11-23 the clock's other side was read: the raw clock moves at wall-clock pace (TM-57) while the audio term is position / ratio, and the clock spreads any gap above 0.003 s between them (TM-12), so the two agree only when the position is in file seconds. BASS_FX's tempo-stream documentation could not be fetched that day (documentation.help returned 403 and un4seen.com 404).
 Game code (6142): the position getter (scrambled `BassAudioManager` member), RVA `0x365F10`; the mixer builder, RVA `0x368590`; the tempo builder, RVA `0x366FC0`; the song-load method, RVA `0x36B700`; listings as above.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079; the frame-timer side 2026-11-23, session 46353d99.
 
 ### TM-41 The practice speed scales the raw clock
 
@@ -528,13 +528,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### TM-43 The hit window at another speed
 
-Rule: Whether the hit window and the song clock run in chart time or in real time at a playback speed other than 100% is not known. Separately, at half speed the game time-stretches the audio, so a gameplay video's sound cannot be lined up with the chart by its audio.
-Label: Unknown
-Evidence: the formula and the clamp hold no speed variable (the decompile lines 757 to 782 and 53871 to 53907), but whether the note times are already scaled by the speed was not traced. Most times the player hands the engine are read from `GameManager.songTime` (TM-36), which comes from a clock that divides the audio position by the speed ratio (TM-40); whether that position is in file seconds is TM-40's open BASS_FX question. The time-stretch half is a card's roadblock with no code or file read; it is not checked and needs a run at half speed. For such a run, the song speed is an int setting (default 100, limits 10 to 5000, TM-34), and its value setter is the generic int setter `0xFE5F50`, which stores the value at the setting's `+0x10` and then calls the setting's changed method (`code/6142/int_setting_set_FE5F50.asm` lines 2 to 4). The run must set it before the song loads, because the song-load method reads it to build the tempo stream (TM-40).
-Game code (6142): not found for the note-time scaling: looked in the decompile lines 757 to 782 and 53871 to 53907; the setter of class #8338 (scrambled name), RVA `0xFE5F50`, `code/6142/int_setting_set_FE5F50.asm` lines 2 to 4.
+Rule: At any playback speed the hit window runs in real time. The note times it is built from are the file's times divided by the speed (TM-56), and the formula and the clamps hold no speed term, so a note's window is 48.15 to 85.72 ms a side of real time at every speed (TM-22). Measured against the file's own times, that is the window times the speed. Separately, the audio is time-stretched rather than sped up when it goes through a tempo stream (TM-40), so a gameplay video's sound cannot be lined up with the chart by its audio.
+Label: Proven in the game's code
+Evidence: the formula and the clamp hold no speed variable (the decompile lines 757 to 782 and 53871 to 53907). The half-gap reads the note time at note+0x28 (TM-19, `code/6142/half_gap_clamp_20F7210.asm` lines 17 to 33), and every engine note's +0x28 is the chart's tick-to-time conversion of its tick (`code/6142/note_build_20D4BE0.asm` lines 240 to 267, `code/6142/note_ctor_214BF10.asm` line 27), which divides by the speed (TM-56); the song clock is in the same seconds (TM-57). A worked example from the TM-21 formula: 16th notes at 180 BPM are 83.3 ms apart in the file, which gives about 53 ms a side at 100%; at 50% they are 166.7 ms apart in real time, which gives 85.1 ms a side, 42.5 ms of the file's time; at 200% they are 41.7 ms apart, each half-gap is held at the front, and the side is the 48.15 ms floor, 96.3 ms of the file's time. No run has shown it; the live-checks row for TM-40 and TM-43 would. Most times the player hands the engine are read from `GameManager.songTime` (TM-36), which comes from a clock that divides the audio position by the speed ratio (TM-40); whether that position is in file seconds is TM-40's open BASS_FX question. The time-stretch half is a card's roadblock with no code or file read; it is not checked and needs a run at half speed. For such a run, the song speed is an int setting (default 100, limits 10 to 5000, TM-34), and its value setter is the generic int setter `0xFE5F50`, which stores the value at the setting's `+0x10` and then calls the setting's changed method (`code/6142/int_setting_set_FE5F50.asm` lines 2 to 4). The run must set it before the song loads, because the song-load method reads it to build the tempo stream (TM-40).
+Game code (6142): the note builder, RVA `0x20D4BE0`, and the note constructor, RVA `0x214BF10`, listings as above; the setter of class #8338 (scrambled name), RVA `0xFE5F50`, `code/6142/int_setting_set_FE5F50.asm` lines 2 to 4.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build); the setter 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the setter 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079; the note times 2026-11-23, session 46353d99.
 
 ### TM-44 Hydra scores every chart at 100 percent
 
@@ -545,6 +545,26 @@ Game code (6142): see TM-39.
 Hydra: `kBaseSpeedPercent` in src/net/dmbot_client.h line 35.
 Ruling: D25: "Off-speed leaderboard scores get their own "other speed" status and leave the Matched, Above optimal and Points left on table totals." (the decision log's words; no user quote is in the record)
 Found: 2026-10-03, D25.
+
+### TM-56 At another speed the chart's times are the file's times divided by the speed
+
+Rule: When a song loads, the game multiplies the chart's working resolution by the speed ratio, and every tick-to-time and time-to-tick conversion, the tempo map's own stored times included, uses that working resolution. So at 50% a note written 10 s into the chart sits at 20 s of game time, and at 200% at 5 s. The file's own resolution is kept beside it, and the Star Power sizes and the 1.1 fill lead read that one (SP-51, FL-47).
+Label: Proven in the game's code
+Evidence: `code/6142/songentry_load_35C110.asm` lines 141 to 154 read the `song_speed` setting through the ratio getter `0x210C090` (TM-39), and lines 164 and 174 pass it as the float of the chart-read settings, which `code/6142/chart_settings_ctor_20E73E0.asm` stores at +0x14 (lines 9 and 32). The resolution setter `code/6142/song_resolution_set_212C0B0.asm` stores the file's value at chart +0xB8 and that value times the +0x14 float at chart +0xB0 (CR-42). Tick to time: `code/6142/tick_to_time_212B9C0.asm` lines 48 to 72 (time = entry time + ticks x 60 / (tempo x +0xB0)). Time to tick: `code/6142/time_to_tick_212BCC0.asm` lines 74 to 92. Each tempo's stored time: `code/6142/add_tempo_212CBF0.asm` lines 60 to 73 and 115 to 119. The engine's notes take their times from the first of these (`code/6142/note_build_20D4BE0.asm` lines 240 to 267, `code/6142/note_ctor_214BF10.asm` lines 15 and 27). The scrambled name of chart +0xB0 is also the name of the resolution parameter of the chart's static tick-and-tempo helpers in `dump.cs`, which fits +0xB0 being the resolution the code works in. Not checked: whether any reader sets the resolution after it has added tempos.
+Game code (6142): `SongEntry` load, RVA `0x35C110`; the settings constructor of class #8267, RVA `0x20E73E0`; the chart class #8538's resolution setter `0x212C0B0`, tick to time `0x212B9C0`, time to tick `0x212BCC0` and tempo adder `0x212CBF0`; the note builder `0x20D4BE0` and the note constructor `0x214BF10`.
+Hydra: `SongTiming` in src/core/timing.h turns ticks into time from `Song::tick_resolution` alone, the 100% case (TM-44).
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-23, session 46353d99.
+
+### TM-57 Outside practice mode the raw clock runs at wall-clock pace at every speed
+
+Rule: `GameManager.Awake` sets practiceSpeed to the speed ratio, and the clock tick advances the raw clock by deltaTime x practice speed / ratio (TM-12), so outside practice mode the raw clock moves one second per second of wall time at every speed. With TM-56 that keeps the clock and the notes in the same seconds.
+Label: Proven in the game's code
+Evidence: `code/6142/gm_awake_B41A0.asm` lines 85 to 92 (settings static +0x10, the `song_speed` setting, through `0x210C090`, stored at GameManager+0xD8); the load coroutine copies +0xD8 into the clock (`code/6142/gm_load_coroutine_D8D80.asm` lines 472 and 473, TM-41); `code/6142/clock_tick_16C650.asm` line 16 divides by the ratio at clock+0x2C. Lines 93 to 103 of the Awake listing also store the setting's whole value minus 100 at GameManager+0xDC; its readers were not searched. Other writers of +0xD8 before a song loads, such as a practice-mode screen, were not searched.
+Game code (6142): `GameManager.Awake`, RVA `0xB41A0`, `code/6142/gm_awake_B41A0.asm` lines 85 to 103.
+Hydra: no owner
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-23, session 46353d99.
 
 ## The lane-press window
 
