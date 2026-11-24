@@ -299,5 +299,5 @@ the wrong memory.
   The listings in the repo are under `docs/clone-hero/code/6142/`.
 - The summary artifact named above is not in the repo. Treat it as secondary:
   some of its addresses disagree with the dumps.
-- Hydra's model uses a flat `kHitWindowMs = 85.0`; the point of
+- Hydra's model uses a flat `kTimingStepMs = 85.0`; the point of
   this work is to decide whether that should become the per-note quadratic.

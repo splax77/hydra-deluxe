@@ -522,8 +522,8 @@ threshold is written as a read, the read at which the own end reaches it. A path
 cannot plan comes back as a list of refusals in the file, each in plain words.
 The schedule keeps no millisecond constant of its own; its `constants` are
 the game's window constants from src/core/note_window.h. No screen reads the
-schedule's code: Hydra's own judging keeps the fixed 85 ms window
-(`kHitWindowMs`).
+schedule's code: Hydra's own judging keeps the fixed 85 ms timing step
+(`kTimingStepMs`).
 `hydra_replay selfcheck` is what keeps the numbers honest: it re-analyzes
 every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single

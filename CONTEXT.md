@@ -671,25 +671,26 @@ database holds both rules' records, and no label on the whole file names a
 rule. The conversion deletes the retired `engine_mode` row
 (`kRetiredFillLabelKey` in src/store/record_store.cpp).
 
-**Hit window**:
-The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
-window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
-src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
-squeeze budgets (`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words
-and the report's timing tiers all read it. It is also the most the
-`Early fill window` setting allows (Early fill (E)). The old `hit_window_ms` key is retired and skipped
-(Settings files). The report's timing tiers are Normal up to 2 ms
-(`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
-Insane up to one and a half, Insane+ up to two, and Beyond past two windows;
-each edge belongs to the band below it (`timing_tiers` and `tier_for` in
-src/core/squeeze_rating.cpp; D48, Q3 and Q33). The report's footer and its
-Timing column's tooltip call it "the 85 ms hit window", printed by
-`hit_window_text` (src/app/report.h; D278 item 4).
+**Timing step**:
+Hydra's fixed ms step for sizing timings: 85 ms<!-- default: kTimingStepMs -->
+(`kTimingStepMs` in src/core/model.h). It is one fixed number, not a setting
+(D270 call 8). The report's timing tiers are cut in steps of it, it is the
+per-side unit of the squeeze budget (`squeeze_budget_ms`, `nominal_budget_ms`),
+and the Rating words band on those tiers. It is also the most the
+`Early fill window` setting allows (Early fill (E)). It is not Clone Hero's
+hit window: the game sizes each note's window itself, as the next paragraph
+says. The old `hit_window_ms` key is retired and skipped (Settings files).
+The report's timing tiers are Normal up to 2 ms (`kDifficultMs`), then Hard
+up to half a step, Extreme up to one step, Insane up to one and a half,
+Insane+ up to two, and Beyond past two steps; each edge belongs to the band
+below it (`timing_tiers` and `tier_for` in src/core/squeeze_rating.cpp; D48,
+Q3 and Q33). The report's footer and its Timing column's tooltip print it as
+"steps of 85 ms", through `timing_step_text` (src/app/report.h; D278 item 4).
 
 The game itself gives each note its own window, sized by the gaps to the
 chords either side (docs/clone-hero/03-timing.md, TM-17 to TM-22 and TM-51).
 Each half-gap is held between the front clamp, 37.5 ms (`kWindowFrontMs`), and
-the back clamp, 85 ms (`kWindowBackMs`, a separate number from `kHitWindowMs`).
+the back clamp, 85 ms (`kWindowBackMs`, a separate number from `kTimingStepMs`).
 The two halves are summed and fed to the window formula, whose linear term is
 0.0110924369747899 (`kFormulaLinear`), whose square term is 2.628539e-05
 (`kFormulaSquare`), and whose scale is 170.0 (`kFormulaScale`), less 20 ms
