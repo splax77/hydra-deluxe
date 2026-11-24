@@ -20,6 +20,10 @@ inline constexpr const char* kOldestConvertibleVersion = "2.2.0";
 enum class LibraryFileKind {
     Fresh,        // no file, an empty file, or SQLite's in-memory name
     Current,      // this build's layout (profiles, records, record_paths)
+    // the layout before results were saved per Safe paths setting: its
+    // profiles table lacks kSafePathsColumn, which the open rebuilds the
+    // table to hold
+    LacksSafePathsColumn,
     // the layout before results were saved per song speed: its profiles
     // table lacks kSpeedColumn, which the open rebuilds the table to hold
     LacksSpeedColumn,
@@ -76,6 +80,17 @@ inline constexpr const char* kSpeedColumn = "speed_percent";
 // asks it the way it asks profiles_table_lacks_early_fill, and it answers a
 // file with no profiles table, or one SQLite cannot read, the same way.
 bool profiles_table_lacks_speed(sqlite3* db);
+
+// The profiles table's Safe paths column (store::Lens::safe_paths), by the
+// name the store's lens column list gives it (record_store.cpp checks the two
+// agree).
+inline constexpr const char* kSafePathsColumn = "safe_paths";
+
+// Whether the open file's profiles table exists without kSafePathsColumn, the
+// one test classify_library_file names LacksSafePathsColumn by. The store's
+// set-up asks it the way it asks profiles_table_lacks_speed, and it answers a
+// file with no profiles table, or one SQLite cannot read, the same way.
+bool profiles_table_lacks_safe_paths(sqlite3* db);
 
 // What an open does with a TooOld file. Every caller names one; there is no
 // default, because the app and the command-line tools want different things.
