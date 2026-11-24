@@ -77,7 +77,7 @@ StretchSource::StretchSource(std::unique_ptr<MixSource> plain, double speed_rati
     } catch (const KindedError&) {
         throw;
     } catch (const std::exception& e) {
-        fail(e.what());
+        throw KindedError(ErrorKind::AudioDecode, e.what());
     }
     seek(0);
 }
@@ -181,7 +181,7 @@ int64_t StretchSource::read(float* out, int64_t frames) {
     int64_t done = 0;
     try {
         while (done < want) {
-            const int64_t piece = std::min(want - done, kBlockFrames);
+            const int64_t piece = std::min<int64_t>(want - done, kBlockFrames);
             const bool ready = fill(piece);
             const auto got = static_cast<int64_t>(
                 st_->receiveSamples(out + static_cast<std::size_t>(done) * ch, as_count(piece)));
