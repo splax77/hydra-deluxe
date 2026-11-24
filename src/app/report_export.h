@@ -107,7 +107,7 @@ xlsx::Sheet build_sheet(const report_view::TableView<Row>& view, const SheetLook
             const CellInk ink = look.ink(column, row);
             const xlsx::CellStyle style{fill, ink.font, ink.border};
             std::string text = column.cell(row);
-            longest[c] = std::max(longest[c], text_length(text));
+            longest[c] = (std::max)(longest[c], text_length(text));
             if (column.number) {
                 const std::optional<double> n = column.number(row);
                 cells.push_back(n ? xlsx::Cell::of_number(*n, column.number_format, style)
