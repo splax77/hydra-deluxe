@@ -16,7 +16,6 @@
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseReadSentence
 #include "core/model.h"
-#include "core/strutil.h"  // ends_with
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
@@ -286,22 +285,6 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->batch_confirm_pending);
 }
 
-// Whether some line of `text` holds `name` and ends in `value`: a two-column
-// row of the batch confirm's settings table, which ImGui's text log writes on
-// one line, name first.
-bool row_reads(const std::string& text, const std::string& name, const std::string& value) {
-    size_t start = 0;
-    while (start <= text.size()) {
-        size_t end = text.find('\n', start);
-        if (end == std::string::npos) end = text.size();
-        std::string line = text.substr(start, end - start);
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
-        if (line.find(name) != std::string::npos && hydra::ends_with(line, value)) return true;
-        start = end + 1;
-    }
-    return false;
-}
-
 // The confirm's "Safe paths" line (Safe paths plan, S3 check C): it reads the
 // value describe_settings gives the settings the app holds, "off" on a fresh
 // settings file and "on" once the panel's box is ticked.
@@ -320,8 +303,12 @@ void test_batch_confirm_safe_paths(ImGuiTestContext* ctx) {
             hydra::app::describe_settings(h.app->settings.to_analysis_settings()).safe_paths;
         IM_CHECK_EQ(hydra::ui::detail::batch_settings_summary(h.app->settings).safe_paths, word);
         IM_CHECK_EQ(word, std::string(on ? "on" : "off"));
-        if (!row_reads(visible_text(h), kSafePathsName, word))
-            IM_ERRORF("the confirm has no \"%s\" line reading \"%s\"", kSafePathsName, word.c_str());
+        // ImGui's text log writes a table row's cells on one line, each after
+        // a "|"; the fill card test in pbtest_coach.cpp reads its rows the
+        // same way.
+        const std::string row = std::string(kSafePathsName) + " | " + word;
+        if (!on_screen(h, row))
+            IM_ERRORF("the confirm has no row reading \"%s\"", row.c_str());
         ctx->KeyPress(ImGuiKey_Escape);
         ctx->Yield(2);
         IM_CHECK(!h.app->batch_confirm_pending);
