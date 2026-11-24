@@ -117,10 +117,10 @@ Open the report with the branch tip you leave behind (the key you were given if 
 End the report with one stamp line for each repo you sign, each whole on its own line:
 
 ```
-STAMP: <start>...<commit> in <folder>
+STAMP: <commit> in <folder>
 ```
 
-The commit is the full 40-character hash of your last commit in that repo, or of the key you were given when you fixed nothing there. The start is the start on your brief's `Review range:` line, usually `main`, and the folder is the folder on its `Review repo:` line. "Output" in `docs/agents/derive-once-review.md` is the one full account of the line and what the hook does with it. The hook reads nothing else in your report. When you also review the range's code, the same line signs the code and every document, as that page says.
+The commit is the full 40-character hash of your last commit in that repo, or of the key you were given when you fixed nothing there, and the folder is the folder on your brief's `Review repo:` line. The line names no start; the hook reads from git where the commit left the local `main` branch. "Output" in `docs/agents/derive-once-review.md` is the one full account of the line and what the hook does with it. The hook reads nothing else in your report. When you also review the range's code, the same line signs the code and every document, as that page says.
 
 A report with no stamp line records nothing, and the merge or the publish stays refused. The main session is told, and it asks you, the same reviewer, to hand back again with the line. That is not a second review. A stamp line the hook refuses is handled the same way: nothing is recorded for that line, the main session is told which line failed and why, and it asks you for the line again.
 
