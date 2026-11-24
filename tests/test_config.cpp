@@ -826,6 +826,30 @@ TEST_CASE("profile_at_clone_hero_cap differs from profile only in the cap") {
     CHECK(s.profile_at_clone_hero_cap() == s.profile());
 }
 
+// The user's words: "Keep comparing at 100%". The leaderboard report reads
+// this profile, so it stays on the default speed whatever speed is set.
+TEST_CASE("profile_at_clone_hero_cap holds the default speed at any speed setting") {
+    namespace store = hydra::store;
+
+    Settings at100 = every_key_part_changed();
+    at100.sp_cap = 8;
+    REQUIRE(at100.speed_percent == hydra::kDefaultSpeedPercent);
+    Settings at150 = at100;
+    at150.speed_percent = 150;
+
+    const store::Profile from150 = at150.profile_at_clone_hero_cap();
+    CHECK(from150.lens.speed_percent == hydra::kDefaultSpeedPercent);
+    CHECK(from150.lens.speed_percent != at150.profile().lens.speed_percent);
+    // Otherwise it is the profile the same settings give at the default speed.
+    CHECK(from150 == at100.profile_at_clone_hero_cap());
+    CHECK(from150.chartmode == at150.profile().chartmode);
+
+    // At Clone Hero's cap the only difference from profile() is the speed.
+    at150.sp_cap = hydra::kCloneHeroSpCap;
+    at100.sp_cap = hydra::kCloneHeroSpCap;
+    CHECK(at150.profile_at_clone_hero_cap() == at100.profile());
+}
+
 TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
     namespace store = hydra::store;
 

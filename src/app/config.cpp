@@ -451,6 +451,10 @@ store::Profile Settings::profile() const {
 store::Profile Settings::profile_at_clone_hero_cap() const {
     Settings at_cap = *this;
     at_cap.sp_cap = kCloneHeroSpCap;
+    // The leaderboard report compares with the default-speed result at any
+    // speed setting; a score at another speed has its own status
+    // (net::is_base_speed).
+    at_cap.speed_percent = kDefaultSpeedPercent;
     return at_cap.profile();
 }
 
