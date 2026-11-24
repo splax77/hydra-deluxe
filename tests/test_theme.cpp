@@ -334,10 +334,10 @@ TEST_CASE("report table: a plain cell reads in its look's and its tone's colour"
                      chip_color(ChipToken::t3));
 }
 
-// The path report's real columns, with the chip rule the path window hands
-// the table (path_report_window.cpp: a row's Timing chip is tier_token of its
-// tok). Fails if Song stops reading plain, a name column stops reading dim,
-// or Timing stops being a chip in its own tier's colour.
+// The path report's real columns, with the path window's own row look
+// (path_row_look), which its table draws with. Fails if Song stops reading
+// plain, a name column stops reading dim, or Timing stops being a chip in its
+// own tier's colour.
 TEST_CASE("report table: the path report's cells read in the window's colours") {
     using hydra::app::path_report_view::path_columns;
     using hydra::app::report::ReportRow;
@@ -352,8 +352,7 @@ TEST_CASE("report table: the path report's cells read in the window's colours") 
     REQUIRE(artist);
     REQUIRE(charter);
     REQUIRE(timing);
-    report_frame::RowLook<ReportRow> look;
-    look.chip = [](const ReportRow& r) { return tier_token(r.tok); };
+    const report_frame::RowLook<ReportRow> look = path_row_look();
 
     const std::vector<hydra::TimingTier> tiers = hydra::timing_tiers();
     REQUIRE_FALSE(tiers.empty());
@@ -383,9 +382,8 @@ TEST_CASE("report table: the path report's cells read in the window's colours") 
     }
 }
 
-// The comparison's real columns, with the chip rule the comparison window
-// hands the table (dm_report_window.cpp: a row's Status chip is status_token
-// of its status). Points left is the one column whose colour moves with the
+// The comparison's real columns, with the comparison window's own row look
+// (dm_row_look), which its table draws with. Points left is the one column whose colour moves with the
 // row. Fails if any of its four cases reads in the wrong colour, if Posted
 // stops reading dim, or if a status's chip is not in that status's token.
 TEST_CASE("report table: the comparison's cells read in the window's colours") {
@@ -402,8 +400,7 @@ TEST_CASE("report table: the comparison's cells read in the window's colours") {
     REQUIRE(posted);
     REQUIRE(left);
     REQUIRE(status);
-    report_frame::RowLook<DmReportRow> look;
-    look.chip = [](const DmReportRow& r) { return status_token(r.status); };
+    const report_frame::RowLook<DmReportRow> look = dm_row_look();
 
     DmReportRow plain;
     plain.posted = "2026-11-01T12:00:00Z";
