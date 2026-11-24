@@ -318,6 +318,7 @@ TEST_CASE("hydra_batch prints the app's setting words and counts, and fills a ne
         CHECK(contains(r.output, "Path limit : " + described.timing + "\r\n"));
         CHECK(contains(r.output, fills_header_line(false)));
         CHECK(contains(r.output, "Early fill : " + described.early_fill + "\r\n"));
+        CHECK(contains(r.output, "Song speed : " + described.speed + "\r\n"));
     }
     CHECK(contains(r.output, "Found 1 chart."));
     // Every number is the batch's progress, in library rows (D79); the
@@ -704,6 +705,24 @@ TEST_CASE("hydra_batch names the cap with the one count rule") {
             hydra::app::describe_settings(settings.batch_run().settings).cap;
         CHECK(contains(r.output, "SP cap     : " + words + "\r\n"));
     }
+}
+
+TEST_CASE("hydra_batch's header names the song speed the run read") {
+    // The sandboxed exe reads its song speed from hydra_settings.ini beside it.
+    CliSandbox box("speed");
+    // Any speed other than the default, so the line can't pass on the
+    // default's words.
+    constexpr int kFasterSpeed = 150;
+    hydra::app::Settings settings{};
+    settings.speed_percent = kFasterSpeed;
+    REQUIRE(settings.save_file((box.dir / "hydra_settings.ini").u8string()));
+    RunResult r = run_exe(box.batch, {"--db", box.db("speed.db"), box.folder()});
+    INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    // The header's speed is describe_settings' words for the speed the run read.
+    const std::string words = hydra::app::describe_settings(settings.batch_run().settings).speed;
+    REQUIRE(words != hydra::app::describe_settings(hydra::app::Settings{}.batch_run().settings).speed);
+    CHECK(contains(r.output, "Song speed : " + words + "\r\n"));
 }
 
 TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
