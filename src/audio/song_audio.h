@@ -49,20 +49,24 @@ std::vector<std::unique_ptr<StemReader>> open_song_stems(
 
 // The song's stems mixed into one stream.
 struct SongMix {
-    // Every reader mixed while it plays, at kOutRate and kOutChannels. A
-    // negative chart offset is silence in front of the stems (the mix's
-    // front pad).
-    std::unique_ptr<StreamMix> mix;
-    // Where chart time 0 sits in `mix`. Never negative: a negative offset is
-    // padded into the front of `mix` instead, because the playhead cannot
+    // Every reader mixed while it plays, at kOutRate and kOutChannels, and
+    // played at the song speed (audio::play_at_speed). A negative chart
+    // offset is silence in front of the stems (the mix's front pad).
+    std::unique_ptr<MixSource> mix;
+    // Where chart time 0 sits in `mix`, in the file's own time, as
+    // app::audio_ms_of_chart_ms takes it. Never negative: a negative offset
+    // is padded into the front of `mix` instead, because the playhead cannot
     // seek below 0.
     double audio_offset_ms = 0.0;
 };
 
 // Mixes `readers` for a chart whose time 0 sits `offset_ms` into the audio
-// (app::chart_audio_offset_ms). The Preview's load mixes here. Throws a
-// KindedError of kind AudioDecode when the mix cannot be set up (StreamMix).
-SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms);
+// (app::chart_audio_offset_ms), played at `speed_ratio` (the song's
+// SongTiming::speed_ratio) through audio::play_at_speed. The Preview's load
+// mixes here. Throws a KindedError of kind AudioDecode when the mix cannot
+// be set up (StreamMix, StretchSource).
+SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms,
+                       double speed_ratio);
 
 }  // namespace hydra::audio
 

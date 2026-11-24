@@ -123,7 +123,8 @@ public:
 
     struct Result {
         app::PreviewScene scene;
-        // Every stem that opened, mixed while it plays (audio::SongMix::mix).
+        // Every stem that opened, mixed while it plays and played at the
+        // song's speed (audio::SongMix::mix).
         std::unique_ptr<audio::MixSource> audio;
         // Where chart time 0 sits in `audio` (audio::SongMix::audio_offset_ms).
         double audio_offset_ms = 0.0;

@@ -91,8 +91,11 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
         return;
     }
     // The same chart in another mode, with its audio already loaded: keep the
-    // audio and the playhead, and reload only the notes.
-    if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5) {
+    // audio and the playhead, and reload only the notes. Another song speed
+    // is not another mode: the audio was stretched to the old speed, so the
+    // whole load runs again.
+    if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5 &&
+        open_key_.reading.speed_percent == key.reading.speed_percent) {
         record_request(path, path_key, sp_cap);
         start_notes_job(entry, key);
         return;
@@ -310,7 +313,7 @@ void PreviewController::poll() {
         first_load_done_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
-                        result.audio_offset_ms);
+                        result.audio_offset_ms, song_->timing().speed_ratio());
         transport_.set_song_length_ms(result.song_length_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).

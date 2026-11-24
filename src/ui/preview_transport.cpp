@@ -6,20 +6,24 @@
 
 namespace hydra::ui {
 
-// The transport's three sync-rule calls pass a speed ratio of 1.0: the
-// playhead plays the stems unstretched, one file ms per clock ms, and the
-// transport holds no song speed.
+// Every playhead seek asks playhead_ms where to go.
 
 PreviewTransport::PreviewTransport(app::PreviewClock::Now now)
     : clock_(std::move(now)) {}
 
-void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms) {
+double PreviewTransport::playhead_ms(double chart_ms) const {
+    return app::played_ms_of_chart_ms(chart_ms, audio_offset_ms_, speed_ratio_);
+}
+
+void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms,
+                            double speed_ratio) {
     std::lock_guard<std::mutex> lock(mu_);
     playhead_ = std::move(playhead);
     audio_offset_ms_ = audio_offset_ms;
+    speed_ratio_ = speed_ratio;
     if (playhead_) {
         playhead_->pause();
-        playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_, 1.0));
+        playhead_->seek_ms(playhead_ms(0.0));
         playhead_->set_gain(gain_);
     }
     clock_.pause();
@@ -31,6 +35,7 @@ void PreviewTransport::unload() {
     playhead_.reset();
     song_length_ms_.reset();
     audio_offset_ms_ = 0.0;
+    speed_ratio_ = 1.0;
     clock_.pause();
     clock_.seek_ms(0.0);
 }
@@ -39,7 +44,7 @@ void PreviewTransport::play() {
     {
         std::lock_guard<std::mutex> lock(mu_);
         if (playhead_) {
-            playhead_->seek_ms(audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_, 1.0));
+            playhead_->seek_ms(playhead_ms(clock_.now_ms()));
             playhead_->play();
         }
     }
@@ -66,7 +71,7 @@ void PreviewTransport::seek_ms(double ms) {
     clock_.seek_ms(ms);
     std::lock_guard<std::mutex> lock(mu_);
     if (!playhead_) return;
-    playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_, 1.0));
+    playhead_->seek_ms(playhead_ms(ms));
     // The clock is the master: while it plays, the audio plays too. The
     // playhead pauses itself when its audio runs out, so a jump back from
     // past that end would otherwise stay silent (finding 73).

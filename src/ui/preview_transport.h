@@ -41,12 +41,16 @@ public:
     PreviewTransport(const PreviewTransport&) = delete;
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
-    // Load a chart's audio (may be null/empty for a chart with no audio) and
+    // Load a chart's audio (may be null/empty for a chart with no audio),
     // where chart time 0 sits in the audio (audio_ms_of_chart_ms; never
-    // negative, see audio::mix_song_stems). Resets the playhead to the
-    // offset, paused. Where playback ends is set apart, by
-    // set_song_length_ms: the audio's own length never decides it.
-    void load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms = 0.0);
+    // negative, see audio::mix_song_stems), and the song speed the chart is
+    // timed at (SongTiming::speed_ratio). Away from a ratio of 1 the playhead
+    // must play the stretched mix (audio::play_at_speed), whose frames are
+    // played frames. Resets the playhead to chart time 0, paused. Where
+    // playback ends is set apart, by set_song_length_ms: the audio's own
+    // length never decides it.
+    void load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms = 0.0,
+              double speed_ratio = 1.0);
     void unload();  // drop the playhead, back to an empty paused transport
 
     void play();    // seeks the playhead to the clock and starts both
@@ -88,9 +92,14 @@ public:
     int sample_rate() const;
 
 private:
+    // Where the playhead goes for chart time `chart_ms`
+    // (app::played_ms_of_chart_ms). Called under mu_.
+    double playhead_ms(double chart_ms) const;
+
     app::PreviewClock clock_;  // GUI thread only
     std::optional<double> song_length_ms_;
     double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
+    double speed_ratio_ = 1.0;      // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
     std::unique_ptr<audio::Playhead> playhead_;

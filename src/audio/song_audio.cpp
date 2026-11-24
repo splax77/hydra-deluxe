@@ -7,6 +7,7 @@
 
 #include "audio/frames.h"
 #include "audio/mapped_file.h"
+#include "audio/stretch_mix.h"
 
 namespace hydra::audio {
 
@@ -66,7 +67,8 @@ std::vector<std::unique_ptr<StemReader>> open_song_stems(
     return readers;
 }
 
-SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms) {
+SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms,
+                       double speed_ratio) {
     SongMix out;
     out.audio_offset_ms = offset_ms;
     int64_t front_pad = 0;
@@ -75,7 +77,9 @@ SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double 
         front_pad = frames_of_ms(-offset_ms, kOutRate);
         out.audio_offset_ms = 0.0;
     }
-    out.mix = std::make_unique<StreamMix>(std::move(readers), kOutRate, kOutChannels, front_pad);
+    out.mix = play_at_speed(
+        std::make_unique<StreamMix>(std::move(readers), kOutRate, kOutChannels, front_pad),
+        speed_ratio);
     return out;
 }
 

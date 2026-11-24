@@ -18,6 +18,8 @@
 #include "audio/frames.h"
 #include "audio/song_audio.h"
 #include "audio/stem_reader.h"
+#include "audio/stretch_mix.h"
+#include "audio/stream_mix.h"
 #include "audio_util.h"  // fixture_path, read_fixture
 
 using namespace hydra::audio;
@@ -137,7 +139,7 @@ TEST_CASE("mix_song_stems pads a negative offset in front") {
     // The same stem mixed with no offset gives the plain length.
     std::vector<std::unique_ptr<StemReader>> plain_readers;
     plain_readers.push_back(sine_reader());
-    const SongMix plain = mix_song_stems(std::move(plain_readers), 0.0);
+    const SongMix plain = mix_song_stems(std::move(plain_readers), 0.0, 1.0);
     REQUIRE(plain.mix != nullptr);
 
     // A -250 ms offset pads 250 ms of silence at the mix's output rate.
@@ -146,16 +148,45 @@ TEST_CASE("mix_song_stems pads a negative offset in front") {
     REQUIRE(pad_frames > 0);
     std::vector<std::unique_ptr<StemReader>> one;
     one.push_back(sine_reader());
-    const SongMix padded = mix_song_stems(std::move(one), offset_ms);
+    const SongMix padded = mix_song_stems(std::move(one), offset_ms, 1.0);
     CHECK(padded.audio_offset_ms == 0.0);
     REQUIRE(padded.mix != nullptr);
     CHECK(padded.mix->length_frames() == plain.mix->length_frames() + pad_frames);
 
     // No readers: the front pad alone is all there is.
-    const SongMix none = mix_song_stems({}, offset_ms);
+    const SongMix none = mix_song_stems({}, offset_ms, 1.0);
     REQUIRE(none.mix != nullptr);
     CHECK(none.mix->length_frames() == pad_frames);
-    const SongMix none_unpadded = mix_song_stems({}, 0.0);
+    const SongMix none_unpadded = mix_song_stems({}, 0.0, 1.0);
     REQUIRE(none_unpadded.mix != nullptr);
     CHECK(none_unpadded.mix->length_frames() == 0);
+}
+
+// The Preview's load mixes here, so the song speed reaches the audio here: at
+// normal speed the mix is the plain stem mix, and at any other speed it is
+// that mix played through the stretched source (audio::play_at_speed).
+TEST_CASE("mix_song_stems plays the plain mix at 100% and the stretched mix at another speed") {
+    std::vector<std::unique_ptr<StemReader>> plain_readers;
+    plain_readers.push_back(sine_reader());
+    const SongMix plain = mix_song_stems(std::move(plain_readers), 250.0, 1.0);
+    REQUIRE(plain.mix != nullptr);
+    CHECK(dynamic_cast<const StreamMix*>(plain.mix.get()) != nullptr);
+    CHECK(plain.audio_offset_ms == 250.0);
+
+    for (const double ratio : {2.0, 0.5}) {
+        CAPTURE(ratio);
+        std::vector<std::unique_ptr<StemReader>> readers;
+        readers.push_back(sine_reader());
+        const SongMix fast = mix_song_stems(std::move(readers), 250.0, ratio);
+        REQUIRE(fast.mix != nullptr);
+        const auto* stretched = dynamic_cast<const StretchSource*>(fast.mix.get());
+        REQUIRE(stretched != nullptr);
+        CHECK(stretched->speed_ratio() == ratio);
+        // The offset stays in the file's own time: the speed never scales it
+        // (app::audio_ms_of_chart_ms).
+        CHECK(fast.audio_offset_ms == 250.0);
+        // The end of its played frames is the plain mix's end.
+        CHECK(stretched->file_frame_of(stretched->length_frames()) ==
+              plain.mix->length_frames());
+    }
 }

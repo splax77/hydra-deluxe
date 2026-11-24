@@ -53,7 +53,8 @@ struct PreviewSceneBase;
 // "1.0 fills" setting, which picks the game version's fill generator), is
 // another song and loads its own notes (D48, Q22; D104 item 1). On a chart
 // whose first load finished, only the notes reload: the audio and the
-// playhead stay (see PreviewController::open).
+// playhead stay, unless the reading's song speed changed, which the audio is
+// stretched to (see PreviewController::open).
 struct PreviewSongKey {
     // Every part is named: a key built without its fill rule does not compile.
     PreviewSongKey() = default;
