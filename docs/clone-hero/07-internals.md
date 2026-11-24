@@ -54,7 +54,7 @@ Rule: The song clock is class #707. Its constructor and per-frame tick build the
 Label: Proven in the game's code
 Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 38; `code/6142/clock_tick_16C650.asm` lines 19 to 141 (audio pull at lines 73 to 75); `code/6142/clock_raw_minus_audio_16C480.asm` lines 2 to 4; `code/6142/clock_raw_plus_video_16C490.asm` lines 2 to 4.
 Game code (6142): class #707 (scrambled methods): constructor RVA `0x16C9A0`, tick RVA `0x16C650`, judged-time getter RVA `0x16C480`, drawn-time getter RVA `0x16C490`.
-Hydra: no owner of a game clock. The delay sign Hydra's Preview uses is `kOffsetDirection` in src/app/preview_source.cpp line 139.
+Hydra: no owner of a game clock. The delay sign Hydra's Preview uses is `kOffsetDirection` in src/app/preview_source.cpp line 139, and the clock's mapping, with the speed ratio, is `chart_ms_of_audio_ms` in src/app/preview_source.h line 127 (page 3, TM-40).
 Ruling: none needed here: the clock rules and their rulings are page 03's.
 Found: 2026-10-28, overlay spike handoff ("The clock"); listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -74,7 +74,7 @@ Rule: The settings loader builds the audio calibration, video calibration and so
 Label: Proven in the game's code
 Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio, video) and 2017 to 2035 (song_speed); `code/6142/setting_int_ctor_210C470.asm`; `code/6142/setting_base_ctor_2116210.asm` (the clamp); `code/6142/speed_ratio_210C090.asm` lines 10 to 13.
 Game code (6142): loader RVA `0x374D50`; integer setting constructor RVA `0x210C470`; base constructor RVA `0x2116210`; ratio getter RVA `0x210C090`. All names are scrambled.
-Hydra: no owner: Hydra reads no calibration or speed setting (grep for "calibrat" and "song_speed" in src/).
+Hydra: Hydra reads none of the game's settings. Its own song speed setting is `Settings::speed_percent` (src/app/config.h line 209), with the game's default and limits in `kNormalSpeedPercent`, `kMinSpeedPercent` and `kMaxSpeedPercent` (src/core/model.h lines 131 to 133), and `Song::set_speed_percent` (src/core/song.h line 212) turns it into the ratio. Hydra has no calibration (a grep for "calibrat" in src/ finds nothing).
 Ruling: none needed here: the values and their rulings are page 03's.
 Found: 2026-10-28, overlay spike handoff ("What the code says about calibration"); listed 2026-10-30, session b02ab3e6 (the reference build).
 

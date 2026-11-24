@@ -436,7 +436,7 @@ Rule: an end event counts only when its tick is at least the last note end plus 
 Label: Proven in the game's code
 Evidence: `code/6142/end_event_usable_212C7E0.asm` lines 2 to 6 (no end event gives false) and 7 to 13 (end tick greater than or equal to the length); `code/6142/chart_length_212E130.asm` lines 88 to 91 (the flag adds the double at +0xB0, cut to an integer). Decompile lines 14779 to 14791 agree.
 Game code (6142): methods of the chart class #8538, RVAs `0x212C7E0` and `0x212E130`, the listings above.
-Hydra: `end_event_counts` in src/app/song_length.cpp line 22.
+Hydra: `end_event_counts` in src/app/song_length.cpp line 22, whose beat is `SongTiming::working_resolution` cut to a whole number (line 27), the game's +0xB0 (CR-42).
 Ruling: D255 item 4: "Copy the margin (Recommended)".
 Found: 2026-10-18, session c433b17f; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -446,8 +446,8 @@ Rule: the setter for chart field +0xB0 accepts only a positive finite number and
 Label: Proven in the game's code
 Evidence: decompile lines 14456 to 14483 (FUN_18212c0b0: the guard at line 14465, the stores at lines 14466 to 14470) and its caller at line 42845, read on 2026-10-30. A listing is committed as docs/audit/note-shuffle/step0/open1/song_set_resolution_212C0B0.asm, not re-read for this row. The float's source was traced on 2026-11-23: `code/6142/songentry_load_35C110.asm` lines 141 to 174 pass the speed ratio to the chart-read settings, which `code/6142/chart_settings_ctor_20E73E0.asm` stores at +0x14 (line 32), and `code/6142/song_resolution_set_212C0B0.asm` lines 12 to 19 multiply by that +0x14.
 Game code (6142): RVA `0x212C0B0`, decompile lines 14456 to 14483.
-Hydra: none: Hydra keeps no copy of this field; `end_event_counts` uses `Song::tick_resolution` because Hydra works at 100% speed.
-Ruling: none needed.
+Hydra: `SongTiming::working_resolution` in src/core/timing.h line 300 is +0xB0, the file's resolution times `SongTiming::speed_ratio`, and `SongTiming::tick_resolution` (line 292) is +0xB8; `end_event_counts` (src/app/song_length.cpp line 27) cuts the working resolution to a whole number for its margin, as CR-41's flag does.
+Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build); the float traced 2026-11-23, session 46353d99.
 
 ### CR-43 The last note end is the largest gem end over every track
@@ -476,7 +476,7 @@ Rule: GameManager's Update compares songTime (+0x70) with songLength (+0x50), an
 Label: Proven in the game's code
 Evidence: `code/6142/gm_update_C05A0.asm` lines 178 to 180 compare songTime with songLength and jump past the end block only when songTime is below it, so an equal time runs the end block. Lines 199 to 204 run the FadeBehaviour check and then call `0xBD640`; line 209 calls `0xBF510` in practice mode. `code/6142/gm_song_over_BD640.asm` lines 126 to 128 set isSongOver when it is not already set. Lines 17 and 18 and lines 68 to 79 of the Update listing are the two skips. dump.cs lines 25298 to 25311 name the GameManager fields, and line 55818 names GlobalVariables +0x72 isPracticeEnabled.
 Game code (6142): GameManager's Update, RVA `0xC05A0`, `code/6142/gm_update_C05A0.asm` lines 178 to 209; the song-over method RVA `0xBD640`, `code/6142/gm_song_over_BD640.asm` lines 126 to 128; the practice-mode method RVA `0xBF510`, not read.
-Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28 is the one end.
+Hydra: `app::song_length_ms` in src/app/song_length.cpp line 31 is the one end.
 Ruling: D255 item 5: "the problem is that we have two different rules. there should one rule that every function uses. we already know how clone hero decides the end of the song, we don't need different places deriving different rules."
 Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search, and the Update listed in the Clone Hero unknowns check).
 
@@ -486,17 +486,17 @@ Rule: the load coroutine builds the song length as the earlier of the end event 
 Label: Proven in the game's code
 Evidence: `code/6142/gm_load_coroutine_D8D80.asm`, re-read 2026-11-08. Line 316 calls `0x210C090`, the ratio getter of page 3's TM-39 (`code/6142/speed_ratio_210C090.asm` lines 10 to 13), on a setting loaded at lines 310 to 312; that this setting is `song_speed` is what `code/6142/speed_ratio_210C090.md` line 3 and `code/6142/settings_load_374D50.md` line 6 say, and it was not re-traced. Lines 324 to 342 take the last note end (`0x212E130`, CR-43), turn it into seconds with `0x212B9C0` and multiply it by the ratio. Line 344 reads the audio length from the audio manager, and line 351 takes System.Math.Max of the two. Line 357 asks whether the end event counts (`0x212C7E0`, CR-41); when it does, lines 363 to 377 turn the end event into seconds times the ratio, and line 380 takes System.Math.Min. Line 388 adds the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet), and line 389 stores the result. Lines 300 to 309 are the other branch: when a byte flag is clear, it loads the stored length and jumps past the build. What sets that flag was not read. Both branches hand the length to the clock constructor, which divides it by the ratio (`code/6142/clock_ctor_16C9A0.asm` line 29, read 2026-11-23, session 46353d99).
 Game code (6142): load coroutine RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 300 to 389; first read 2026-10-18 in session b71e9156.
-Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37. Hydra applies no ratio; it scores at 1x only (TM-44).
+Hydra: `app::song_length_ms` in src/app/song_length.cpp line 31; `kSongEndPadMs` in src/app/song_length.h line 38. Its chart times already divide by the speed (TM-56). It turns the stated audio length into chart time with `chart_ms_of_audio_ms` (src/app/preview_source.h line 127), which divides by `SongTiming::speed_ratio` (song_length.cpp lines 45 and 46), and adds the pad divided by the same ratio last (line 63), so at 50% the pad is 2 seconds.
 Ruling: D255 item 2: "Copy the pad (Recommended)".
 Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### CR-47 The game's audio length is the longest stem; Hydra uses the stated length
 
-Rule: within the game's audio load, audioLength is zeroed, then raised to each loaded stem's length when that is larger. Other writers of audioLength (+0x40) were not searched. Hydra never opens audio, so it puts the song's stated length (song.ini or the .srb field, moved into chart time by the delay or Offset) in that seat.
+Rule: within the game's audio load, audioLength is zeroed, then raised to each loaded stem's length when that is larger. Other writers of audioLength (+0x40) were not searched. Hydra never opens audio, so it puts the song's stated length (song.ini or the .srb field, moved into chart time by the delay or Offset and divided by the song speed, CR-46) in that seat.
 Label: Proven in the game's code
-Evidence: the load coroutine reads the audio length from BassAudioManager+0x40 (`code/6142/gm_load_coroutine_D8D80.asm` line 343), which dump.cs names audioLength. In `code/6142/audio_load_36B700.asm`, line 57 calls `0x369810`, which zeroes audioLength (`code/6142/audio_reset_369810.asm` lines 75 and 76). Lines 82 and 87 call `0x36DB60`, which was not read. For each loaded stem, lines 404 to 412 get its length in seconds from `0x36E100`, and lines 413 to 416 store it in audioLength only when it is larger. The .sng and encrypted branches rejoin that same step. Other writers of +0x40 were not searched. Hydra's side is src/app/song_length.h lines 45 to 57.
+Evidence: the load coroutine reads the audio length from BassAudioManager+0x40 (`code/6142/gm_load_coroutine_D8D80.asm` line 343), which dump.cs names audioLength. In `code/6142/audio_load_36B700.asm`, line 57 calls `0x369810`, which zeroes audioLength (`code/6142/audio_reset_369810.asm` lines 75 and 76). Lines 82 and 87 call `0x36DB60`, which was not read. For each loaded stem, lines 404 to 412 get its length in seconds from `0x36E100`, and lines 413 to 416 store it in audioLength only when it is larger. The .sng and encrypted branches rejoin that same step. Other writers of +0x40 were not searched. Hydra's side is src/app/song_length.h lines 48 to 69.
 Game code (6142): BassAudioManager's audio load, RVA `0x36B700`, `code/6142/audio_load_36B700.asm` lines 57 to 416; the reset RVA `0x369810`; the stem length RVA `0x36E100`.
-Hydra: `stated_length_ms` in src/app/song_length.cpp line 13, used in `app::song_length_ms` line 38.
+Hydra: `stated_length_ms` in src/app/song_length.cpp line 13, used in `app::song_length_ms` line 44.
 Ruling: D255 item 1: "Option C (Recommended)". The record says: "It matches the game whenever the stated length is the game's own record of the audio."
 Found: 2026-10-18, session b71e9156; the audio load listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 

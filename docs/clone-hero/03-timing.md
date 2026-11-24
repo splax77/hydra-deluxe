@@ -440,9 +440,9 @@ Rule: Audio and video calibration are whole-millisecond settings in the `[offset
 Label: Proven in the game's code
 Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio and video) and 2017 to 2035 (song speed); `code/6142/setting_base_ctor_2116210.asm` for the clamp.
 Game code (6142): the settings loader (scrambled names), RVA `0x374D50`; the int setting constructor `0x210C470`; the base constructor `0x2116210`.
-Hydra: no owner: a grep of `src/` for "calibrat" and "song_speed" finds nothing.
-Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the reference build).
+Hydra: the song speed's default and limits are `kNormalSpeedPercent`, `kMinSpeedPercent` and `kMaxSpeedPercent` in src/core/model.h lines 131 to 133, and Hydra's own setting is `Settings::speed_percent` in src/app/config.h line 209, held to those limits by the settings file's key table (src/app/config.cpp line 207). Hydra reads no calibration: a grep of `src/` for "calibrat" finds nothing.
+Ruling: none needed: same rule for the speed; no Hydra rule depends on the calibrations
+Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the reference build); the Hydra owners 2026-11-23, session 46353d99.
 
 ### TM-35 GameManager keeps the calibrations in seconds
 
@@ -492,19 +492,19 @@ Rule: The playback speed is the `song_speed` setting (TM-34). The game uses it a
 Label: Proven in the game's code
 Evidence: `code/6142/speed_ratio_210C090.asm` lines 10 to 13, `code/6142/gm_load_coroutine_D8D80.asm` lines 444 to 451 and 460, `code/6142/clock_ctor_16C9A0.asm` line 30.
 Game code (6142): the ratio getter (scrambled name), RVA `0x210C090`; the clock constructor `0x16C9A0`.
-Hydra: no owner: Hydra scores at 1x only (TM-44).
-Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Hydra: `Song::set_speed_percent` in src/core/song.h line 212 is the one place the percent becomes the ratio (percent / `kNormalSpeedPercent`), read back through `SongTiming::speed_ratio` in src/core/timing.h line 294 (TM-44).
+Ruling: none needed: same rule
+Found: 2026-10-30, session b02ab3e6 (the reference build); the Hydra owner 2026-11-23, session 46353d99.
 
 ### TM-40 At another speed the clock divides the audio position and the delay
 
 Rule: At a ratio other than 1 the clock divides both the audio position and the delay by the ratio. For the clock to agree with its own frame timer, which runs at wall-clock pace (TM-57), the audio position has to be in the audio file's seconds, not the stretched seconds played. That is what the code needs; that BASS_FX reports it so has not been seen.
 Label: Unknown
-Evidence: The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32. The position getter `0x365F10` returns 0 unless a song is loaded, then asks BASS for the byte position of the channel whose handle is at the audio manager's `+0x58` and converts it to seconds (`code/6142/audio_position_365F10.asm` lines 17 to 45; the externs match BASS's position and bytes-to-seconds calls by shape and error text). Which channel that is: the mixer builder `0x368590` stores `+0x58` (`code/6142/mixer_create_368590.asm` line 31). When its int argument is not -1 it builds a tempo stream over the mixer (lines 21 to 28) and `+0x58` gets the tempo stream; when the argument is -1, `+0x58` gets the mixer. The tempo stream's starting tempo is set to that argument (`code/6142/tempo_create_366FC0.asm` lines 112 to 117). The song-load method passes the song speed's whole percent minus 100, but only when its own byte at `+0x68` is set, and -1 otherwise (`code/6142/audio_load_36B700.asm` lines 112 to 125); what writes that byte was not searched. So once that byte is set, any speed, 100 included, gets a tempo stream, and a speed of 99% gives 99 - 100 = -1, the "no tempo" value, so no tempo stream. One side fact: when a bool setting is on, the tempo builder also sets the pitch to 12 x log2(speed / 100) (`code/6142/tempo_create_366FC0.asm` lines 68 to 106). Not in the game's code: whether BASS reports a tempo stream's position in source seconds or in played seconds. That is the BASS_FX library's behaviour; a run at 50% speed comparing the getter's result with real time would settle it. On 2026-11-23 the clock's other side was read: the raw clock moves at wall-clock pace (TM-57) while the audio term is position / ratio, and the clock spreads any gap above 0.003 s between them (TM-12), so the two agree only when the position is in file seconds. BASS_FX's tempo-stream documentation could not be fetched that day (documentation.help returned 403 and un4seen.com 404).
-Game code (6142): the position getter (scrambled `BassAudioManager` member), RVA `0x365F10`; the mixer builder, RVA `0x368590`; the tempo builder, RVA `0x366FC0`; the song-load method, RVA `0x36B700`; listings as above.
-Hydra: no owner
-Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079; the frame-timer side 2026-11-23, session 46353d99.
+Evidence: The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32. The term the constructor divides is the song delay, as TM-05 reads it: the load coroutine calls the delay-in-seconds getter `0x1EF1A0` (the metadata's +0x24 over 1000, `code/6142/delay_seconds_1EF1A0.asm` lines 2 to 4) at `code/6142/gm_load_coroutine_D8D80.asm` line 442 and passes its result as the constructor's second argument (lines 443 and 461), with the ratio from `0x210C090` as the third (lines 450, 451 and 460) and the call at line 464. The constructor divides that argument by the ratio, negates it and stores it at +0x58 (`code/6142/clock_ctor_16C9A0.asm` lines 10, 23, 25 and 32). The position getter `0x365F10` returns 0 unless a song is loaded, then asks BASS for the byte position of the channel whose handle is at the audio manager's `+0x58` and converts it to seconds (`code/6142/audio_position_365F10.asm` lines 17 to 45; the externs match BASS's position and bytes-to-seconds calls by shape and error text). Which channel that is: the mixer builder `0x368590` stores `+0x58` (`code/6142/mixer_create_368590.asm` line 31). When its int argument is not -1 it builds a tempo stream over the mixer (lines 21 to 28) and `+0x58` gets the tempo stream; when the argument is -1, `+0x58` gets the mixer. The tempo stream's starting tempo is set to that argument (`code/6142/tempo_create_366FC0.asm` lines 112 to 117). The song-load method passes the song speed's whole percent minus 100, but only when its own byte at `+0x68` is set, and -1 otherwise (`code/6142/audio_load_36B700.asm` lines 112 to 125); what writes that byte was not searched. So once that byte is set, any speed, 100 included, gets a tempo stream, and a speed of 99% gives 99 - 100 = -1, the "no tempo" value, so no tempo stream. One side fact: when a bool setting is on, the tempo builder also sets the pitch to 12 x log2(speed / 100) (`code/6142/tempo_create_366FC0.asm` lines 68 to 106). Not in the game's code: whether BASS reports a tempo stream's position in source seconds or in played seconds. That is the BASS_FX library's behaviour; a run at 50% speed comparing the getter's result with real time would settle it. On 2026-11-23 the clock's other side was read: the raw clock moves at wall-clock pace (TM-57) while the audio term is position / ratio, and the clock spreads any gap above 0.003 s between them (TM-12), so the two agree only when the position is in file seconds. BASS_FX's tempo-stream documentation could not be fetched that day (documentation.help returned 403 and un4seen.com 404).
+Game code (6142): the position getter (scrambled `BassAudioManager` member), RVA `0x365F10`; the mixer builder, RVA `0x368590`; the tempo builder, RVA `0x366FC0`; the song-load method, RVA `0x36B700`; the delay-in-seconds getter, RVA `0x1EF1A0`; listings as above.
+Hydra: `chart_ms_of_audio_ms` in src/app/preview_source.h line 127 is the same mapping: the audio position minus the offset, divided by `SongTiming::speed_ratio`, with the offset (the delay or the chart's Offset, TM-03) in the audio file's own time. `audio_ms_of_chart_ms` at line 123 runs it the other way, and `app::song_length_ms` reads it for the stated length (CR-46).
+Ruling: none needed: same mapping
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079; the frame-timer side and the delay term 2026-11-23, session 46353d99.
 
 ### TM-41 The practice speed scales the raw clock
 
@@ -522,7 +522,7 @@ Rule: The score adder adds the points times the multiplier and nothing else, so 
 Label: Proven in the game's code
 Evidence: decompile `ghidra_decompile_all.txt` lines 53121 to 53138 (`+0x94 += param_2 * +0x48`, no other factor). The adder that pays each note, `0x20F6EB0`, does the same in `code/6142/add_note_score_20F6EB0.asm` lines 36 to 41 (the imul by `+0x48` at line 40 and the add into `+0x94` at line 41). The third adder, `0x20F6A50`, was not re-read for a speed term.
 Game code (6142): RVA `0x20F5F70`, decompiled lines as above; the listing is `code/6142/add_points_20F5F70.asm`.
-Hydra: no owner for a speed rule (TM-44).
+Hydra: `category_scores` in src/core/scoring.cpp line 42 reads no speed, so a note's points are the same at every song speed (TM-44).
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -532,19 +532,19 @@ Rule: At any playback speed the hit window runs in real time. The note times it 
 Label: Proven in the game's code
 Evidence: the formula and the clamp hold no speed variable (the decompile lines 757 to 782 and 53871 to 53907). The half-gap reads the note time at note+0x28 (TM-19, `code/6142/half_gap_clamp_20F7210.asm` lines 17 to 33), and every engine note's +0x28 is the chart's tick-to-time conversion of its tick (`code/6142/note_build_20D4BE0.asm` lines 240 to 267, `code/6142/note_ctor_214BF10.asm` line 27), which divides by the speed (TM-56); the song clock is in the same seconds (TM-57). A worked example from the TM-21 formula: 16th notes at 180 BPM are 83.3 ms apart in the file, which gives about 53 ms a side at 100%; at 50% they are 166.7 ms apart in real time, which gives 85.1 ms a side, 42.5 ms of the file's time; at 200% they are 41.7 ms apart, each half-gap is held at the front, and the side is the 48.15 ms floor, 96.3 ms of the file's time. No run has shown it; the live-checks row for TM-40 and TM-43 would. Most times the player hands the engine are read from `GameManager.songTime` (TM-36), which comes from a clock that divides the audio position by the speed ratio (TM-40); whether that position is in file seconds is TM-40's open BASS_FX question. The time-stretch half is a card's roadblock with no code or file read; it is not checked and needs a run at half speed. For such a run, the song speed is an int setting (default 100, limits 10 to 5000, TM-34), and its value setter is the generic int setter `0xFE5F50`, which stores the value at the setting's `+0x10` and then calls the setting's changed method (`code/6142/int_setting_set_FE5F50.asm` lines 2 to 4). The run must set it before the song loads, because the song-load method reads it to build the tempo stream (TM-40).
 Game code (6142): the note builder, RVA `0x20D4BE0`, and the note constructor, RVA `0x214BF10`, listings as above; the setter of class #8338 (scrambled name), RVA `0xFE5F50`, `code/6142/int_setting_set_FE5F50.asm` lines 2 to 4.
-Hydra: no owner
-Ruling: none needed: no Hydra rule depends on it
+Hydra: `window_side_ms` in src/core/note_window.h line 51 holds no speed term, and `chord_times` (line 72) takes each chord's time from the song's timing, which is played time at the song speed (TM-56), so the Dynamic Hit Window row runs in real time as the game's window does. Hydra's own ratings, tiers and budgets keep `kTimingStepMs` (src/core/model.h line 114) at every speed (TM-33, Q-32).
+Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build); the setter 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079; the note times 2026-11-23, session 46353d99.
 
-### TM-44 Hydra scores every chart at 100 percent
+### TM-44 Hydra times a chart at its Song speed setting, and compares leaderboard scores at 100 percent
 
-Rule: Hydra scores every chart as if played at 100 percent. It only sets apart leaderboard scores played at another speed, and no score or timing rule uses a speed.
+Rule: Hydra times every chart at the song speed its settings hold, default 100 percent, the way the game does (TM-56): every tick-to-time answer is the file's time divided by the speed, and the Star Power sizes and the 1.1 fill lead stay in the file's beats. Results are stored per speed, so a result at one speed is never shown for another. The leaderboard comparison always reads the 100 percent result, and sets apart leaderboard scores played at another speed.
 Label: Hydra assumes it, never checked
-Evidence: `kBaseSpeedPercent` and `is_base_speed` in src/net/dmbot_client.h lines 35 and 36, read by src/app/dm_report.cpp line 128.
-Game code (6142): see TM-39.
-Hydra: `kBaseSpeedPercent` in src/net/dmbot_client.h line 35.
-Ruling: D25: "Off-speed leaderboard scores get their own "other speed" status and leave the Matched, Above optimal and Points left on table totals." (the decision log's words; no user quote is in the record)
-Found: 2026-10-03, D25.
+Evidence: `Settings::speed_percent` in src/app/config.h line 209 rides `ChartReading::speed_percent` (src/parse/chart_reading.h line 34) into both parsers, which call `Song::set_speed_percent` before the timing is built (src/parse/song.cpp lines 1247 and 2090). `store::Lens::speed_percent` (src/store/record_store.h line 134) is part of a stored result's key. `Settings::profile_at_clone_hero_cap` (src/app/config.cpp lines 452 to 460) sets the speed to `kNormalSpeedPercent` for the leaderboard report, and `is_base_speed` (src/net/dmbot_client.h line 37) is read by src/app/dm_report.cpp line 131. No run of the game at another speed has been compared with Hydra.
+Game code (6142): see TM-39 and TM-56.
+Hydra: `Song::set_speed_percent` in src/core/song.h line 212 and `SongTiming::speed_ratio` in src/core/timing.h line 294 for the timing; `kBaseSpeedPercent`, another name for `kNormalSpeedPercent`, and `is_base_speed` in src/net/dmbot_client.h lines 36 and 37 for the leaderboard comparison.
+Ruling: D25: "Off-speed leaderboard scores get their own "other speed" status and leave the Matched, Above optimal and Points left on table totals." (the decision log's words; no user quote is in the record). The timing at the speed copies the game's rule, so it needs none.
+Found: 2026-10-03, D25; the song speed setting 2026-11-23, session 46353d99.
 
 ### TM-56 At another speed the chart's times are the file's times divided by the speed
 
@@ -552,8 +552,8 @@ Rule: When a song loads, the game multiplies the chart's working resolution by t
 Label: Proven in the game's code
 Evidence: `code/6142/songentry_load_35C110.asm` lines 141 to 154 read the `song_speed` setting through the ratio getter `0x210C090` (TM-39), and lines 164 and 174 pass it as the float of the chart-read settings, which `code/6142/chart_settings_ctor_20E73E0.asm` stores at +0x14 (lines 9 and 32). The resolution setter `code/6142/song_resolution_set_212C0B0.asm` stores the file's value at chart +0xB8 and that value times the +0x14 float at chart +0xB0 (CR-42). Tick to time: `code/6142/tick_to_time_212B9C0.asm` lines 48 to 72 (time = entry time + ticks x 60 / (tempo x +0xB0)). Time to tick: `code/6142/time_to_tick_212BCC0.asm` lines 74 to 92. Each tempo's stored time: `code/6142/add_tempo_212CBF0.asm` lines 60 to 73 and 115 to 119. The engine's notes take their times from the first of these (`code/6142/note_build_20D4BE0.asm` lines 240 to 267, `code/6142/note_ctor_214BF10.asm` lines 15 and 27). The scrambled name of chart +0xB0 is also the name of the resolution parameter of the chart's static tick-and-tempo helpers in `dump.cs`, which fits +0xB0 being the resolution the code works in. Not checked: whether any reader sets the resolution after it has added tempos.
 Game code (6142): `SongEntry` load, RVA `0x35C110`; the settings constructor of class #8267, RVA `0x20E73E0`; the chart class #8538's resolution setter `0x212C0B0`, tick to time `0x212B9C0`, time to tick `0x212BCC0` and tempo adder `0x212CBF0`; the note builder `0x20D4BE0` and the note constructor `0x214BF10`.
-Hydra: `SongTiming` in src/core/timing.h turns ticks into time from `Song::tick_resolution` alone, the 100% case (TM-44).
-Ruling: none needed: no Hydra rule depends on it
+Hydra: `Song::set_speed_percent` (src/core/song.h line 212) sets the ratio before `Song::build_timing`; `SongTiming::working_resolution` (src/core/timing.h line 300) is the file's resolution times `SongTiming::speed_ratio`, the game's +0xB0, and `MsIndex` (src/core/timing.h line 75) is built from it, so every tick-to-time and time-to-tick answer divides by the speed. `SongTiming::tick_resolution` (line 292) keeps the file's own value, the game's +0xB8 (TM-44).
+Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
 ### TM-57 Outside practice mode the raw clock runs at wall-clock pace at every speed
@@ -562,8 +562,8 @@ Rule: `GameManager.Awake` sets practiceSpeed to the speed ratio, and the clock t
 Label: Proven in the game's code
 Evidence: `code/6142/gm_awake_B41A0.asm` lines 85 to 92 (settings static +0x10, the `song_speed` setting, through `0x210C090`, stored at GameManager+0xD8); the load coroutine copies +0xD8 into the clock (`code/6142/gm_load_coroutine_D8D80.asm` lines 472 and 473, TM-41); `code/6142/clock_tick_16C650.asm` line 16 divides by the ratio at clock+0x2C. Lines 93 to 103 of the Awake listing also store the setting's whole value minus 100 at GameManager+0xDC; its readers were not searched. Other writers of +0xD8 before a song loads, such as a practice-mode screen, were not searched.
 Game code (6142): `GameManager.Awake`, RVA `0xB41A0`, `code/6142/gm_awake_B41A0.asm` lines 85 to 103.
-Hydra: no owner
-Ruling: none needed: no Hydra rule depends on it
+Hydra: `MsIndex` (src/core/timing.h line 75) gives played time, the seconds this clock counts, at every speed (TM-56); the Preview's `PreviewClock` (src/app/preview_clock.h line 20) runs one song second per second of wall time. Hydra has no practice mode.
+Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
 ## The lane-press window

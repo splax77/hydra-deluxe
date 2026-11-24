@@ -215,7 +215,7 @@ Rule: The four-beat lead is built from the file's own resolution, not the speed-
 Label: Proven in the game's code
 Evidence: FL-20's listing reads chart +0xB8 (`code/6142/engine_ctor_20DF680.asm` line 57), which `code/6142/song_resolution_set_212C0B0.asm` stores as the file's value; the speed-scaled resolution is +0xB0 (page 3, TM-56). The clock's tick at engine+0x108 (FL-22) is made by the chart's time-to-tick method (`code/6142/engine_clock_update_20F4950.asm` lines 42 and 74 call `0x212BCC0`), which reads +0xB0, so a time in game seconds gives the file's own tick. The 1.0 build has no four-beat lead: its deadline counts real seconds at every speed (FL-48), and its measure lines and Star Power sizes stay on the file's ticks (FL-49, FL-50).
 Game code (6142): the drum engine constructor, RVA `0x20DF680`; the engine clock update, RVA `0x20F4950`; time to tick, RVA `0x212BCC0`.
-Hydra: `kCh11FillLeadBeats` in src/search/graph.h, in ticks; Hydra has no speed model (page 3, TM-44).
+Hydra: `activation_fill_deadline_ms` in src/search/graph.cpp lines 66 to 71 counts `kCh11FillLeadBeats` (src/search/graph.h line 71) in `SongTiming::tick_resolution`, the file's own resolution, at every speed, and turns the deadline tick into time through the song's timing, which divides by the speed (page 3, TM-56 and TM-44).
 Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
@@ -499,7 +499,7 @@ Rule: The 1.0 fill deadline is handed the song clock, which follows the audio po
 Label: Proven in the game's code
 Evidence: The deadline's only caller passes the game manager's song time (`code/4045/song_clock.cs` line 9, the same call as `code/4045/fill_deadline.cs` line 11). Song time is read from the clock at song load and every frame (`code/4045/song_clock.cs` lines 22 and 39). The clock's divisor is set to the song speed (line 21), its target is the audio position over that divisor (line 74), and it moves on by the frame's real time times a rate (line 75) that starts at 1 (line 51) and that only two buttons change, which the game never reads unless the speed is 100% (lines 122 to 150). The song end is the audio length over the same speed (line 119). The fill start and length are tick-to-second conversions with the timing resolution (`code/4045/fill_generator.cs` lines 497 to 506 and 534 to 545), which is why they are divided by the speed. All of this is explained in `code/4045/song_clock.md` under C1 to C9. Not read: the unit of the audio position itself, which comes from an audio wrapper outside the decompiled assembly (lines 112 and 113).
 Game code (4045): `DrumsPlayer.CheckFillDeadlines`, `code/4045/fill_deadline.cs` lines 17 to 31; its caller, `code/4045/song_clock.cs` lines 6 to 10; `GameManager.songTime` and the clock, `code/4045/song_clock.cs` lines 12 to 105.
-Hydra: `activation_fill_deadline_ms` (the `FillDeadlineRule::Ch10` branch) in src/search/graph.cpp line 62, in milliseconds; Hydra has no speed model (page 3, TM-44).
+Hydra: `activation_fill_deadline_ms` (the `FillDeadlineRule::Ch10` branch) in src/search/graph.cpp line 62 takes the fill's start and end from `MsIndex::at` (lines 81 to 84), which gives played time at the song speed (page 3, TM-56), and clamps the lead with `kCh10FillLeadFloorMs` and `kCh10FillLeadCeilingMs`, so its 250 ms and 10,000 ms are real time at every speed, as in the game.
 Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
@@ -509,7 +509,7 @@ Rule: The 1.0 generator steps its beat walk by the file's own resolution, so the
 Label: Proven in the game's code
 Evidence: `code/4045/fill_generator.cs` line 253 steps the walk by the file's resolution (F9's second field, line 495) times 4 over the meter's bottom number. Line 202 takes the walk's end from the chart's last tick, which adds the timing resolution (line 638; F9's first field, set to the file's resolution times the speed at lines 497 to 506). Line 663 stores each line's second through tick to seconds, which uses the timing resolution (lines 534 to 545). Explained in `code/4045/fill_generator.md` under F5, F9, F10 and F11.
 Game code (4045): a scrambled grid method, `code/4045/fill_generator.cs` lines 199 to 257; the chart's last tick, lines 625 to 639.
-Hydra: `ch10_measure_lines` in src/core/song.cpp, on Clone Hero's grid (`MeasureIndex`) in file ticks; `ch10_last_line_tick` adds `tick_resolution`, the file's resolution, which is the game's beat only at 100%; Hydra has no speed model (page 3, TM-44).
+Hydra: `ch10_measure_lines` in src/core/song.cpp, on Clone Hero's grid (`MeasureIndex`) in file ticks; `ch10_last_line_tick` (src/core/song.cpp line 300) adds `SongTiming::working_resolution`, the file's resolution times the speed, cut to a whole tick as the game's cast does; each line's time comes from the song's timing, which divides by the speed (page 3, TM-56).
 Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
@@ -519,8 +519,8 @@ Rule: In 1.0 a finished phrase adds a quarter of the meter at any song speed. Th
 Label: Proven in the game's code
 Evidence: `code/4045/song_clock.cs` line 197 adds 0.25 per phrase. Line 158 sets the drain's base to the file's resolution times 4 over the meter's bottom number, times its top number, times 8, every frame (called at line 42); line 203 sets the sustain base to 30 times the file's resolution. Both per-frame amounts are this frame's chart tick minus last frame's over that base (lines 163 to 170 and 206 to 213, with the two ticks at lines 26 and 46). Line 46 makes the chart tick from song time with the seconds-to-tick method, which counts with the timing resolution (`code/4045/fill_generator.cs` lines 600 to 623); every tempo's start second is counted with the timing resolution too (`code/4045/song_clock.cs` line 232). So at speed s both the seconds and the resolution carry the factor s, which cancels, and the tick is the file's own. The only caller of the sustain gain is line 216, in the guitar player. Explained in `code/4045/song_clock.md` under S1 to S8 and T1.
 Game code (4045): `BasePlayer.AddStarPower`, `code/4045/fill_deadline.cs` lines 34 to 57; the drain, the phrase gain and the sustain gain, `code/4045/song_clock.cs` lines 152 to 216.
-Hydra: no owner for a speed rule (page 3, TM-44); the 1.1 sizes are on page 5, SP-51.
-Ruling: none needed: no Hydra rule depends on it
+Hydra: Star Power is sized and drained in measures of the file's ticks, through `SongTiming::plusmeasure` and `sp_bars_to_measures` in src/core/timing.h, which count the file's ticks and read no speed, so a bar lasts the same beats at every speed (`MeasureCount` is built from the file's ticks per measure, src/core/timing.cpp line 323); the 1.1 sizes are on page 5, SP-51.
+Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
 ## Rows waiting on a live run

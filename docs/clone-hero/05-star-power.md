@@ -280,8 +280,8 @@ Rule: The full bar and its quarters come from the file's own resolution, and the
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20F79E0.asm` lines 157 to 170 build the bars from chart +0xB8, which `code/6142/song_resolution_set_212C0B0.asm` stores as the file's value; the speed-scaled resolution is +0xB0 (page 3, TM-56). The drain reads the clock's tick at engine+0x108 (SP-22), which `code/6142/engine_clock_update_20F4950.asm` lines 42 and 74 make with the chart's time-to-tick method `0x212BCC0`; that method reads +0xB0 (`code/6142/time_to_tick_212BCC0.asm` lines 74 to 92), so a time in game seconds gives the file's own tick. The one +0xB0 value the engine constructor keeps, at +0x1C8, is read only by guitar code (page 7, IN-97).
 Game code (6142): the base engine constructor, RVA `0x20F79E0`; the engine clock update, RVA `0x20F4950`; time to tick, RVA `0x212BCC0`.
-Hydra: no owner for a speed rule (page 3, TM-44)
-Ruling: none needed: no Hydra rule depends on it
+Hydra: `SongTiming::plusmeasure` (src/core/timing.cpp line 326) with `sp_bars_to_measures` (src/core/timing.h line 272) counts a bar in measures of the file's ticks and reads no speed, so a bar lasts the same beats at every speed; only its time, through the song's timing, divides by the speed (page 3, TM-56 and TM-44)
+Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
 
 ## The Star Power end
