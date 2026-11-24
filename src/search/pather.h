@@ -32,6 +32,9 @@ struct SearchSettings {
     DepthMode depth_mode = DepthMode::Scores;
     int depth_value = kDefaultDepthValue;
     std::optional<double> ms_filter;
+    // The user's "Safe paths" option (EngineOptions::safe_paths). The main
+    // search reads it; the all-0 pass and the Path Builder never do.
+    bool safe_paths = false;
     // The SP meter ceiling in bars (4 = Clone Hero's rule).
     int sp_cap = kCloneHeroSpCap;
     // Which game version's fill deadline the search scores by. The same flag,

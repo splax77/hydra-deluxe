@@ -209,13 +209,10 @@ std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k
     return std::nullopt;
 }
 
-// The early fill's row, on every activation that shows the early fill
-// badge and the "Early fill" line (Activation::is_e_critical, the test
-// badge_timings uses), required, optional or with time to spare alike.
+// The early fill's row, where early_fill_row (core/note_window.h) gives one.
 std::optional<WindowRowView> early_fill_window_view(const Activation& act,
                                                     const ChordTimes& chords) {
-    if (!act.is_e_critical()) return std::nullopt;
-    if (const std::optional<WindowEnds> row = early_fill_window_end(act, chords))
+    if (const std::optional<WindowEnds> row = early_fill_row(act, chords))
         return window_row_view(*row, chords);
     return std::nullopt;
 }

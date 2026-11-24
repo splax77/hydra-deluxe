@@ -39,6 +39,13 @@ struct EngineOptions {
     // timing than the limit allows; with this set it is dropped outright.
     // The all-0 pass sets it (allzero_options).
     bool hard_ms_filter = false;
+    // The user's "Safe paths" option: drop outright every path that holds a
+    // squeeze or early fill whose Dynamic Hit Window row reads short, the top
+    // path too. Which rows show and when one reads short are
+    // core/note_window.h's (squeeze_window_ends, early_fill_row). It is its
+    // own switch: it reads neither ms_filter nor hard_ms_filter, and they do
+    // not read it. Off, the search does no part of this work.
+    bool safe_paths = false;
     // When set, the node ticks the search must activate at, ascending, and
     // nowhere else. It replaces no_skips's rule for the same branch point, so
     // the search returns exactly one path (the caller's) with all its squeeze

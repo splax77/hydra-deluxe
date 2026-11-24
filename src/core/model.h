@@ -999,6 +999,9 @@ std::string path_identity(const Path& path);
 
 struct HydraRecord {
     std::optional<double> ms_limit;
+    // The "Safe paths" option the main search ran under
+    // (SearchSettings::safe_paths); set beside ms_limit.
+    bool safe_paths = false;
     std::optional<int> sp_cap;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
     // A saved record's profile stores it in its rules_fp column

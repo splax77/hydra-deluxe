@@ -218,6 +218,9 @@ public:
     // The early-fill window, in ms, every search on this graph runs under.
     double early_fill_window_ms() const { return early_fill_window_ms_; }
     const SongTiming& timing() const { return song_.timing(); }
+    // The song this graph was built from. The safe-paths search reads its
+    // chords through it (EngineOptions::safe_paths).
+    const Song& song() const { return song_; }
     // The chart's note total, Song::note_count. Every path covers the whole
     // chart, so the engine stores this one number on each.
     int note_count() const { return song_.note_count(); }

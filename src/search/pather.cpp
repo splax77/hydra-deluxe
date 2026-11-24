@@ -10,13 +10,14 @@ namespace hydra {
 
 namespace {
 
-// The options the main search runs with: the user's depth and Path limit,
-// the limit soft. read and best_finish_options both start from here.
+// The options the main search runs with: the user's depth, Path limit (soft)
+// and Safe paths. read and best_finish_options both start from here.
 EngineOptions main_search_options(const SearchSettings& settings) {
     EngineOptions options;
     options.depth_mode = settings.depth_mode;
     options.depth_value = settings.depth_value;
     options.ms_filter = settings.ms_filter;
+    options.safe_paths = settings.safe_paths;
     return options;
 }
 
@@ -24,6 +25,7 @@ HydraRecord read(const ScoreGraph& graph, const SearchSettings& settings,
                  const std::function<void(float)>& on_progress) {
     HydraRecord record;
     record.ms_limit = settings.ms_filter;
+    record.safe_paths = settings.safe_paths;
     record.multsqueezes = graph.multsqueezes();
     record.paths = run_search(graph, main_search_options(settings), on_progress);
     return record;
@@ -388,6 +390,9 @@ TargetResult target_on_graph(const ScoreGraph& graph, const std::vector<PinnedWi
 EngineOptions best_finish_options(const SearchSettings& settings,
                                   const std::vector<PinnedWindow>& windows) {
     EngineOptions options = main_search_options(settings);
+    // Safe paths is the main list's option only: the Path Builder never runs
+    // a safe search.
+    options.safe_paths = false;
     pin_windows(options, windows);
     options.free_after = true;
     return options;
