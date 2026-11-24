@@ -1,0 +1,119 @@
+# Session-card tags. Lines are only added. A bare tag comes from a CONTEXT.md term; "(hand)" marks a hand-added tag; "old => new" means old was replaced by new.
+chart
+drum-track
+library
+scan
+scanned-chart
+library-row
+selection-scroll
+rescan-cache
+analyze
+analysis
+record
+profile
+lens
+result-status
+library-file-upgrade
+sp-cap
+analysis-settings
+chart-reading
+score-range
+settings-in-words
+library-search
+batch-time-left
+batch-counts
+batch-running
+ui-timings
+leaderboard-fetch
+in-the-library
+report-coverage
+comparable-chart-mode
+comparison-status
+fill-comparison-status
+report-table
+text-sort-order
+fact-separator
+plain-error
+rules-file-error
+settings-files
+job-outcome
+update-check
+path
+optimal-path
+score-categories
+activation
+skip
+authored-fill
+sp-phrase
+all-0-path
+press-schedule
+squeeze
+frontend-squeeze
+backend-squeeze
+backend-row
+sqin-sqout
+multiplier-squeeze
+star-cutoff
+early-fill-e
+fill-spawn-deadline-ch-1-1
+fill-spawn-deadline-ch-1-0
+generated-fill
+fill-rule
+timing-step
+transfer-scale
+sp-end-history
+deact-node
+cap-clamped-window
+squeeze-rating
+needs-no-timing
+saved-hardest-figure
+shown-timing
+backend-leeway
+difficulty
+tick
+tempo
+time-signature
+measure
+beat
+section
+span
+sp-bar
+preview
+note-highway
+ghost-path
+gem
+lane
+disco-flip
+2x-kick
+strike-line
+beat-line
+active-sp-window
+path-overlay
+sp-meter-gauge
+preview-text-box
+stem
+song-length
+mixer
+transport
+path-builder
+builder-timeline
+step
+code-library
+layering-rule
+hooks (hand)
+agents (hand)
+review (hand)
+planning (hand)
+memory (hand)
+release (hand)
+installer (hand)
+ci (hand)
+tests (hand)
+performance (hand)
+docs (hand)
+transcripts (hand)
+clone-hero (hand)
+video (hand)
+leaderboards (hand)
+hit-window
+hit-window => timing-step
