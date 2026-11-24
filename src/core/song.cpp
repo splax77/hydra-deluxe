@@ -293,11 +293,13 @@ void Song::place_fills_ch11(const core::Rules& rules) {
 
 // ---- Clone Hero 1.0's measure lines ----------------------------------------
 
-// The game adds one beat of its timing resolution, the chart's resolution
-// times the song speed (F9 and F10 of fill_generator.md); Hydra scores at 100%
-// speed, so that beat is the chart's resolution.
+// The game adds one beat of its timing resolution (F9 and F10 of
+// fill_generator.md), which SongTiming::working_resolution owns, cut to a
+// whole tick by the game's `(uint)` cast (fill_generator.cs line 638; FL-49 on
+// docs/clone-hero/04-fills.md).
 int64_t ch10_last_line_tick(const Song& song) {
-    return song.last_note_end_tick.value_or(0) + song.tick_resolution();
+    return song.last_note_end_tick.value_or(0) +
+           static_cast<int64_t>(song.timing().working_resolution());
 }
 
 // MeasureIndex::walk already restarts the grid where the game's walk does

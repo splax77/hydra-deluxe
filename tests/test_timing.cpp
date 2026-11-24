@@ -6,18 +6,25 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "app/preview_view.h"  // PreviewTimeSig
+#include "core/note_window.h"
+#include "core/squeeze_rating.h"
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
+#include "search/engine.h"
+#include "search/graph.h"
 
 TEST_CASE("timing: corpus conversions are monotone and consistent") {
     // A walk over no charts would pass every check below, so it fails at once.
@@ -463,6 +470,290 @@ TEST_CASE("timing: a new Song and an empty Preview scene read the one default me
     const hydra::app::PreviewTimeSig none;
     CHECK(none.numerator == hydra::kDefaultTimeSigNumerator);
     CHECK(none.denominator == hydra::kDefaultTimeSigDenominator);
+}
+
+// ---- song speed (TM-56 on docs/clone-hero/03-timing.md) --------------------
+
+namespace {
+
+// A Song with `src`'s tempo and meter maps and no notes, timed at `percent`.
+hydra::Song maps_at_speed(const hydra::Song& src, int percent) {
+    hydra::Song s(src.tick_resolution());
+    s.tpm_changes = src.tpm_changes;
+    s.bpm_changes = src.bpm_changes;
+    s.timesig_changes = src.timesig_changes;
+    s.set_speed_percent(percent);
+    s.build_timing();
+    return s;
+}
+
+// The corpus charts with at least one tempo change, so a reordered float
+// operation in a later tempo section would show.
+std::vector<const hydra::Song*> tempo_change_charts() {
+    std::vector<const hydra::Song*> out;
+    for (const std::string& path : corpus::chart_paths()) {
+        const hydra::Song& song = corpus::song(path, hydra::ChartReading{});
+        if (song.bpm_changes.size() > 1) out.push_back(&song);
+    }
+    return out;
+}
+
+// Every tick the checks below probe: each chord's and each tempo change's.
+std::vector<int64_t> probe_ticks(const hydra::Song& song) {
+    std::vector<int64_t> ticks;
+    for (const hydra::SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());
+    for (const auto& kv : song.bpm_changes) ticks.push_back(kv.first);
+    return ticks;
+}
+
+constexpr int kHalfSpeed = 50;
+constexpr int kDoubleSpeed = 200;
+
+}  // namespace
+
+TEST_CASE("song speed: at 100% every time is the time the file's resolution gives, "
+          "bit for bit") {
+    const std::vector<const hydra::Song*> charts = tempo_change_charts();
+    REQUIRE_FALSE(charts.empty());
+    for (const hydra::Song* song : charts) {
+        // The parsed song is timed at the default speed, and its working
+        // resolution is the file's own.
+        CHECK(song->speed_percent() == hydra::kNormalSpeedPercent);
+        CHECK(song->timing().working_resolution() ==
+              static_cast<double>(song->tick_resolution()));
+        const hydra::MsIndex no_ratio(song->bpm_changes,
+                                      static_cast<double>(song->tick_resolution()));
+        const hydra::Song set_100 = maps_at_speed(*song, hydra::kNormalSpeedPercent);
+        bool same = true;
+        for (const int64_t t : probe_ticks(*song)) {
+            const double want = no_ratio.at(t);
+            if (song->timing().ms_index().at(t) != want ||
+                set_100.timing().ms_index().at(t) != want)
+                same = false;
+        }
+        for (const hydra::SongTimestamp& ts : song->sequence)
+            if (ts.timecode.ms() != no_ratio.at(ts.timecode.ticks())) same = false;
+        CHECK(same);
+    }
+}
+
+TEST_CASE("song speed: at 200% a tick's time is half its 100% time, at 50% twice, and "
+          "tick_at_ms reads each back") {
+    const std::vector<const hydra::Song*> charts = tempo_change_charts();
+    REQUIRE_FALSE(charts.empty());
+    for (const hydra::Song* song : charts) {
+        const hydra::Song half = maps_at_speed(*song, kHalfSpeed);
+        const hydra::Song twice = maps_at_speed(*song, kDoubleSpeed);
+        const hydra::MsIndex& at100 = song->timing().ms_index();
+        const hydra::MsIndex& at50 = half.timing().ms_index();
+        const hydra::MsIndex& at200 = twice.timing().ms_index();
+        bool scaled = true, inverse = true;
+        for (const int64_t t : probe_ticks(*song)) {
+            // Halving and doubling a double is exact, so these are equal, not
+            // close.
+            if (at200.at(t) * 2.0 != at100.at(t) || at50.at(t) != at100.at(t) * 2.0)
+                scaled = false;
+            const double tick = static_cast<double>(t);
+            if (at200.tick_at_ms(at200.at(t)) != doctest::Approx(tick) ||
+                at50.tick_at_ms(at50.at(t)) != doctest::Approx(tick))
+                inverse = false;
+        }
+        CHECK(scaled);
+        CHECK(inverse);
+        CHECK(half.timing().speed_ratio() * 2.0 == song->timing().speed_ratio());
+        CHECK(twice.timing().speed_ratio() == song->timing().speed_ratio() * 2.0);
+    }
+}
+
+TEST_CASE("song speed: the file's resolution and Star Power's length in ticks do not "
+          "move with the speed") {
+    const std::vector<const hydra::Song*> charts = tempo_change_charts();
+    REQUIRE_FALSE(charts.empty());
+    const int64_t sp_measures = hydra::sp_bars_to_measures(hydra::kSpActivationBars);
+    for (const hydra::Song* song : charts) {
+        for (const int percent : {kHalfSpeed, kDoubleSpeed}) {
+            CAPTURE(percent);
+            const hydra::Song other = maps_at_speed(*song, percent);
+            CHECK(other.timing().tick_resolution() == song->timing().tick_resolution());
+            bool same = true;
+            for (const hydra::SongTimestamp& ts : song->sequence) {
+                const int64_t t = ts.timecode.ticks();
+                if (other.timing().plusmeasure(other.timecode(t), sp_measures).ticks() !=
+                    song->timing().plusmeasure(song->timecode(t), sp_measures).ticks())
+                    same = false;
+            }
+            CHECK(same);
+        }
+    }
+}
+
+TEST_CASE("song speed: the 1.1 fill deadline falls on the same tick at every speed") {
+    // A tempo change between the deadline and the fill, so the four beats
+    // cross two tempos.
+    const std::map<int64_t, int64_t> tpm{{0, 1920}};
+    const std::map<int64_t, double> bpm{{0, 120.0}, {7200, 150.0}};
+    const int64_t fill_end = 7680;
+    const int64_t fill_length = 480;
+    const hydra::SongTiming at100(480, tpm, bpm, {{0, {4, 4}}});
+    const double deadline100 = hydra::activation_fill_deadline_ms(
+        at100, fill_end, fill_length, hydra::FillDeadlineRule::Ch11);
+    const double tick100 = at100.ms_index().tick_at_ms(deadline100);
+    for (const int percent : {kHalfSpeed, kDoubleSpeed}) {
+        CAPTURE(percent);
+        hydra::Song song(480);
+        song.bpm_changes = bpm;
+        song.set_speed_percent(percent);
+        song.build_timing();
+        const hydra::SongTiming& timing = song.timing();
+        const double deadline = hydra::activation_fill_deadline_ms(
+            timing, fill_end, fill_length, hydra::FillDeadlineRule::Ch11);
+        CHECK(deadline != deadline100);
+        CHECK(timing.ms_index().tick_at_ms(deadline) == doctest::Approx(tick100));
+    }
+}
+
+namespace {
+
+// The Epidermis shape of tests/record_fixtures.h (make_late_sqin_song), timed
+// at `percent`: a note every beat at 240 BPM and 480 ticks a beat, phrases
+// ending at 480, 1920 and 13920, and a fill at 5760. Built here because the
+// speed has to be set before build_timing.
+hydra::Song late_sqin_song_at(int percent) {
+    hydra::Song song(480);
+    song.bpm_changes[0] = 240.0;
+    song.set_speed_percent(percent);
+    song.build_timing();
+    const std::vector<int64_t> phrases{480, 1920, 13920};
+    for (int64_t t = 0; t <= 21120; t += 480) {
+        hydra::SongTimestamp ts;
+        ts.timecode = song.timecode(t);
+        ts.chord.add_note(hydra::NoteColor::Red);
+        if (std::find(phrases.begin(), phrases.end(), t) != phrases.end())
+            hydra::test::mark_phrase_end(ts, t, song.tick_resolution());
+        if (t == 5760) ts.activation_length = 960;
+        song.sequence.push_back(std::move(ts));
+    }
+    return song;
+}
+
+}  // namespace
+
+TEST_CASE("song speed: at 200% a squeeze needs half the ms, and the timing step, budgets "
+          "and tiers do not move") {
+    const hydra::Song song100 = late_sqin_song_at(hydra::kNormalSpeedPercent);
+    const hydra::Song song200 = late_sqin_song_at(kDoubleSpeed);
+    const hydra::ScoreGraph graph100(song100, 4);
+    const hydra::ScoreGraph graph200(song200, 4);
+    const std::vector<hydra::Path> paths100 = hydra::run_search(graph100, hydra::EngineOptions{});
+    const std::vector<hydra::Path> paths200 = hydra::run_search(graph200, hydra::EngineOptions{});
+    REQUIRE_FALSE(paths100.empty());
+    REQUIRE_FALSE(paths200.empty());
+    REQUIRE(paths100.front().activations.size() == 1);
+    REQUIRE(paths200.front().activations.size() == 1);
+    const hydra::Activation& a100 = paths100.front().activations.front();
+    const hydra::Activation& a200 = paths200.front().activations.front();
+    CHECK(a200.timecode.ticks() == a100.timecode.ticks());
+    REQUIRE(a100.sqinouts.size() == 1);
+    REQUIRE(a200.sqinouts.size() == 1);
+
+    // The squeeze's stored ms is played time: half at twice the speed.
+    CHECK(a100.sqinouts[0].offset_ms != 0.0);
+    CHECK(a200.sqinouts[0].offset_ms * 2.0 == doctest::Approx(a100.sqinouts[0].offset_ms));
+
+    // The budget the squeeze is rated on reads the stored transfer scales, which
+    // are ratios of two measure lengths and so hold no speed.
+    const auto scales100 = hydra::stored_transfer_scales(a100);
+    const auto scales200 = hydra::stored_transfer_scales(a200);
+    REQUIRE(scales100.has_value());
+    REQUIRE(scales200.has_value());
+    REQUIRE(scales100->sqins.size() == 1);
+    REQUIRE(scales200->sqins.size() == 1);
+    for (const auto& [s100, s200] :
+         {std::make_pair(scales100->sqins[0], scales200->sqins[0]),
+          std::make_pair(scales100->post, scales200->post)}) {
+        CHECK(s200.early == doctest::Approx(s100.early));
+        CHECK(s200.late == doctest::Approx(s100.late));
+        CHECK(hydra::squeeze_budget_ms(s200.early) ==
+              doctest::Approx(hydra::squeeze_budget_ms(s100.early)));
+        CHECK(hydra::squeeze_budget_ms(s200.late) ==
+              doctest::Approx(hydra::squeeze_budget_ms(s100.late)));
+    }
+    // kTimingStepMs, nominal_budget_ms, timing_tiers and tier_for take no song
+    // and no timing, so no speed can reach them: a tier read off the squeeze's
+    // ms moves only because the ms does.
+}
+
+namespace {
+
+// Sixteenth notes at 180 BPM (TM-43's worked example on
+// docs/clone-hero/03-timing.md), 192 ticks a beat, timed at `percent`.
+hydra::Song sixteenths_at(int percent) {
+    hydra::Song song(192);
+    song.bpm_changes[0] = 180.0;
+    song.set_speed_percent(percent);
+    song.build_timing();
+    const int64_t sixteenth = song.tick_resolution() / 4;
+    for (int64_t i = 0; i < 9; ++i) {
+        hydra::SongTimestamp ts;
+        ts.timecode = song.timecode(i * sixteenth);
+        ts.chord.add_note(hydra::NoteColor::Red);
+        song.sequence.push_back(std::move(ts));
+    }
+    return song;
+}
+
+}  // namespace
+
+TEST_CASE("song speed: the Dynamic Hit Window side follows the formula on played gaps at "
+          "50%, 100% and 200%") {
+    std::vector<double> sides;
+    std::vector<double> gaps;
+    for (const int percent : {kHalfSpeed, hydra::kNormalSpeedPercent, kDoubleSpeed}) {
+        CAPTURE(percent);
+        const hydra::Song song = sixteenths_at(percent);
+        const hydra::MsIndex& ms = song.timing().ms_index();
+        const hydra::ChordTimes ct = hydra::chord_times(song);
+        REQUIRE(ct.ms.size() == song.sequence.size());
+        // A middle chord: a neighbour either side.
+        const size_t i = ct.ms.size() / 2;
+        const double before = ms.at(ct.ticks[i]) - ms.at(ct.ticks[i - 1]);
+        const double after = ms.at(ct.ticks[i + 1]) - ms.at(ct.ticks[i]);
+        CHECK(ct.ms[i] == ms.at(ct.ticks[i]));
+        CHECK(ct.sides_ms[i] == doctest::Approx(hydra::window_side_ms(before, after)));
+        sides.push_back(ct.sides_ms[i]);
+        gaps.push_back(before);
+    }
+    // The gaps are played time, so they halve as the speed doubles; the
+    // window, built from them, narrows from 50% to 200%.
+    CHECK(gaps[0] == doctest::Approx(gaps[1] * 2.0));
+    CHECK(gaps[2] * 2.0 == doctest::Approx(gaps[1]));
+    CHECK(sides[0] > sides[1]);
+    CHECK(sides[1] > sides[2]);
+}
+
+TEST_CASE("song speed: a speed set after the timing is built, or of 0, is refused") {
+    hydra::Song built(192);
+    built.bpm_changes[0] = 120.0;
+    built.build_timing();
+    CHECK_THROWS_AS(built.set_speed_percent(kDoubleSpeed), std::logic_error);
+
+    hydra::Song fresh(192);
+    CHECK_THROWS_AS(fresh.set_speed_percent(0), std::invalid_argument);
+    CHECK(fresh.speed_percent() == hydra::kNormalSpeedPercent);
+}
+
+TEST_CASE("song speed: a chart read through the analysis settings at 150% is timed at "
+          "a ratio of 1.5, in both parsers") {
+    hydra::app::Settings at150;
+    at150.speed_percent = 150;
+    const hydra::app::AnalysisSettings analysis = at150.to_analysis_settings();
+    for (const char* suffix : {".chart", ".mid"}) {
+        INFO(suffix);
+        const hydra::Song& song = corpus::song(corpus::first_chart_with_suffix(suffix),
+                                               analysis.reading(), analysis.rules);
+        CHECK(song.speed_percent() == 150);
+        CHECK(song.timing().speed_ratio() == 1.5);
+    }
 }
 
 // "Who writes a meter or a signature into Song's maps?" and "Does the Preview

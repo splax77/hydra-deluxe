@@ -10,6 +10,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -201,12 +202,29 @@ public:
     // fill that lands on no chord does not set it (FL-28).
     bool coda_skipped_fill = false;
 
-    // Snapshot the timing indexes from the current maps. Called once the tempo
-    // track has been fully mapped and before any timecode is made. Timing
-    // that can't measure time is refused here (check_timing_maps).
+    // The song speed the chart is timed at, a whole percent (kNormalSpeedPercent
+    // until set). Every tick-to-time answer follows it, through
+    // SongTiming::speed_ratio (TM-56 on docs/clone-hero/03-timing.md). Set it
+    // before build_timing: the timecodes a song holds are made from its
+    // timing, so a later change would leave them at the old speed, and this
+    // throws std::logic_error then. A percent of 0 or below throws
+    // std::invalid_argument. The one place the percent becomes the ratio.
+    void set_speed_percent(int percent) {
+        if (timing_) throw std::logic_error("song speed set after build_timing");
+        if (percent <= 0) throw std::invalid_argument("song speed percent must be above 0");
+        speed_percent_ = percent;
+        speed_ratio_ = static_cast<double>(percent) / static_cast<double>(kNormalSpeedPercent);
+    }
+    int speed_percent() const { return speed_percent_; }
+
+    // Snapshot the timing indexes from the current maps, at the song speed.
+    // Called once the tempo track has been fully mapped and before any
+    // timecode is made. Timing that can't measure time is refused here
+    // (check_timing_maps).
     void build_timing() {
         check_timing_maps(tick_resolution_, tpm_changes, bpm_changes);
-        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes, timesig_changes);
+        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes, timesig_changes,
+                        speed_ratio_);
     }
     const SongTiming& timing() const { return *timing_; }
     Timecode timecode(int64_t ticks) const { return timing_->timecode(ticks); }
@@ -236,6 +254,8 @@ private:
     void place_fills_ch11(const core::Rules& rules);
 
     int64_t tick_resolution_;
+    int speed_percent_ = kNormalSpeedPercent;
+    double speed_ratio_ = 1.0;
     std::optional<SongTiming> timing_;
 };
 
@@ -246,9 +266,10 @@ private:
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
 // The last tick of Clone Hero 1.0's measure-line walk, which the walk
-// includes: F10 of docs/clone-hero/code/4045/fill_generator.md, at 100% song
-// speed. The chart's last note end is Song::last_note_end_tick, the one answer
-// to it, read as 0 when the chart has no note, as the game's F10 does.
+// includes: F10 of docs/clone-hero/code/4045/fill_generator.md. The chart's
+// last note end is Song::last_note_end_tick, the one answer to it, read as 0
+// when the chart has no note, as the game's F10 does. The resolution it adds
+// is SongTiming::working_resolution(), so it follows the song speed.
 int64_t ch10_last_line_tick(const Song& song);
 
 // Clone Hero 1.0's measure lines, in tick order: the list its fill generator

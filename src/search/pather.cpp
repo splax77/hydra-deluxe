@@ -548,6 +548,9 @@ HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
     record.rules_fingerprint = settings.rules.fingerprint();
     record.legacy_fills = settings.legacy_fills;
     record.early_fill_window_ms = settings.early_fill_window_ms;
+    // The speed the chart's times were read at, from the song itself: the
+    // search settings carry no speed, and the song is what was searched.
+    record.speed_percent = song.speed_percent();
     return record;
 }
 

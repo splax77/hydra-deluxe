@@ -382,6 +382,126 @@ TEST_CASE("1.0 measure lines: the walk ends one beat past the chart's last note 
     CHECK(ch10_last_line_tick(song) == kCh10Res);
 }
 
+// ---- Clone Hero 1.0 at another song speed ---------------------------------
+//
+// FL-49 and FL-50 on docs/clone-hero/04-fills.md: the 1.0 measure lines and
+// Star Power sizes stay on the file's ticks at every speed, and only the
+// walk's last beat is counted in the speed-scaled resolution (F10,
+// fill_generator.cs line 638). These cases load one corpus chart at 100%, 50%
+// and 200% through ChartReading::speed_percent and compare the answers.
+
+namespace {
+
+constexpr int kHalfSpeed = 50;
+constexpr int kDoubleSpeed = 200;
+
+Song ch10_at_speed(const std::string& path, int percent) {
+    ChartReading reading;
+    reading.speed_percent = percent;
+    return load_songpath(path, reading, core::default_rules(), FillDeadlineRule::Ch10);
+}
+
+// The first corpus chart that gets 1.0 fills generated and has a last note
+// end, or an empty string when none does.
+const std::string& ch10_generated_chart() {
+    static const std::string path = [] {
+        for (const std::string& p : corpus::chart_paths()) {
+            const Song song = ch10_at_speed(p, kNormalSpeedPercent);
+            if (song.generated_fills == FillDeadlineRule::Ch10 && song.last_note_end_tick.has_value())
+                return p;
+        }
+        return std::string{};
+    }();
+    return path;
+}
+
+}  // namespace
+
+TEST_CASE("1.0 measure lines: the walk's last beat is the file's resolution times the song speed") {
+    const std::string& path = ch10_generated_chart();
+    REQUIRE_FALSE(path.empty());
+    CAPTURE(path);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
+    const int64_t end = *normal.last_note_end_tick;
+    // At 100% the beat is the file's own resolution.
+    const int64_t normal_beat = ch10_last_line_tick(normal) - end;
+    CHECK(normal_beat == normal.tick_resolution());
+    // Half of it must be a whole tick for the 50% case to be exact.
+    REQUIRE(normal.tick_resolution() % 2 == 0);
+    for (int percent : {kHalfSpeed, kDoubleSpeed}) {
+        CAPTURE(percent);
+        const Song song = ch10_at_speed(path, percent);
+        REQUIRE(song.generated_fills == FillDeadlineRule::Ch10);
+        REQUIRE(song.last_note_end_tick == normal.last_note_end_tick);
+        const int64_t beat = ch10_last_line_tick(song) - end;
+        // Half the file's beat at 50%, twice it at 200%.
+        CHECK(beat * kNormalSpeedPercent == normal_beat * percent);
+    }
+}
+
+TEST_CASE("1.0 measure lines: a beat that is not a whole tick is cut to the tick below") {
+    // Resolution 192 at 110%: the game's timing resolution is 211.2, and its
+    // `(uint)` cast (fill_generator.cs line 638) drops the fraction.
+    Song song(kCh10Res);
+    song.bpm_changes[0] = 120.0;
+    song.set_speed_percent(110);
+    song.build_timing();
+    song.last_note_end_tick = 2808;
+    const double working = song.timing().working_resolution();
+    const int64_t beat = ch10_last_line_tick(song) - 2808;
+    REQUIRE(working != static_cast<double>(static_cast<int64_t>(working)));
+    CHECK(static_cast<double>(beat) < working);
+    CHECK(working < static_cast<double>(beat + 1));
+}
+
+TEST_CASE("1.0 measure lines: the lines sit on the file's ticks at 50% and 200%, each at its played second") {
+    // FL-49: the walk steps by the file's resolution, so a speed moves only
+    // where the walk ends, and each line's second is its played second.
+    const std::string& path = ch10_generated_chart();
+    REQUIRE_FALSE(path.empty());
+    CAPTURE(path);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
+    for (int percent : {kHalfSpeed, kDoubleSpeed}) {
+        CAPTURE(percent);
+        const Song song = ch10_at_speed(path, percent);
+        const int64_t last = ch10_last_line_tick(song);
+        const std::vector<int64_t> lines = ch10_lines(song, last);
+        REQUIRE_FALSE(lines.empty());
+        // The same ticks the 100% grid gives up to this speed's last tick.
+        CHECK(lines == ch10_lines(normal, last));
+        for (int64_t line : lines) {
+            CAPTURE(line);
+            CHECK(song.timing().timecode(line).ms() * song.timing().speed_ratio() ==
+                  doctest::Approx(normal.timing().timecode(line).ms()));
+        }
+    }
+}
+
+TEST_CASE("1.0 Star Power: a bar lasts the same measures of file ticks at 50% and 200%") {
+    // FL-50: the 1.0 drain counts the file's own ticks, so a bar of Star
+    // Power ends on the same tick at every speed, and only its played time
+    // changes. Hydra's length of a bar is SongTiming::plusmeasure over
+    // sp_bars_to_measures(1).
+    const std::string& path = ch10_generated_chart();
+    REQUIRE_FALSE(path.empty());
+    CAPTURE(path);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
+    const int64_t one_bar = sp_bars_to_measures(1);
+    for (int percent : {kHalfSpeed, kDoubleSpeed}) {
+        CAPTURE(percent);
+        const Song song = ch10_at_speed(path, percent);
+        REQUIRE(song.sequence.size() == normal.sequence.size());
+        for (const SongTimestamp& ts : song.sequence) {
+            const int64_t tick = ts.timecode.ticks();
+            CAPTURE(tick);
+            const Timecode end = song.timing().plusmeasure(ts.timecode, one_bar);
+            const Timecode normal_end = normal.timing().plusmeasure(normal.timecode(tick), one_bar);
+            CHECK(end.ticks() == normal_end.ticks());
+            CHECK(end.ms() * song.timing().speed_ratio() == doctest::Approx(normal_end.ms()));
+        }
+    }
+}
+
 // ---- Clone Hero 1.0's generator -------------------------------------------
 //
 // Each expected fill below is worked by hand from the game's loop, F1 of

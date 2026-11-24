@@ -2,8 +2,8 @@
 // chart library, one record per chart and profile, and `meta`.
 //
 //   * `profiles` — one row per set of settings a record is filed under: the
-//     chart mode, the SP cap, the Lens (ms limit, score range, fill rule and
-//     early-fill window),
+//     chart mode, the SP cap, the Lens (ms limit, score range, fill rule,
+//     early-fill window and song speed),
 //     the results stamp (stored_versions.h) and the hydra_rules.ini
 //     fingerprint. A record made under other rules or by another build sits
 //     under its own profile, beside this build's.
@@ -104,9 +104,9 @@ struct CapQuery {
 };
 
 // The rest of the settings a run happened under: the ms limit, the score
-// range, the fill rule and the early-fill window. Two runs of the same chart
-// at the same cap under different lenses are two results, neither
-// overwriting the other.
+// range, the fill rule, the early-fill window and the song speed. Two runs of
+// the same chart at the same cap under different lenses are two results,
+// neither overwriting the other.
 //
 // Canonical form, so equal settings always compare equal: a disabled ms limit
 // stores value 0, because the engine ignores the number when the limit is off
@@ -127,12 +127,19 @@ struct Lens {
     // results at two windows sit side by side. A row saved before the store
     // kept it is filed under the default (add_early_fill_column).
     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
+    // The song speed the chart was read at, in whole percent
+    // (HydraRecord::speed_percent). Part of the key, so a chart's results at
+    // two speeds sit side by side. A row saved before the store kept it is
+    // filed under the default (add_speed_column).
+    int speed_percent = kNormalSpeedPercent;
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
-    // `efill_window_ms` is the early-fill setting.
+    // `efill_window_ms` is the early-fill setting and `speed_percent` the
+    // song speed setting.
     static Lens from(std::optional<int> ms, int depth_mode, int depth_value,
                      bool legacy_fills = false,
-                     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs)) {
+                     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs),
+                     int speed_percent = kNormalSpeedPercent) {
         Lens lens;
         lens.ms_enabled = ms ? 1 : 0;
         lens.ms_value = ms ? *ms : 0;
@@ -140,6 +147,7 @@ struct Lens {
         lens.depth_value = depth_value;
         lens.legacy_fills = legacy_fills ? 1 : 0;
         lens.efill_window_ms = efill_window_ms;
+        lens.speed_percent = speed_percent;
         return lens;
     }
 
@@ -147,7 +155,8 @@ struct Lens {
     bool operator==(const Lens& other) const {
         return ms_enabled == other.ms_enabled && ms_value == other.ms_value &&
                depth_mode == other.depth_mode && depth_value == other.depth_value &&
-               legacy_fills == other.legacy_fills && efill_window_ms == other.efill_window_ms;
+               legacy_fills == other.legacy_fills && efill_window_ms == other.efill_window_ms &&
+               speed_percent == other.speed_percent;
     }
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
@@ -416,6 +425,8 @@ inline constexpr int kJournalSizeLimitBytes = 4194304;
 // RecordStore::add_early_fill_column rebuilds it. Named here so a test can
 // leave a table of that name in the way and see the rebuild undone.
 inline constexpr const char* kProfilesBeforeEarlyFillTable = "profiles_before_efill";
+// The same for RecordStore::add_speed_column.
+inline constexpr const char* kProfilesBeforeSpeedTable = "profiles_before_speed";
 
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
@@ -937,8 +948,9 @@ private:
     // The constructor's work after the file opens: the journal settings, the
     // tables, and, by the file's kind (classify_library_file), the conversion
     // of a Convertible file, the failure columns a LacksFailureColumns file
-    // gains, and the album column and the profiles' early-fill window column
-    // every kind older than Current gains; last, the deletion of empty
+    // gains, and the album column and the profiles' early-fill window and
+    // song speed columns every kind older than Current gains; last, the
+    // deletion of empty
     // profiles (drop_empty_profiles). The constructor
     // turns any throw from it into a failed open.
     void set_up_schema(LibraryFileKind kind);
@@ -979,11 +991,27 @@ private:
     // collide. SQLite cannot add a column to a key in place, so the table is
     // rebuilt: renamed to kProfilesBeforeEarlyFillTable, made again from the
     // same SQL a new file uses, every row copied across with its id kept and
-    // the default window (Lens::efill_window_ms), and the old table dropped.
+    // the default window (Lens::efill_window_ms) and the default speed
+    // (Lens::speed_percent), and the old table dropped (rebuild_profiles).
     // records and record_paths name a profile by id, so they are untouched.
     // One transaction; a failure throws KindedError(DatabaseUpgrade) with the
     // file as it was.
     void add_early_fill_column();
+    // Gives the profiles table its song speed column when it lacks one
+    // (profiles_table_lacks_speed), the same way add_early_fill_column gives
+    // it the window: rebuilt under kProfilesBeforeSpeedTable, every row copied
+    // with the default speed (Lens::speed_percent). It runs after
+    // add_early_fill_column, whose rebuild already makes the column, so a file
+    // older than both columns is rebuilt once.
+    void add_speed_column();
+    // The rebuild both of those run, inside their transaction: renames
+    // profiles to `old_table`, makes it again from the SQL a new file uses
+    // (create_result_tables), copies every row's id, chart mode, cap, the
+    // lens columns in `kept_lens`, stamp and rules fingerprint across, gives
+    // the columns in `added_columns` the literal values in `added_values`, and
+    // drops `old_table`.
+    void rebuild_profiles(const char* old_table, const std::string& kept_lens,
+                          const std::string& added_columns, const std::string& added_values);
     // Opens the writer's connection on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);

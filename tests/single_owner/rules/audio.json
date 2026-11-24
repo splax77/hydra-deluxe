@@ -43,11 +43,12 @@
       "date": "2026-10-05",
       "decision": "derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1); moved beside chart_audio_offset_ms in app/preview_source.h by the Hydra libraries plan (task T1b)",
       "added_by": "M7-2c",
-      "pattern": "\\w*chart_ms\\s*[+-]\\s*audio_offset_ms|\\bms\\s*[+-]\\s*audio_offset_ms_|-\\s*audio_offset_ms\\b",
+      "pattern": "\\w*chart_ms\\s*[+-]\\s*audio_offset_ms|\\bchart_ms\\s*\\*\\s*\\w+\\s*[+-]\\s*audio_offset_ms|\\bms\\s*[+-]\\s*audio_offset_ms_|-\\s*audio_offset_ms\\b",
       "anchor": "audio_offset_ms",
       "must_match": [
         "playhead_->seek_ms(ms + audio_offset_ms_);",
         "return chart_ms + audio_offset_ms;",
+        "return chart_ms * speed_ratio + audio_offset_ms;",
         "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;"
       ],
       "must_not_match": [
@@ -57,12 +58,12 @@
       "owner_lines": [
         {
           "file": "src/app/preview_source.h",
-          "line_text": "return chart_ms + audio_offset_ms;",
+          "line_text": "return chart_ms * speed_ratio + audio_offset_ms;",
           "why": "audio_ms_of_chart_ms, the owner"
         },
         {
           "file": "src/app/preview_source.h",
-          "line_text": "return audio_ms - audio_offset_ms;",
+          "line_text": "return (audio_ms - audio_offset_ms) / speed_ratio;",
           "why": "chart_ms_of_audio_ms, the owner"
         }
       ],
