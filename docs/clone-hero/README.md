@@ -50,20 +50,20 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-23, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the song-speed write-back of that day added TM-56, TM-57, FL-47, SP-51 and IN-97 and relabelled TM-43. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
+These counts were taken from the pages on 2026-11-23, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the song-speed write-back of that day added TM-56, TM-57, FL-47, SP-51 and IN-97 and relabelled TM-43, and the 1.0 song-speed read of the same day added FL-48, FL-49 and FL-50. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
 | 01 reading a chart | 54 | 36 | 4 | 8 | 6 |
 | 02 note list | 77 | 55 | 7 | 2 | 13 |
 | 03 timing | 57 | 36 | 10 | 5 | 6 |
-| 04 fills | 47 | 37 | 3 | 4 | 3 |
+| 04 fills | 50 | 40 | 3 | 4 | 3 |
 | 05 Star Power | 51 | 32 | 7 | 9 | 3 |
 | 06 scoring | 39 | 21 | 14 | 2 | 2 |
 | 07 internals | 97 | 65 | 20 | 0 | 12 |
-| All pages | 422 | 282 | 65 | 30 | 45 |
+| All pages | 425 | 285 | 65 | 30 | 45 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 58 checks covering 62 rows.
+Fourteen of page 4's blocks describe build 1.0. The questions page holds 23 open questions and 4 recorded differences, and the live-checks page holds 58 checks covering 62 rows.
 
 ## Names in obfuscated code
 
