@@ -97,6 +97,7 @@ void check_same_settings(const Settings& r, const Settings& s) {
     CHECK(r.depth_mode == s.depth_mode);
     CHECK(r.mslimit_enabled == s.mslimit_enabled);
     CHECK(r.mslimit_value == s.mslimit_value);
+    CHECK(r.safe_paths == s.safe_paths);
     CHECK(r.backendlimit_enabled == s.backendlimit_enabled);
     CHECK(r.backendlimit_value == s.backendlimit_value);
     CHECK(r.preview_volume == s.preview_volume);
@@ -123,6 +124,7 @@ TEST_CASE("settings round-trip through an INI file") {
     s.depth_mode = 1;
     s.mslimit_enabled = false;
     s.mslimit_value = 42;
+    s.safe_paths = true;
     s.backendlimit_enabled = true;
     // Unlike mslimit_value, so a swap of the two shows.
     s.backendlimit_value = s.mslimit_value + 1;
@@ -384,6 +386,105 @@ TEST_CASE("speed_percent reaches the reading and the result's key, and with_char
     const hydra::app::BatchRun run = at150.batch_run();
     CHECK(run.settings.reading().speed_percent == run.profile.lens.speed_percent);
     CHECK(run.profile == p150);
+}
+
+// The user's words: "make it default off". A file that never had the line
+// loads it off too.
+TEST_CASE("safe_paths: defaults to off, and a file without the line loads off") {
+    CHECK_FALSE(Settings{}.safe_paths);
+    CHECK_FALSE(load_ini_text("safe_missing", "sp_cap=8\n").safe_paths);
+    CHECK(load_ini_text("safe_on", "safe_paths=1\n").safe_paths);
+    CHECK_FALSE(load_ini_text("safe_off", "safe_paths=0\n").safe_paths);
+    // Not an on/off value: refused, as every on/off key refuses one.
+    CHECK_THROWS_AS(load_ini_text("safe_text", "safe_paths=maybe\n"),
+                    hydra::app::SettingsFileError);
+}
+
+TEST_CASE("safe_paths: on and off each survive a save and a load") {
+    for (const bool on : {true, false}) {
+        CAPTURE(on);
+        Settings s;
+        s.safe_paths = on;
+        const std::string path = testtemp::temp_path("safe_roundtrip", ".ini");
+        REQUIRE(s.save_file(path));
+        const Settings r = Settings::load_file(path);
+        std::remove(path.c_str());
+        CHECK(r.safe_paths == on);
+    }
+}
+
+// Safe paths rides to_analysis_settings into the search and lens() into the
+// result's key, moves nothing else in the key, and Reset to defaults turns it
+// off.
+TEST_CASE("safe_paths reaches the search and the result's key together") {
+    namespace store = hydra::store;
+    const Settings off;
+    Settings on;
+    on.safe_paths = true;
+
+    for (const Settings* s : std::initializer_list<const Settings*>{&off, &on}) {
+        CAPTURE(s->safe_paths);
+        CHECK(s->to_analysis_settings().safe_paths == s->safe_paths);
+        CHECK(s->lens().safe_paths == (s->safe_paths ? 1 : 0));
+    }
+
+    // The two profiles differ in the lens's Safe paths and nowhere else.
+    const store::Profile p_off = off.profile();
+    const store::Profile p_on = on.profile();
+    CHECK(p_off != p_on);
+    CHECK(p_off.chartmode == p_on.chartmode);
+    CHECK(p_off.cap == p_on.cap);
+    CHECK(p_off.lens != p_on.lens);
+    store::Lens rest = p_on.lens;
+    rest.safe_paths = p_off.lens.safe_paths;
+    CHECK(rest == p_off.lens);
+
+    // A batch files under the setting it searches with.
+    const hydra::app::BatchRun run = on.batch_run();
+    CHECK(run.settings.safe_paths);
+    CHECK(run.profile.lens.safe_paths == 1);
+    CHECK(run.profile == p_on);
+
+    // Reset to defaults turns it off.
+    CHECK_FALSE(on.with_analysis_defaults().safe_paths);
+    CHECK(on.with_analysis_defaults().lens() == off.lens());
+}
+
+// The user's words: "this will be separate from the path ms limit". Each
+// switch moves only its own part of the lens and of the search settings.
+TEST_CASE("safe_paths and the Path limit move separately") {
+    for (const bool limit_on : {true, false}) {
+        CAPTURE(limit_on);
+        Settings base;
+        base.mslimit_enabled = limit_on;
+        base.mslimit_value = 25;
+        // Turning Safe paths on leaves the limit's lens columns and the
+        // search's limit as they were.
+        Settings safe = base;
+        safe.safe_paths = true;
+        CHECK(safe.lens().ms_enabled == base.lens().ms_enabled);
+        CHECK(safe.lens().ms_value == base.lens().ms_value);
+        CHECK(safe.to_analysis_settings().ms_filter == base.to_analysis_settings().ms_filter);
+        CHECK(safe.mslimit_enabled == base.mslimit_enabled);
+        CHECK(safe.mslimit_value == base.mslimit_value);
+    }
+    for (const bool safe_on : {true, false}) {
+        CAPTURE(safe_on);
+        Settings base;
+        base.safe_paths = safe_on;
+        // Turning the limit off, or moving its number, leaves Safe paths as
+        // it was, in the lens and in the search.
+        Settings limit_off = base;
+        limit_off.mslimit_enabled = false;
+        Settings limit_moved = base;
+        limit_moved.mslimit_value = base.mslimit_value + 5;
+        for (const Settings* s :
+             std::initializer_list<const Settings*>{&limit_off, &limit_moved}) {
+            CHECK(s->lens().safe_paths == base.lens().safe_paths);
+            CHECK(s->to_analysis_settings().safe_paths == safe_on);
+            CHECK(s->safe_paths == safe_on);
+        }
+    }
 }
 
 // The settings summary names the speed as "Song speed" and describe_settings'
@@ -1180,6 +1281,11 @@ TEST_CASE("config: describe_settings uses the app's words") {
 
     s.sp_cap = 1;
     CHECK(hydra::app::describe_settings(s.to_analysis_settings()).cap == "1 bar");
+
+    s.safe_paths = false;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).safe_paths == "off");
+    s.safe_paths = true;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).safe_paths == "on");
 }
 
 // The one guard that CMakeLists.txt's two strings reach the exe unchanged:

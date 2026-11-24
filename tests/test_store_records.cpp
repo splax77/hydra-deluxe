@@ -814,6 +814,72 @@ TEST_CASE("store: one chart's results at 100% and 150% are two results") {
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
 }
 
+namespace {
+
+// The store fixture's search settings with Safe paths set to `on`.
+app::AnalysisSettings fixture_settings_safe(bool on) {
+    app::AnalysisSettings settings = store_fixture_settings();
+    settings.safe_paths = on;
+    return settings;
+}
+
+}  // namespace
+
+TEST_CASE("store: prepare_record refuses a profile with the other Safe paths setting") {
+    // The fixture's chart searched with Safe paths on: the record carries the
+    // setting the search ran with (HydraRecord::safe_paths).
+    const HydraRecord& searched_safe = corpus::analyzed(fixture_chart(), fixture_settings_safe(true));
+    REQUIRE(searched_safe.safe_paths);
+    // Filed under a profile with it off, it throws.
+    REQUIRE(at4().lens.safe_paths == 0);
+    CHECK_THROWS_AS(prepare_record("h1", at4(), searched_safe), std::invalid_argument);
+    // And the other way: the record searched with it off under a profile with
+    // it on.
+    const HydraRecord& analysis = fixture().record;
+    REQUIRE_FALSE(analysis.safe_paths);
+    Profile safe = at4();
+    safe.lens.safe_paths = 1;
+    CHECK_THROWS_AS(prepare_record("h1", safe, analysis), std::invalid_argument);
+    // The matching pairs file.
+    CHECK(prepare_record("h1", safe, searched_safe).profile.lens.safe_paths == 1);
+    CHECK(prepare_record("h1", at4(), analysis).profile.lens.safe_paths == 0);
+}
+
+TEST_CASE("store: one chart's results with Safe paths on and off are two results") {
+    // Two profiles that differ only in Safe paths. The record with it on is a
+    // real analysis searched with it on, of another corpus chart filed under
+    // the same id, so each lookup's answer shows whose record it read.
+    const Profile off = at4();
+    REQUIRE(off.lens.safe_paths == 0);
+    Profile on = at4();
+    on.lens.safe_paths = 1;
+    REQUIRE(off != on);
+    std::string other_chart;
+    for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(store_fixture_settings(), 2))
+        if (c.chart != fixture_chart()) other_chart = c.chart;
+    REQUIRE_MESSAGE(!other_chart.empty(), "the corpus has one chart with paths");
+    const PreparedRecord saved_off = prepare_record("h1", off, fixture().record);
+    const PreparedRecord saved_on =
+        prepare_record("h1", on, corpus::analyzed(other_chart, fixture_settings_safe(true)));
+    REQUIRE(saved_off.record != saved_on.record);
+
+    StoreFile file("store_records");
+    {
+        RecordStore store(file.path);
+        // Saved off first, then on, so each lookup must skip the other row.
+        store.save(saved_off);
+        store.save(saved_on);
+        CHECK(store.lookup_one("h1", off).record == saved_off.record);
+        CHECK(store.lookup_one("h1", on).record == saved_on.record);
+        CHECK(store.record_count() == 2);
+    }
+    // A reopen reads both again, one profile row each.
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("h1", off).record == saved_off.record);
+    CHECK(reopened.lookup_one("h1", on).record == saved_on.record);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+}
+
 TEST_CASE("store: every path of one analysis carries the same note count") {
     // The record keeps the note count once (record_of takes rank 1's); this is
     // why that loses nothing: every path carries the chart's own note count
