@@ -167,6 +167,75 @@ TEST_CASE("fill deadline: CH 1.0 never refuses a fill that starts over 10 s afte
     CHECK(hydra::fill_refuses(hydra::fill_e_offset(deadline, 401.0), 0.0));
 }
 
+namespace {
+
+// A flat 4/4 song at `res` ticks per beat and `bpm`, timed at `percent` song
+// speed through Song::set_speed_percent, the one owner of the speed.
+hydra::Song flat_song_at_speed(int64_t res, double bpm, int percent) {
+    hydra::Song song(res);
+    song.bpm_changes[0] = bpm;
+    song.set_speed_percent(percent);
+    song.build_timing();
+    return song;
+}
+
+// A 1.0 fill's lead: how long before its start, in ms, the meter must be
+// full. The start is the fill's start tick read on the same timing.
+double ch10_lead(const SongTiming& t, int64_t fill_end, int64_t fill_length) {
+    return t.timecode(hydra::fill_start_tick(fill_end, fill_length)).ms() -
+           ch10(t, fill_end, fill_length);
+}
+
+}  // namespace
+
+TEST_CASE("fill deadline: CH 1.0's floor, ceiling and fill length are played seconds at 50% and 200%") {
+    // FL-48 on docs/clone-hero/04-fills.md: the game's deadline compares the
+    // speed-divided song clock with fill times counted at the speed, so its
+    // 0.25 s floor, 10 s ceiling and fill length are all seconds of played
+    // time. Inputs: res 192, 120 BPM, every fill ending at tick 19200, whose
+    // 64th note is 12 ticks. At 100% a tick is 125 / 48 ms; at 50% it lasts
+    // twice that, at 200% half.
+    const int64_t res = 192;
+    const int64_t fill_end = 19200;
+    const hydra::Song normal = flat_song_at_speed(res, 120.0, hydra::kNormalSpeedPercent);
+    const hydra::Song half = flat_song_at_speed(res, 120.0, 50);
+    const hydra::Song twice = flat_song_at_speed(res, 120.0, 200);
+    auto lead = [&](const hydra::Song& song, int64_t length) {
+        return ch10_lead(song.timing(), fill_end, length);
+    };
+
+    // Inside the clamp at every speed: a 192-tick fill runs 204 ticks,
+    // 531.25 ms at 100%, 1062.5 ms at 50% and 265.625 ms at 200%. The lead
+    // is the same ticks in played time.
+    for (const hydra::Song* song : {&half, &twice}) {
+        CAPTURE(song->speed_percent());
+        const double played = lead(*song, 192);
+        REQUIRE(played > hydra::kCh10FillLeadFloorMs);
+        REQUIRE(played < hydra::kCh10FillLeadCeilingMs);
+        CHECK(played * song->timing().speed_ratio() ==
+              doctest::Approx(lead(normal, 192)).epsilon(kSameDeadline));
+    }
+
+    // The floor is 0.25 s of played time. A 120-tick fill runs 132 ticks:
+    // 343.75 ms at 100%, above the floor, and 171.875 ms at 200%, under it.
+    CHECK(lead(normal, 120) > hydra::kCh10FillLeadFloorMs);
+    CHECK(lead(twice, 120) == doctest::Approx(hydra::kCh10FillLeadFloorMs).epsilon(kSameDeadline));
+    // A 60-tick fill runs 72 ticks: 187.5 ms at 100%, under the floor, and
+    // 375 ms at 50%, above it.
+    CHECK(lead(normal, 60) == doctest::Approx(hydra::kCh10FillLeadFloorMs).epsilon(kSameDeadline));
+    CHECK(lead(half, 60) > hydra::kCh10FillLeadFloorMs);
+
+    // The ceiling is 10 s of played time. A 2,292-tick fill runs 2,304
+    // ticks: 6,000 ms at 100%, under the ceiling, and 12,000 ms at 50%, over
+    // it.
+    CHECK(lead(normal, 2292) < hydra::kCh10FillLeadCeilingMs);
+    CHECK(lead(half, 2292) == doctest::Approx(hydra::kCh10FillLeadCeilingMs).epsilon(kSameDeadline));
+    // A 5,748-tick fill runs 5,760 ticks: 15,000 ms at 100%, over the
+    // ceiling, and 7,500 ms at 200%, under it.
+    CHECK(lead(normal, 5748) == doctest::Approx(hydra::kCh10FillLeadCeilingMs).epsilon(kSameDeadline));
+    CHECK(lead(twice, 5748) < hydra::kCh10FillLeadCeilingMs);
+}
+
 TEST_CASE("fill deadline: CH 1.1 is the fill's start less 4 beats") {
     // FL-19: the deadline is kCh11FillLeadBeats quarter notes before the
     // fill's start; FL-20: that lead is the resolution times 4 in every meter.

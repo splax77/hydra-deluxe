@@ -1474,8 +1474,8 @@
         },
         {
           "file": "src/core/song.cpp",
-          "line_text": "return song.last_note_end_tick.value_or(0) + song.tick_resolution();",
-          "why": "ch10_last_line_tick reads the stored value as F10 of the 1.0 game's fill generator does (the end of the latest note plus one beat, 0 with no note); it does not decide whether an end counts"
+          "line_text": "return song.last_note_end_tick.value_or(0) +",
+          "why": "ch10_last_line_tick reads the stored value as F10 of the 1.0 game's fill generator does (the end of the latest note plus one beat of the timing resolution, 0 with no note); it does not decide whether an end counts"
         }
       ],
       "scope": [
