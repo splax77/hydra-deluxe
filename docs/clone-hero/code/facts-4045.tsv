@@ -19,6 +19,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 4045	method	392		ʴʽʸʿʼʸˁʷʿʹʸ			BitMath.LowestSetBit
 4045	method	392		ʷʹʾˁʳʸʲʾʴʾʿ			BitMath.HighestSetBit
 4045	method	480	BasePlayer	ʸʸʳʽʲʻʿʸʳʸʽ			BasePlayer.AddStarPower
+4045	method	562	GameManager	Update			GameManager.Update
 4045	method	628	DrumsPlayer	ʸʸʳʽʲʻʿʸʳʸʽ			DrumsPlayer.AddStarPower
 4045	method	628	DrumsPlayer	ʻˀʻʿʷʷʾʿˁʵʽ			DrumsPlayer.CheckFillDeadlines
 4045	method	628	DrumsPlayer	ʿʷʲʻʸʸʹʿˁʶʲ			DrumsPlayer.UnusedFillCheckTwin
