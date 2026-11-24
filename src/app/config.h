@@ -331,8 +331,9 @@ struct Settings {
     // the named variants below, which start from it.
     store::Profile profile() const;
 
-    // profile() at Clone Hero's own SP cap (kCloneHeroSpCap), whatever cap
-    // these settings hold: the profile the leaderboard comparison reads.
+    // profile() at Clone Hero's own SP cap (kCloneHeroSpCap) and the default
+    // song speed (kDefaultSpeedPercent), whatever cap and speed these
+    // settings hold: the profile the leaderboard comparison reads.
     store::Profile profile_at_clone_hero_cap() const;
 
     // profile() with its lens's fill rule set to `rule`, the rest kept: the
