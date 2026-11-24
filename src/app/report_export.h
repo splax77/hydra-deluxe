@@ -51,10 +51,6 @@ struct SheetLook {
     std::function<CellInk(const report_view::Column<Row>& column, const Row& row)> ink;
 };
 
-// The widest column Excel takes, in its character units, from Excel's
-// published specifications and limits.
-inline constexpr double kExcelMaxColumnWidth = 255;
-
 // How many characters `text` (UTF-8) holds: each byte that is not a
 // continuation byte starts one.
 inline size_t text_length(std::string_view text) {
@@ -68,7 +64,7 @@ inline size_t text_length(std::string_view text) {
 // one character more, so the longest text has room beside its neighbour,
 // held to Excel's widest.
 inline double column_width(size_t longest_text) {
-    return std::min(static_cast<double>(longest_text + 1), kExcelMaxColumnWidth);
+    return std::min(static_cast<double>(longest_text + 1), xlsx::kExcelMaxColumnWidth);
 }
 
 // `view`'s table as a sheet named `sheet_name`: a header row of the columns'

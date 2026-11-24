@@ -37,6 +37,7 @@
 #include "net/dmbot_client.h"     // DmScore, kBaseSpeedPercent, is_base_speed
 #include "parse/song.h"           // NoNotesError
 #include "report_samples.h"       // every_row
+#include "report_views.h"         // path_view, dm_view, path_texts, dm_texts
 #include "store/record_store.h"
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
@@ -52,6 +53,10 @@ using report_view::SortKey;
 using report_view::SortSpec;
 using report_view::TableView;
 using report_view::Tone;
+using report_views::dm_texts;
+using report_views::dm_view;
+using report_views::path_texts;
+using report_views::path_view;
 
 namespace {
 
@@ -140,31 +145,6 @@ std::vector<DmReportRow> corpus_scores() {
     scores[kMissing] = score(testdm::kHash, 5000, net::kBaseSpeedPercent,
                              "2022-06-15T08:30:00Z", std::nullopt);
     return dm_report::collect_dm_rows(corpus_store(), scores, testdm::profile());
-}
-
-std::vector<std::string> path_texts(const std::vector<ReportRow>& rows) {
-    std::vector<std::string> out;
-    for (const ReportRow& r : rows) out.push_back(path_report_view::path_search_text(r));
-    return out;
-}
-
-std::vector<std::string> dm_texts(const std::vector<DmReportRow>& rows) {
-    std::vector<std::string> out;
-    for (const DmReportRow& r : rows) out.push_back(dm_report_view::dm_search_text(r));
-    return out;
-}
-
-TableView<ReportRow> path_view(std::vector<ReportRow> rows) {
-    std::vector<std::string> texts = path_texts(rows);
-    return TableView<ReportRow>(std::make_shared<const std::vector<ReportRow>>(std::move(rows)),
-                                std::move(texts), path_report_view::path_columns());
-}
-
-TableView<DmReportRow> dm_view(std::vector<DmReportRow> rows) {
-    std::vector<std::string> texts = dm_texts(rows);
-    return TableView<DmReportRow>(
-        std::make_shared<const std::vector<DmReportRow>>(std::move(rows)), std::move(texts),
-        dm_report_view::dm_columns());
 }
 
 // A path report result holding `rows`, as the window is handed one.

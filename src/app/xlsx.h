@@ -22,6 +22,8 @@ namespace hydra::app::xlsx {
 // sheet's default style ends (write_xlsx's cols element).
 inline constexpr size_t kExcelMaxRows = 1048576;
 inline constexpr size_t kExcelMaxColumns = 16384;  // column XFD
+// The widest a column can be, in Excel's character units (docs/adr/0033).
+inline constexpr double kExcelMaxColumnWidth = 255;
 
 // A colour as plain red, green and blue, 0 to 255 each.
 struct Rgb {

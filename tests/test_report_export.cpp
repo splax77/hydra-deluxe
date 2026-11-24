@@ -30,6 +30,7 @@
 #include "app/user_messages.h"  // plain_error
 #include "app/xlsx.h"
 #include "core/error_kind.h"
+#include "report_views.h"  // path_view, dm_view
 #include "core/winstr.h"  // os_path, read_file_bytes
 #include "miniz.h"
 #include "temp_util.h"
@@ -44,6 +45,8 @@ using report_export::SheetLook;
 using report_view::Column;
 using report_view::SortDir;
 using report_view::TableView;
+using report_views::dm_view;
+using report_views::path_view;
 
 namespace {
 
@@ -117,13 +120,6 @@ ReportRow path_row(std::string song, int64_t score, bool optimal, int acts) {
     return r;
 }
 
-TableView<ReportRow> path_view(std::vector<ReportRow> rows) {
-    std::vector<std::string> texts;
-    for (const ReportRow& r : rows) texts.push_back(path_report_view::path_search_text(r));
-    return TableView<ReportRow>(std::make_shared<const std::vector<ReportRow>>(std::move(rows)), std::move(texts),
-                                path_report_view::path_columns());
-}
-
 // Four paths. The search "one" drops Delta Two; Optimal paths only drops
 // Gamma One, which is not optimal.
 std::vector<ReportRow> four_paths() {
@@ -161,13 +157,6 @@ DmReportRow dm_row(std::string song, int64_t actual, const char* status, int per
     r.posted = "2026-11-23T10:00:00Z";
     r.status = status;
     return r;
-}
-
-TableView<DmReportRow> dm_view(std::vector<DmReportRow> rows) {
-    std::vector<std::string> texts;
-    for (const DmReportRow& r : rows) texts.push_back(dm_report_view::dm_search_text(r));
-    return TableView<DmReportRow>(std::make_shared<const std::vector<DmReportRow>>(std::move(rows)),
-                                  std::move(texts), dm_report_view::dm_columns());
 }
 
 // Four comparison rows. The search "song" drops Other Tune; the Status
@@ -366,7 +355,7 @@ TEST_CASE("report export: a width counts characters, not bytes") {
 TEST_CASE("report export: a width is held to Excel's widest column") {
     TableView<ReportRow> view = path_view({path_row(std::string(300, 'x'), 100, true, 1)});
     const xlsx::Sheet sheet = report_export::build_sheet(view, flat_look<ReportRow>(), "Path report");
-    CHECK(sheet.widths[column_index(view, "song")] == report_export::kExcelMaxColumnWidth);
+    CHECK(sheet.widths[column_index(view, "song")] == xlsx::kExcelMaxColumnWidth);
 }
 
 // ---- colours ------------------------------------------------------------------------

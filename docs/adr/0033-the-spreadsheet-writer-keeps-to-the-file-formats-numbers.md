@@ -1,6 +1,6 @@
 # The spreadsheet writer keeps to the file formats' numbers
 
-The report export (src/app/xlsx.cpp) writes an .xlsx workbook. Nine numbers in
+The report export (src/app/xlsx.cpp) writes an .xlsx workbook. Ten numbers in
 it are not Hydra's choices. Each is a limit or an id that a published file
 format fixes, and the user asked for no value of their own for any of them
 ("i want to add an export to excel option for the path report and
@@ -11,6 +11,10 @@ Excel's sheet holds 1048576 rows and 16384 columns (column XFD), from Excel's
 specifications and limits. The writer refuses a sheet past either, so it never
 writes a file Excel would call damaged. The
 last of the 16384 columns is also where the sheet's default style ends.
+
+A column is at most 255 characters wide, Excel's column-width limit
+(kExcelMaxColumnWidth in xlsx.h). The report export sets each column to its
+longest text plus one character, held to 255, so Excel accepts the width.
 
 In a workbook's style part, the first custom number format takes the id 164.
 Excel numbers its own built-in formats below that (ECMA-376 Part 1, 18.8.30).
