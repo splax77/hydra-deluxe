@@ -9,7 +9,7 @@
 #include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
 #include "app/display_format.h"  // format_duration, time_left_text
-#include "app/report.h"  // hit_window_text
+#include "app/report.h"  // timing_step_text
 #include "cli/batch_scope.h"
 #include "core/model.h"  // counted, format_ms_whole, fill_refuses, is_e0
 #include "core/song.h"  // FillDeadlineRule
@@ -216,8 +216,8 @@ TEST_CASE("batch text: the Early fill window help text") {
     CHECK_FALSE(hydra::is_e0(0.0, 0, 0.0));
     CHECK(hydra::fill_refuses(-1.0, 0.0));
 
-    // The most it allows is the hit window, and the setting clamps there.
-    says(hydra::app::report::hit_window_text() + " ms, the hit window, is the most it allows.");
+    // The most it allows is the timing step, and the setting clamps there.
+    says(hydra::app::report::timing_step_text() + " ms is the most it allows.");
     CHECK(Settings::clamp(&Settings::early_fill_window_ms, hydra::kMaxEarlyFillWindowMs + 1) ==
           hydra::kMaxEarlyFillWindowMs);
 }

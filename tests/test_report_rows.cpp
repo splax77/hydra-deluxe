@@ -1054,13 +1054,14 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
                                  counted(options.max_paths, "path", "paths") +
                                  " per chart — SP cap " + bars_text(4));
     // D50 item 1 and D278 item 4: the footer names the database file of
-    // options.db_path but not its folder, then the hit window's number and the
+    // options.db_path but not its folder, then the timing step's number and the
     // Beyond edge, each read from the owner that prints it on the page's chip
     // and tile.
     CHECK(result.footer.find("hydra.db") != std::string::npos);
     CHECK(result.footer.find("somewhere") == std::string::npos);
-    CHECK(result.footer.find(" " + report::hit_window_text() + " ms hit window") !=
+    CHECK(result.footer.find("in steps of " + report::timing_step_text() + " ms.") !=
           std::string::npos);
+    CHECK(result.footer.find("hit window") == std::string::npos);
     CHECK(result.footer.find(" " + report::beyond_edge_text() + " ms window") !=
           std::string::npos);
 

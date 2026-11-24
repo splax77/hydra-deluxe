@@ -107,9 +107,10 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
 // the page's payload, its footer, the Past tile and the Timing chip.
 std::string beyond_edge_text();
 
-// The hit window (kHitWindowMs) as the reports print it, in whole ms: the
-// footer's and the timing dropdown's "the N ms hit window" (D278 item 4).
-std::string hit_window_text();
+// The timing step (kTimingStepMs) as the reports print it, in whole ms: the
+// footer's, the Timing column tooltip's and the Early fill help's "N ms"
+// (D278 item 4).
+std::string timing_step_text();
 
 // One library chart whose stored result under the page's profile is a
 // failure (RecordStatus::CantAnalyze), named from the library.

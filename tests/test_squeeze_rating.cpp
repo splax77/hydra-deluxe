@@ -423,7 +423,7 @@ TEST_CASE("frontend_transfer_scales: a SqOut whose activation and SP end both si
     SPSqueeze sqout{SqueezeKind::SqOut, -gap};
     const double r = scales->post.early;
     CHECK(sqout.difficulty() == doctest::Approx(gap).epsilon(1e-12));
-    CHECK(squeeze_budget_ms(r) == doctest::Approx(kHitWindowMs + r * kHitWindowMs).epsilon(1e-12));
+    CHECK(squeeze_budget_ms(r) == doctest::Approx(kTimingStepMs + r * kTimingStepMs).epsilon(1e-12));
     // At the identity scale the figure is the raw gap.
     CHECK(effective_backend_ms(sqout.difficulty(), kIdentityScale) ==
           doctest::Approx(gap).epsilon(1e-12));
@@ -589,7 +589,7 @@ TEST_CASE("rate_note: the side of the end picks the multiplier") {
     CHECK(in.scale == early_scale);
     // The two-hit budget at that scale: one window for each hit, the
     // second shrunk by the scale.
-    CHECK(in.budget_ms == doctest::Approx(kHitWindowMs * (1.0 + early_scale)));
+    CHECK(in.budget_ms == doctest::Approx(kTimingStepMs * (1.0 + early_scale)));
     REQUIRE(in.effective_ms.has_value());
     CHECK(*in.effective_ms == doctest::Approx(figure_by_rule(gap, early_scale)).epsilon(1e-12));
     // Outside SP a late hit moves it, so the late scale applies.
@@ -872,10 +872,10 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
     REQUIRE(flat > 0);
 }
 
-TEST_CASE("timing_tiers: the ladder's edges follow the hit window") {
+TEST_CASE("timing_tiers: the ladder's edges follow the timing step") {
     // The 2 ms difficult floor, then one half, one, one and a half and two
-    // hit windows (the last is the two-hit budget), then the two open bands.
-    const double w = kHitWindowMs;
+    // timing steps (the last is the two-hit budget), then the two open bands.
+    const double w = kTimingStepMs;
     const std::vector<TimingTier> tiers = timing_tiers();
     const std::vector<double> want_cutoffs{kDifficultMs, w / 2, w, 3 * w / 2, nominal_budget_ms()};
     REQUIRE(tiers.size() == want_cutoffs.size() + 2);
@@ -1109,11 +1109,11 @@ TEST_CASE("BackendSqueeze::summarystr: a scaled row's word follows its eff. figu
     REQUIRE(banded_on_figure > 0);
 }
 
-TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
+TEST_CASE("squeeze_budget_ms: identity scale is twice the timing step") {
     // The backend tooltip's normal-scale figure, nominal_budget_ms, is this
-    // call at the identity scale: one full hit window for each of the two
+    // call at the identity scale: one full timing step for each of the two
     // hits.
-    CHECK(squeeze_budget_ms(kIdentityScale) == 2 * kHitWindowMs);
+    CHECK(squeeze_budget_ms(kIdentityScale) == 2 * kTimingStepMs);
     CHECK(nominal_budget_ms() == squeeze_budget_ms(kIdentityScale));
 }
 

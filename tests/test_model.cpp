@@ -356,7 +356,7 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
 // The all-0 rule (D102): no skips, or one skip that was the early fill. Run
 // at the default window and at the widest one the setting allows.
 TEST_CASE("allzero_activation: no skips, or an E1") {
-    for (const double w : {kDefaultEarlyFillWindowMs, kHitWindowMs}) {
+    for (const double w : {kDefaultEarlyFillWindowMs, kTimingStepMs}) {
         CAPTURE(w);
         CHECK(allzero_activation(500.0, 0, w));               // a plain 0
         CHECK(allzero_activation(w - 0.1, 0, w));             // an E0
@@ -366,7 +366,7 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
         CHECK_FALSE(allzero_activation(10.0, 2, w));          // an E2 skips a real fill
     }
     // One offset, two windows: 70 ms to spare is an E1 at 85 and a plain 1 at 60.
-    CHECK(allzero_activation(70.0, 1, kHitWindowMs));
+    CHECK(allzero_activation(70.0, 1, kTimingStepMs));
     CHECK_FALSE(allzero_activation(70.0, 1, kDefaultEarlyFillWindowMs));
 }
 
@@ -403,7 +403,7 @@ TEST_CASE("Path::is_allzero: every corpus path, and every path of the all-0 pass
 // charts only: one more analysis per chart is the slow part.
 TEST_CASE("early-fill window: each corpus activation keeps its search's window") {
     app::AnalysisSettings wide = default_cfg();
-    wide.early_fill_window_ms = kHitWindowMs;
+    wide.early_fill_window_ms = kTimingStepMs;
     std::vector<CorpusRecord> wide_records;
     for (const CorpusRecord& r : default_records()) {
         if (wide_records.size() == 5) break;
@@ -411,7 +411,7 @@ TEST_CASE("early-fill window: each corpus activation keeps its search's window")
     }
     const std::pair<double, const std::vector<CorpusRecord>*> runs[] = {
         {default_cfg().early_fill_window_ms, &default_records()},
-        {kHitWindowMs, &wide_records},
+        {kTimingStepMs, &wide_records},
     };
     for (const auto& run : runs) {
         const double window = run.first;
@@ -441,7 +441,7 @@ TEST_CASE("early-fill window: each corpus activation keeps its search's window")
 // instead of its argument fails at one of them.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
-    for (const double w : {kDefaultEarlyFillWindowMs, kHitWindowMs}) {
+    for (const double w : {kDefaultEarlyFillWindowMs, kTimingStepMs}) {
         CAPTURE(w);
         CHECK_FALSE(fill_refuses(-w, w));  // ready exactly the window late still spawns
         CHECK(fill_refuses(-w - 0.1, w));  // a hair later refuses
@@ -453,16 +453,16 @@ TEST_CASE("early-fill window: the refusal and the E0 edges") {
     // Between the two windows the answers differ, so neither side can be a
     // fixed number: 70 ms late spawns at 85 and refuses at 60, and 70 ms to
     // spare is an E at 85 and not at 60.
-    CHECK_FALSE(fill_refuses(-70.0, kHitWindowMs));
+    CHECK_FALSE(fill_refuses(-70.0, kTimingStepMs));
     CHECK(fill_refuses(-70.0, kDefaultEarlyFillWindowMs));
-    CHECK(is_e0(70.0, 0, kHitWindowMs));
+    CHECK(is_e0(70.0, 0, kTimingStepMs));
     CHECK_FALSE(is_e0(70.0, 0, kDefaultEarlyFillWindowMs));
     // The limit sits on that fill's own figure (70 ms to spare is -70 ms), so
     // the limit itself lets it in and a hair below shuts it out, but only at
     // 85, where it is an E. At 60 it is no E, and no limit applies to it.
     const double fill_ms = early_fill_difficulty(70.0);
-    CHECK(fill_within_limit(70.0, 0, fill_ms, kHitWindowMs));
-    CHECK_FALSE(fill_within_limit(70.0, 0, fill_ms - 0.1, kHitWindowMs));
+    CHECK(fill_within_limit(70.0, 0, fill_ms, kTimingStepMs));
+    CHECK_FALSE(fill_within_limit(70.0, 0, fill_ms - 0.1, kTimingStepMs));
     CHECK(fill_within_limit(70.0, 0, fill_ms - 0.1, kDefaultEarlyFillWindowMs));
 }
 
@@ -513,9 +513,9 @@ TEST_CASE("early-fill window: every default is kDefaultEarlyFillWindowMs") {
     const Song song = test::ready_time_fold_song();
     const ScoreGraph graph(song, 2);
     CHECK(graph.early_fill_window_ms() == kDefaultEarlyFillWindowMs);
-    // The default is inside the setting's range, 0 to the hit window.
+    // The default is inside the setting's range, 0 to the timing step.
     CHECK(kDefaultEarlyFillWindowMs >= 0.0);
-    CHECK(kDefaultEarlyFillWindowMs <= kHitWindowMs);
+    CHECK(kDefaultEarlyFillWindowMs <= kTimingStepMs);
 }
 
 // On every corpus path: a path is difficult when one of its activations is,
@@ -922,7 +922,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the corpus
 // the rest.
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     app::AnalysisSettings wide = default_cfg();
-    wide.early_fill_window_ms = kHitWindowMs;
+    wide.early_fill_window_ms = kTimingStepMs;
     std::vector<CorpusRecord> wide_records;
     for (const CorpusRecord& r : default_records()) {
         if (wide_records.size() == 5) break;

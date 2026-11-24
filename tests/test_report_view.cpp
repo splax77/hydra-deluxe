@@ -25,7 +25,7 @@
 #include "app/dm_report.h"        // collect_dm_rows, kStatusWords
 #include "app/dm_report_view.h"
 #include "app/path_report_view.h"
-#include "app/report.h"           // generate_report, beyond_edge_text, hit_window_text
+#include "app/report.h"           // generate_report, beyond_edge_text, timing_step_text
 #include "app/report_view.h"
 #include "core/model.h"           // counted, format_ms, group_thousands, kCloneHeroSpCap
 #include "core/squeeze_rating.h"  // timing_tiers, beyond_tier, none_tier
@@ -545,8 +545,10 @@ TEST_CASE("path report columns: one id each and number columns drawn in figures"
     CHECK(column_named(cols, "artist").look.dim);
     CHECK(column_named(cols, "tier").look.chip);
     CHECK_FALSE(column_named(cols, "score").look.truncate);
-    // The Timing definition names the hit window the reports print.
-    CHECK(holds(column_named(cols, "tier").definition, report::hit_window_text()));
+    // The Timing definition names the timing step the reports print, and
+    // does not call it the hit window.
+    CHECK(holds(column_named(cols, "tier").definition, report::timing_step_text()));
+    CHECK_FALSE(holds(column_named(cols, "tier").definition, "hit window"));
     CHECK(column_named(cols, "mult").title == app::kAverageMultiplierLabel);
 
     // The window starts sorted on a number column, high to low.

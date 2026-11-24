@@ -1,5 +1,5 @@
 // The game's own per-note hit window, at 100% speed in normal mode, and the
-// Dynamic Hit Window row each timing badge shows beside Hydra's fixed one.
+// Dynamic Hit Window row each timing badge shows.
 //
 // Clone Hero sizes each note's window from the gaps to its two neighbours.
 // The rule is TM-17 to TM-22 and TM-51 on docs/clone-hero/03-timing.md, and it
@@ -7,7 +7,7 @@
 // row both call it.
 //
 // The row is display only. Hydra's ratings, tiers, badges and search keep
-// kHitWindowMs (core/model.h), a separate number (D270 call 8): the user
+// kTimingStepMs (core/model.h), a separate number (D270 call 8): the user
 // ruled "just show it alongside."
 
 #ifndef HYDRA_CORE_NOTE_WINDOW_H

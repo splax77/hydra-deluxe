@@ -428,7 +428,7 @@ TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     // The Backend limit's top is the same window, so the shown value and the
     // window the tables use are the same number (finding 31).
     CHECK(Settings::clamp(&Settings::backendlimit_value, window + 400) == window);
-    // The early-fill window's top is the hit window.
+    // The early-fill window's top is the timing step.
     CHECK(Settings::clamp(&Settings::early_fill_window_ms, window + 400) ==
           hydra::kMaxEarlyFillWindowMs);
     // Below the range a value lands where the range starts: a depth below 0
