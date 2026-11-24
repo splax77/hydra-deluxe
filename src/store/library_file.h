@@ -20,6 +20,9 @@ inline constexpr const char* kOldestConvertibleVersion = "2.2.0";
 enum class LibraryFileKind {
     Fresh,        // no file, an empty file, or SQLite's in-memory name
     Current,      // this build's layout (profiles, records, record_paths)
+    // the layout before results were saved per song speed: its profiles
+    // table lacks kSpeedColumn, which the open rebuilds the table to hold
+    LacksSpeedColumn,
     // the layout before results were saved per early-fill window: its
     // profiles table lacks kEarlyFillWindowColumn, which the open rebuilds
     // the table to hold
@@ -62,6 +65,17 @@ inline constexpr const char* kEarlyFillWindowColumn = "efill_window_ms";
 // cannot read the table's columns it answers true, so the rebuild runs and
 // SQLite's own failure reaches the open.
 bool profiles_table_lacks_early_fill(sqlite3* db);
+
+// The profiles table's song speed column (store::Lens::speed_percent), by the
+// name the store's lens column list gives it (record_store.cpp checks the two
+// agree).
+inline constexpr const char* kSpeedColumn = "speed_percent";
+
+// Whether the open file's profiles table exists without kSpeedColumn, the one
+// test classify_library_file names LacksSpeedColumn by. The store's set-up
+// asks it the way it asks profiles_table_lacks_early_fill, and it answers a
+// file with no profiles table, or one SQLite cannot read, the same way.
+bool profiles_table_lacks_speed(sqlite3* db);
 
 // What an open does with a TooOld file. Every caller names one; there is no
 // default, because the app and the command-line tools want different things.
