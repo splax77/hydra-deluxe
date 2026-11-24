@@ -384,6 +384,7 @@ add_library(hydra_app STATIC
     src/app/html_page.cpp
     src/app/dynamics_breakdown.cpp
     src/app/display_format.cpp
+    src/app/export_name.cpp
     src/app/library_query.cpp
     src/app/launch.cpp
     src/app/path_costs.cpp

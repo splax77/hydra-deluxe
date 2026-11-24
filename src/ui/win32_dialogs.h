@@ -31,14 +31,24 @@ struct FileTypeFilter {
 std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
                                            bool* failed = nullptr);
 
+// Where a save dialog starts: the name already typed in its box and the
+// folder it opens in, both UTF-8. An empty `folder`, or one that no longer
+// exists, opens the user's Documents folder.
+struct SaveDialogStart {
+    std::string file_name;
+    std::string folder;
+};
+
 // The system's save dialog: the file to write, picked or typed, with the type
 // list `types`. It asks before replacing a file that exists. A name typed
-// with no extension gets `default_extension` (L"json", no dot). Cancel and
-// failure answer as browse_for_folder's do.
+// with no extension gets `default_extension` (L"json", no dot). With a
+// `start`, it opens there; with none, it opens where Windows chooses and its
+// name box is empty. Cancel and failure answer as browse_for_folder's do.
 std::optional<std::string> browse_for_save_file(HWND owner,
                                                 const std::vector<FileTypeFilter>& types,
                                                 const std::wstring& default_extension,
-                                                bool* failed = nullptr);
+                                                bool* failed = nullptr,
+                                                const std::optional<SaveDialogStart>& start = std::nullopt);
 
 }  // namespace hydra::ui
 

@@ -205,6 +205,7 @@ const std::vector<Key>& keys() {
         number("early_fill_window_ms", &Settings::early_fill_window_ms, 0, kMaxEarlyFillWindowMs),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
+        free_text("export_folder", &Settings::export_folder),
         word("skipped_update_version", &Settings::skipped_update_version),
         word("last_run_version", &Settings::last_run_version),
         free_text_list("chartfolder", &Settings::chartfolders),
