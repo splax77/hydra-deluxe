@@ -214,4 +214,10 @@ std::unique_ptr<MixSource> play_at_speed(std::unique_ptr<MixSource> plain, doubl
     return std::make_unique<StretchSource>(std::move(plain), speed_ratio);
 }
 
+std::unique_ptr<MixSource> plain_of(std::unique_ptr<MixSource> played) {
+    if (auto* stretched = dynamic_cast<StretchSource*>(played.get()))
+        return stretched->release_plain();  // `played`, now empty, goes on return
+    return played;
+}
+
 }  // namespace hydra::audio

@@ -419,6 +419,59 @@ TEST_CASE("the place in the file survives a reload at another speed") {
     CHECK(transport.now_ms() == doctest::Approx(transport.length_ms()));
 }
 
+// "reload what needs to reload but dont reset your place in the song": new
+// notes at another speed re-time the loaded song in place
+// (PreviewTransport::set_timing). The playhead and its mix stay, wrapped again
+// at the new speed; the place in the file stays, at the new speed's clock
+// time; the end is the new length; and playing stays playing.
+TEST_CASE("set_timing at another speed keeps the playhead, the mix and the place in the file") {
+    constexpr double kDelayMs = 500.0;
+    constexpr int kFileFrames = 20 * 48000;  // 20 s
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto* playhead = new Playhead(ramp_source(kFileFrames));
+    transport.load(std::unique_ptr<Playhead>(playhead), kDelayMs, 1.0);
+    transport.set_song_length_ms(19000.0);
+    transport.seek_ms(8000.0);
+    const double place = transport.file_ms();
+
+    // Paused, then twice as fast: still paused, at the same file place.
+    transport.set_timing(2.0, 9500.0);
+    CHECK(transport.speed_ratio() == 2.0);
+    CHECK_FALSE(transport.playing());
+    CHECK(transport.length_ms() == doctest::Approx(9500.0));
+    CHECK(transport.file_ms() == doctest::Approx(place));
+    CHECK(transport.now_ms() ==
+          doctest::Approx(hydra::app::chart_ms_of_audio_ms(place, kDelayMs, 2.0)));
+    // The same playhead now plays the mix stretched to 200%.
+    CHECK(transport.has_audio());
+    CHECK(playhead->length_frames() ==
+          StretchSource(ramp_source(kFileFrames), 2.0).length_frames());
+    CHECK(playhead->position_ms() ==
+          doctest::Approx(hydra::app::played_ms_of_chart_ms(transport.now_ms(), kDelayMs, 2.0)));
+
+    // Playing, then back to normal speed: it plays on from the same place.
+    transport.play();
+    t += 1.0;
+    const double left = transport.file_ms();
+    transport.set_timing(1.0, 19000.0);
+    CHECK(transport.speed_ratio() == 1.0);
+    CHECK(transport.playing());
+    CHECK(playhead->playing());
+    CHECK(transport.file_ms() == doctest::Approx(left));
+    CHECK(playhead->length_frames() == kFileFrames);
+    // The plain mix came back unstretched: the ramp's own frame at the place
+    // plays first (make_ramp's frame i holds L = i).
+    std::vector<float> out(4 * 2, -1.0f);
+    REQUIRE(transport.read_frames(out.data(), 4) == 4);
+    CHECK(out[0] == doctest::Approx(static_cast<float>(hydra::audio::frames_of_ms(left, 48000))));
+
+    // At the loaded speed it only moves the end, as set_song_length_ms does.
+    transport.set_timing(1.0, 1000.0);
+    CHECK(transport.length_ms() == doctest::Approx(1000.0));
+    CHECK(transport.now_ms() == doctest::Approx(1000.0));
+}
+
 // A song length past the audio's end: playback runs on to it in silence, so
 // a drag to the scrubber's right end lands there and the thumb stays at the
 // edge.

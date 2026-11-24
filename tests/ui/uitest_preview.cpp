@@ -1321,9 +1321,9 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
 // The Preview plays at the song speed (the user chose "Play at the speed").
 // Its times are chart times at that speed (SongTiming), so at 200% the time
-// box ends at half its 100% end, the song's length. Another speed is not
-// another mode: the audio is stretched to the speed, so the whole Preview
-// loads again (PreviewController::open) and still plays.
+// box ends at half its 100% end, the song's length. Another speed reloads
+// only the notes and plays the same audio stretched to it
+// (PreviewController::open), and still plays.
 void test_preview_song_speed(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;  // chart 0 of testdata/input, at the default speed
@@ -1375,12 +1375,12 @@ void test_preview_song_speed(ImGuiTestContext* ctx) {
 }
 
 // "reload what needs to reload but dont reset your place in the song": a new
-// song speed loads the Preview again (PreviewController::open), and the new
-// load lands at the same place in the music, not the same clock time. That
-// place is the file time (PreviewController::file_position_ms), and the new
-// clock time is the sync rule's for it at the new speed
-// (app::chart_ms_of_audio_ms). A paused Preview stays paused there; a playing
-// one plays on from there.
+// song speed reloads only the notes (PreviewController::open), never the full
+// load, so no loading bar shows. The audio then plays at the new speed from
+// the same place in the music, not the same clock time. That place is the
+// file time (PreviewController::file_position_ms), and the new clock time is
+// the sync rule's for it at the new speed (app::chart_ms_of_audio_ms). A
+// paused Preview stays paused there; a playing one plays on from there.
 void test_preview_speed_keeps_place(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;  // chart 0 of testdata/input, at the default speed
@@ -1393,15 +1393,21 @@ void test_preview_speed_keeps_place(ImGuiTestContext* ctx) {
 
     // Commits `percent` and waits until the reload at it has landed: the
     // scene's timing runs at another ratio than `from` and nothing is busy.
+    // No full load starts on the way, and the audio stays loaded throughout.
     const auto change_speed = [&](int percent, double from) {
+        const int loads = pc.full_load_count();
+        const bool had_audio = pc.has_audio();
         h.app->settings.speed_percent = percent;
         h.app->commit_settings();
         ctx->Yield(2);
+        IM_CHECK(!pc.loading());
         IM_CHECK(wait_until(ctx, [&] {
-            return !pc.loading() && !pc.busy() && pc.scene().timing &&
+            return !pc.busy() && pc.scene().timing &&
                    pc.scene().timing->speed_ratio() != from;
         }, 120));
         IM_CHECK_STR_EQ(pc.error().c_str(), "");
+        IM_CHECK_EQ(pc.full_load_count(), loads);
+        IM_CHECK_EQ(pc.has_audio(), had_audio);
     };
 
     // Paused at kParkMs, then twice as fast.

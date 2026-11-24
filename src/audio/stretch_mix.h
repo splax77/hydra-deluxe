@@ -65,6 +65,11 @@ public:
     // never shows in what read() returns.
     int64_t start_delay_frames() const { return start_delay_; }
 
+    // Hands back the source the constructor took, the same object, so a new
+    // speed can wrap it again (plain_of). This StretchSource then has nothing
+    // to play: it may only be destroyed, never read or seeked again.
+    std::unique_ptr<MixSource> release_plain() { return std::move(plain_); }
+
 private:
     // Feeds the wrapped source (or silence past its end) into SoundTouch until
     // `need` played frames are ready after any pending drop. False when no
@@ -93,6 +98,14 @@ private:
 // The source the Preview plays at `speed_ratio`: `plain` itself at exactly 1,
 // otherwise `plain` inside a StretchSource. A null `plain` stays null.
 std::unique_ptr<MixSource> play_at_speed(std::unique_ptr<MixSource> plain, double speed_ratio);
+
+// The plain mix inside `played`, a source play_at_speed gave: the source a
+// StretchSource wraps (release_plain), or `played` itself when play_at_speed
+// handed it back unwrapped. It undoes play_at_speed, so the same mix can be
+// played at another speed without opening its stems again. Its read position
+// is wherever the last read left it, so the caller seeks it before reading. A
+// null `played` stays null.
+std::unique_ptr<MixSource> plain_of(std::unique_ptr<MixSource> played);
 
 }  // namespace hydra::audio
 

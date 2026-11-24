@@ -74,6 +74,22 @@ public:
     void set_song_length_ms(std::optional<double> song_length_ms);
     std::optional<double> song_length_ms() const { return song_length_ms_; }
 
+    // The loaded song timed again: new notes of the same chart at
+    // `speed_ratio` (SongTiming::speed_ratio), whose length is
+    // `song_length_ms`. At the loaded ratio this is set_song_length_ms. At
+    // another ratio the same audio plays at the new speed from the same place
+    // in the file (file_ms), and plays on if it was playing: the playhead's
+    // plain mix (audio::plain_of) is wrapped again (audio::play_at_speed),
+    // with nothing opened or decoded again. The wrap is built on this thread
+    // between two swaps under the lock (audio::Playhead::swap_source), so the
+    // device's pull never waits on it; meanwhile the paused playhead has no
+    // source and the pull writes nothing into the device's buffer, which
+    // miniaudio hands over silenced. If play_at_speed throws, the mix is
+    // lost: the song stays paused with no audio at the new timing, and the
+    // error goes on to the caller.
+    void set_timing(double speed_ratio, std::optional<double> song_length_ms);
+    double speed_ratio() const { return speed_ratio_; }
+
     // The song time now. If playing and at/after the end, pauses and pins the
     // time to length_ms() (the stop-at-end rule) — so call this once per frame
     // where the highway is drawn.

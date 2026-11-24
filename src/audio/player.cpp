@@ -8,11 +8,24 @@
 
 namespace hydra::audio {
 
-Playhead::Playhead(std::unique_ptr<MixSource> source)
-    : source_(std::move(source)),
-      channels_(source_ ? source_->channels() : 0),
-      sample_rate_(source_ ? source_->sample_rate() : 0),
-      length_(source_ && channels_ > 0 ? std::max<int64_t>(source_->length_frames(), 0) : 0) {}
+Playhead::Playhead(std::unique_ptr<MixSource> source) : source_(std::move(source)) {
+    take_format();
+}
+
+void Playhead::take_format() {
+    channels_ = source_ ? source_->channels() : 0;
+    sample_rate_ = source_ ? source_->sample_rate() : 0;
+    length_ = source_ && channels_ > 0 ? std::max<int64_t>(source_->length_frames(), 0) : 0;
+}
+
+std::unique_ptr<MixSource> Playhead::swap_source(std::unique_ptr<MixSource> source) {
+    std::swap(source_, source);
+    take_format();
+    position_ = std::clamp<int64_t>(position_, 0, length_);
+    // Never equal to a position, so read_frames seeks the new source first.
+    source_position_ = kUnknownCursor;
+    return source;
+}
 
 void Playhead::play() { playing_ = true; }
 void Playhead::pause() { playing_ = false; }

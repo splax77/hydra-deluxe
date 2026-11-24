@@ -8,6 +8,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -170,6 +171,71 @@ TEST_CASE("play_at_speed: at 100% the plain mix plays untouched") {
     CHECK(fast->length_frames() == 3200);
 
     CHECK(play_at_speed(nullptr, 2.0).get() == nullptr);
+}
+
+// A new song speed plays the same mix again, so the plain mix comes back out
+// of what play_at_speed gave: the very object that went in, at any speed.
+TEST_CASE("plain_of: hands back the same plain mix play_at_speed was given") {
+    for (const double ratio : {0.5, 1.0, 1.5}) {
+        CAPTURE(ratio);
+        std::unique_ptr<MixSource> plain = testaudio::ramp_source(4800);
+        const MixSource* raw = plain.get();
+        std::unique_ptr<MixSource> back = plain_of(play_at_speed(std::move(plain), ratio));
+        CHECK(back.get() == raw);
+        // And it plays at another speed again.
+        std::unique_ptr<MixSource> again = play_at_speed(std::move(back), 2.0);
+        CHECK(again->length_frames() == StretchSource(testaudio::ramp_source(4800), 2.0).length_frames());
+        CHECK(plain_of(std::move(again)).get() == raw);
+    }
+    CHECK(plain_of(nullptr).get() == nullptr);
+}
+
+// The transport changes speed by swapping the source inside the playhead it
+// already holds (PreviewTransport::set_timing).
+TEST_CASE("Playhead::swap_source: hands back the old source and reads the new one from the same place") {
+    // `frames` stereo frames at 48 kHz, every sample `value`.
+    const auto constant_source = [](int64_t frames, float value) {
+        DecodedAudio a;
+        a.channels = kChannels;
+        a.sample_rate = kRate;
+        a.samples.assign(static_cast<std::size_t>(frames) * kChannels, value);
+        return std::make_unique<BufferSource>(std::move(a));
+    };
+    std::unique_ptr<MixSource> first = testaudio::ramp_source(4800);
+    const MixSource* first_raw = first.get();
+    Playhead p(std::move(first));
+    p.set_gain(1.0f);
+    p.seek_frames(100);
+    p.play();
+    std::vector<float> got(8 * kChannels);
+    REQUIRE(p.read_frames(got.data(), 8) == 8);
+    REQUIRE(p.position_frames() == 108);
+
+    constexpr float kValue = 0.25f;
+    std::unique_ptr<MixSource> second = constant_source(2400, kValue);
+    const MixSource* second_raw = second.get();
+    std::unique_ptr<MixSource> old = p.swap_source(std::move(second));
+    CHECK(old.get() == first_raw);
+    // The play state and the place stay; the length is the new source's.
+    CHECK(p.playing());
+    CHECK(p.position_frames() == 108);
+    CHECK(p.length_frames() == second_raw->length_frames());
+    // What comes out now is the new source's audio.
+    std::fill(got.begin(), got.end(), -1.0f);
+    CHECK(p.read_frames(got.data(), 4) == 4);
+    for (std::size_t i = 0; i < 4 * kChannels; ++i) CHECK(got[i] == kValue);
+    CHECK(p.position_frames() == 112);
+
+    // A shorter source pulls the place back to its end.
+    std::unique_ptr<MixSource> back = p.swap_source(constant_source(50, kValue));
+    CHECK(back.get() == second_raw);
+    CHECK(p.position_frames() == 50);
+
+    // No source plays as empty audio, as a playhead built with none.
+    p.swap_source(nullptr);
+    CHECK(p.length_frames() == 0);
+    CHECK(p.channels() == 0);
+    CHECK(p.read_frames(got.data(), 4) == 0);
 }
 
 TEST_CASE("StretchSource: no source, or a speed that is not above 0, is refused") {

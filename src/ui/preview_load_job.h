@@ -206,12 +206,15 @@ private:
 };
 
 // Reloads only the notes of the chart the Preview already has open, for a new
-// mode (difficulty, Pro Drums, 2x Bass, Note Shuffle or the fill rule), off
-// the UI thread.
+// mode (difficulty, Pro Drums, 2x Bass, Note Shuffle or the fill rule) or a
+// new song speed, off the UI thread.
 // It reads the notes through read_preview_notes, the first load's own step,
 // then builds the scene and the highway for them. It opens no audio and does
 // not hash the chart file: the audio and the "chart changed" answer belong to
-// the file, not the mode, so the controller keeps the first load's. `path` is
+// the file, not the mode, so the controller keeps the first load's (at a new
+// speed it plays that audio at the new one, PreviewTransport::set_timing).
+// The audio offset stays the first load's too: the speed never scales it
+// (app::audio_ms_of_chart_ms says why). `path` is
 // the path to draw (already drawn_path's answer). `ghost` is PreviewLoadJob's.
 class PreviewNotesJob : public ResultJobBase {
 public:

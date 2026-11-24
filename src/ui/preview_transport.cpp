@@ -1,8 +1,10 @@
 #include "ui/preview_transport.h"
 
+#include <exception>
 #include <utility>
 
 #include "app/preview_view.h"  // has_song_length
+#include "audio/stretch_mix.h"  // play_at_speed, plain_of
 
 namespace hydra::ui {
 
@@ -90,6 +92,41 @@ void PreviewTransport::set_song_length_ms(std::optional<double> song_length_ms) 
     // so hand it the clock's own time.
     const double end = length_ms();
     if (end > 0.0 && clock_.now_ms() > end) seek_ms(clock_.now_ms());
+}
+
+void PreviewTransport::set_timing(double speed_ratio, std::optional<double> song_length_ms) {
+    if (speed_ratio == speed_ratio_) {
+        set_song_length_ms(song_length_ms);
+        return;
+    }
+    // The place is read at the old timing, before the length or the ratio
+    // changes: set_song_length_ms would clamp the clock to the new end in the
+    // old speed's time.
+    const double place = file_ms();
+    const bool was_playing = playing();
+    pause();
+    std::unique_ptr<audio::MixSource> old_source;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        speed_ratio_ = speed_ratio;
+        if (playhead_) old_source = playhead_->swap_source(nullptr);
+    }
+    song_length_ms_ = song_length_ms;
+    // Off the lock: the old wrap is freed and the new one allocated here.
+    std::exception_ptr failed;
+    std::unique_ptr<audio::MixSource> new_source;
+    try {
+        new_source = audio::play_at_speed(audio::plain_of(std::move(old_source)), speed_ratio);
+    } catch (...) {
+        failed = std::current_exception();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (playhead_) playhead_->swap_source(std::move(new_source));
+    }
+    seek_file_ms(place);  // clamps to the new length
+    if (failed) std::rethrow_exception(failed);
+    if (was_playing) play();
 }
 
 bool PreviewTransport::has_audio() const {
