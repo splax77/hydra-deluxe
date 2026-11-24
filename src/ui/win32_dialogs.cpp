@@ -4,6 +4,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <knownfolders.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -67,6 +68,22 @@ std::vector<COMDLG_FILTERSPEC> filter_specs(const std::vector<FileTypeFilter>& t
     return specs;
 }
 
+// The folder `utf8_folder` as a shell item, or the user's Documents folder
+// when it is empty or cannot be opened. Null only when neither can be had.
+// The shell parses the path, so it gets the form shell_path gives.
+ComPtr<IShellItem> start_folder(const std::string& utf8_folder) {
+    ComPtr<IShellItem> folder;
+    const std::wstring wide =
+        utf8_folder.empty() ? std::wstring() : shell_path(win32_path(utf8_folder));
+    if (!wide.empty()) {
+        if (SUCCEEDED(SHCreateItemFromParsingName(wide.c_str(), nullptr, IID_PPV_ARGS(&folder))))
+            return folder;
+        folder.Reset();
+    }
+    SHGetKnownFolderItem(FOLDERID_Documents, KF_FLAG_DEFAULT, nullptr, IID_PPV_ARGS(&folder));
+    return folder;
+}
+
 }  // namespace
 
 std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
@@ -98,7 +115,8 @@ std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTyp
 std::optional<std::string> browse_for_save_file(HWND owner,
                                                 const std::vector<FileTypeFilter>& types,
                                                 const std::wstring& default_extension,
-                                                bool* failed) {
+                                                bool* failed,
+                                                const std::optional<SaveDialogStart>& start) {
     const std::vector<COMDLG_FILTERSPEC> specs = filter_specs(types);
     return show_file_dialog(
         owner, CLSID_FileSaveDialog,
@@ -109,6 +127,14 @@ std::optional<std::string> browse_for_save_file(HWND owner,
             if (!specs.empty())
                 dialog.SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
             if (!default_extension.empty()) dialog.SetDefaultExtension(default_extension.c_str());
+            if (start) {
+                // SetFolder, not SetDefaultFolder: the start wins over the
+                // folder Windows remembers from this app's last dialog.
+                const ComPtr<IShellItem> folder = start_folder(start->folder);
+                if (folder) dialog.SetFolder(folder.Get());
+                if (!start->file_name.empty())
+                    dialog.SetFileName(utf8_to_wide(start->file_name).c_str());
+            }
         },
         failed);
 }
