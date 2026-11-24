@@ -376,7 +376,7 @@ ImVec4 cell_color(const app::report_view::CellLook& look, Tone tone) {
 }
 
 ImVec4 window_text() { return ImGui::GetStyleColorVec4(ImGuiCol_Text); }
-ImVec4 table_background() { return ImGui::GetStyleColorVec4(ImGuiCol_WindowBg); }
+ImVec4 table_background() { return ImGui::GetStyleColorVec4(ImGuiCol_ChildBg); }
 ImVec4 header_fill() { return ImGui::GetStyleColorVec4(ImGuiCol_TableHeaderBg); }
 ImVec4 header_text() { return window_text(); }
 

@@ -354,7 +354,8 @@ ImVec4 cell_color(const app::report_view::CellLook& look, app::report_view::Tone
 
 // The window's text colour (ImGuiCol_Text): a normal cell's words.
 ImVec4 window_text();
-// What the table sits on: the window's background (ImGuiCol_WindowBg).
+// What the table sits on: the fill of the scrolling child its rows are
+// drawn in (ImGuiCol_ChildBg).
 ImVec4 table_background();
 // The header row's fill (ImGuiCol_TableHeaderBg) and its words' colour,
 // as draw_table_headers (ui/column_widths.h) draws them.
