@@ -26,6 +26,8 @@ Every past session of this project has a short card: its goal, what went wrong a
 
 Look there when the user mentions an earlier session or a past decision, asks to continue or redo something, or before you propose an approach that may have been tried and dropped. The index is too big to read whole: grep the index and the cards by keyword, tag, D-number or session id, and open the matching card. Memory files end with a `Sessions:` line that names their cards. A card is a pointer, not proof: check what it says against the code before you act on it (agent rule 9).
 
+The tag list is `docs/sessions/tags.txt`. A line `old => new` means older cards carry the old tag, so search for both. In the index, `[failed]` means the card has no valid stamp, and `[stale]` means the session went on after its card was written. `stamps.tsv` and `notes.tsv` in that folder are the checker's records, not cards.
+
 A start-of-session hook asks the main session to write cards for finished sessions that have none. Do it alongside the user's request, as the hook's message says. A card marked `[write-back]` in the index names a Clone Hero fact its page lacks, and the next main session adds that fact to the page alongside the user's request, the same way it writes missing cards.
 
 ### Audits

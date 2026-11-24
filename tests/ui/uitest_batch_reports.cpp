@@ -285,6 +285,47 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->batch_confirm_pending);
 }
 
+// The confirm's "Safe paths" line (Safe paths plan, S3 check C): it reads the
+// value describe_settings gives the settings the app holds, "off" on a fresh
+// settings file and "on" once the panel's box is ticked.
+void test_batch_confirm_safe_paths(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    using hydra::ui::detail::kSafePathsName;
+    auto confirm_reads = [&](bool on) {
+        ctx->SetRef("//Hydra");
+        ctx->ItemClick("Analyze library...");
+        ctx->Yield(2);
+        IM_CHECK(h.app->batch_confirm_pending);
+        const std::string word =
+            hydra::app::describe_settings(h.app->settings.to_analysis_settings()).safe_paths;
+        IM_CHECK_EQ(hydra::ui::detail::batch_settings_summary(h.app->settings).safe_paths, word);
+        IM_CHECK_EQ(word, std::string(on ? "on" : "off"));
+        // ImGui's text log writes a table row's cells on one line, each after
+        // a "|"; the fill card test in pbtest_coach.cpp reads its rows the
+        // same way.
+        const std::string row = std::string(kSafePathsName) + " | " + word;
+        if (!on_screen(h, row))
+            IM_ERRORF("the confirm has no row reading \"%s\"", row.c_str());
+        ctx->KeyPress(ImGuiKey_Escape);
+        ctx->Yield(2);
+        IM_CHECK(!h.app->batch_confirm_pending);
+    };
+    IM_CHECK(!h.app->settings.safe_paths);
+    confirm_reads(false);
+    if (ctx->IsError()) return;
+
+    ctx->SetRef("//Hydra");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemCheck("**/##safepaths");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.safe_paths; }, 5));
+    close_settings_panel(ctx);
+    confirm_reads(true);
+}
+
 // The confirm lists every setting and the real count; Escape backs out,
 // Enter starts, and the batch runs in the strip, not a modal.
 void test_batch_confirm(ImGuiTestContext* ctx) {
@@ -309,7 +350,7 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
         hydra::ui::detail::batch_settings_summary(h.app->settings);
     for (const std::string* line : {&settings.difficulty, &settings.sp_cap, &settings.fills,
                                     &settings.early_fill, &settings.speed, &settings.score_range,
-                                    &settings.path_limit}) {
+                                    &settings.path_limit, &settings.safe_paths}) {
         if (line->empty() || text.find(*line) == std::string::npos)
             IM_ERRORF("the confirm does not list the setting \"%s\"", line->c_str());
     }
@@ -631,6 +672,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
         {"batch-confirm-note-shuffle", test_batch_confirm_note_shuffle},
+        {"batch-confirm-safe-paths", test_batch_confirm_safe_paths},
         {"batch-strip-workers", test_batch_strip_workers},
         {"batch-done-strip", test_batch_done_strip},
         {"status-line", test_status_line},

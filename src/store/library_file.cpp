@@ -78,6 +78,12 @@ bool lacks_speed(TableProbe& probe, const std::set<std::string>& tables) {
     return tables.count("profiles") && !probe.has_column("profiles", kSpeedColumn);
 }
 
+// Whether the profiles table is there without its Safe paths column. Reads
+// false when SQLite fails; the caller asks probe.failed().
+bool lacks_safe_paths(TableProbe& probe, const std::set<std::string>& tables) {
+    return tables.count("profiles") && !probe.has_column("profiles", kSafePathsColumn);
+}
+
 // The layouts, oldest first. Each test reads only what a release wrote; the
 // releases themselves are in testdata/store/README.md.
 LibraryFileKind kind_of(TableProbe& probe) {
@@ -123,6 +129,11 @@ LibraryFileKind kind_of(TableProbe& probe) {
     const bool lacks_speed_column = lacks_speed(probe, tables);
     if (probe.failed()) return LibraryFileKind::Unreadable;
     if (lacks_speed_column) return LibraryFileKind::LacksSpeedColumn;
+    // Results saved per Safe paths setting came after the song speed; a file
+    // a build before them wrote holds a profiles table without that column.
+    const bool lacks_safe_paths_column = lacks_safe_paths(probe, tables);
+    if (probe.failed()) return LibraryFileKind::Unreadable;
+    if (lacks_safe_paths_column) return LibraryFileKind::LacksSafePathsColumn;
     return LibraryFileKind::Current;
 }
 
@@ -147,6 +158,13 @@ bool profiles_table_lacks_speed(sqlite3* db) {
     const std::set<std::string> tables = probe.tables();
     if (probe.failed()) return true;
     return lacks_speed(probe, tables) || probe.failed();
+}
+
+bool profiles_table_lacks_safe_paths(sqlite3* db) {
+    TableProbe probe(db);
+    const std::set<std::string> tables = probe.tables();
+    if (probe.failed()) return true;
+    return lacks_safe_paths(probe, tables) || probe.failed();
 }
 
 LibraryFileKind classify_library_file(const std::string& dbpath) {

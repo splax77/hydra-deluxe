@@ -139,4 +139,9 @@ std::optional<WindowEnds> early_fill_window_end(const Activation& act, const Cho
     return out;
 }
 
+std::optional<WindowEnds> early_fill_row(const Activation& act, const ChordTimes& chords) {
+    if (!act.is_e_critical()) return std::nullopt;
+    return early_fill_window_end(act, chords);
+}
+
 }  // namespace hydra

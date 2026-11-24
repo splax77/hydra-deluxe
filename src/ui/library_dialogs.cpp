@@ -82,6 +82,7 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     out.speed = values.speed;
     out.score_range = values.depth;
     out.path_limit = values.timing;
+    out.safe_paths = values.safe_paths;
     return out;
 }
 
@@ -107,6 +108,7 @@ std::string change_phrase(const app::Settings& s, const app::SettingsText& value
     case AnalysisSetting::SongSpeed: return std::string(kSongSpeedName) + " " + values.speed;
     case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
     case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
+    case AnalysisSetting::SafePaths: return switch_phrase(kSafePathsName, s.safe_paths);
     }
     // A panel setting added to app::AnalysisSetting without words here; the
     // Reset test in tests/test_config.cpp walks every one and fails on this.
@@ -377,6 +379,7 @@ void render_batch_confirm(AppState& app) {
         row(kSongSpeedName, d.speed);
         row("Score range", d.score_range);
         row("Path limit", d.path_limit);
+        row(kSafePathsName, d.safe_paths);
         ImGui::EndTable();
     }
     ImGui::TextDisabled("To change these, cancel and edit Analysis settings on the main screen.");

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "core/backend_value.h"
+#include "core/note_window.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 
@@ -318,6 +320,10 @@ struct Path {
     // Some closed activation already has a timing outside this run's limit
     // (act_within_limit). Once set it stays set.
     bool over_prefix;
+    // Under EngineOptions::safe_paths: some timing already on the path holds
+    // a row that reads short (Engine::act_is_unsafe). Each timing is judged
+    // in the sweep step it joins the path. Once set it stays set.
+    bool unsafe;
 };
 
 // The decision-log output, rebuilt into core Paths (core/model.h) locally.
@@ -355,6 +361,132 @@ struct OutSq {
     SqueezeKind kind;
     double offset;
 };
+
+// One activation record from the decision log: `oa` and the ranges it names
+// in the pools. The copy-out (rebuild) and the safe-paths test
+// (Engine::act_is_unsafe) both build their records here, so the record the
+// test judges is the record the Paths tab later shows.
+Activation build_activation(const ScoreGraph& graph, const Enum& en, const OutAct& oa,
+                            const std::vector<OutSq>& out_sqs,
+                            const std::vector<SpEndStep>& out_ends,
+                            const std::vector<int64_t>& out_ticks,
+                            const std::vector<BackendSqueeze>& tail_backends,
+                            const SongTiming& timing) {
+    const ScoreGraphNode* node = en.nodes[(size_t)oa.act_node];
+
+    Activation act;
+    act.timecode = node->timecode;
+    // An activation node is a chart note, so it always carries the
+    // chord hit there.
+    act.chord = node->chord.value();
+    act.bank_rise_ticks.assign(out_ticks.begin() + oa.bank_begin,
+                               out_ticks.begin() + oa.bank_end);
+    act.skipped_fill_ticks.assign(out_ticks.begin() + oa.skip_begin,
+                                  out_ticks.begin() + oa.skip_end);
+    act.frontend_sp_points = node->branch_edge->frontend_sp_points;
+    act.e_offset = oa.e_offset;
+    // The window the engine judged this activation's fill by, the
+    // graph's, so the activation's own E tests give the search's answer.
+    act.e_window_ms = graph.early_fill_window_ms();
+    if (oa.deact_edge >= 0) {
+        act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);
+    } else if (oa.final_sp_end != NO_TIME) {
+        // SP outlasted the chart, so no deact edge was ever built and
+        // no edge holds these notes. Measure the song's trailing notes
+        // against the SP end the search tracked -- the same offset rule
+        // (offset_from_sp_end) a deact edge's rows use, just against a
+        // node the graph never made.
+        const double end_ms = timing.ms_index().at(oa.final_sp_end);
+        for (const BackendSqueeze& b : tail_backends) {
+            const double off = offset_from_sp_end(b.timecode.ms(), end_ms);
+            // D5: the same window as every other row, from this
+            // activation's own SP end, not from the song's last note.
+            if (!within_squeeze_window(off)) continue;
+            BackendSqueeze copy = b;
+            copy.offset_ms = off;
+            act.backends.push_back(copy);
+        }
+    }
+    // The SqIns go in here. A SqOut is always the last squeeze, and
+    // set_sqout below builds its entry from its row, so its offset is
+    // stored once. The search ranked the path by its own SqOut offset
+    // (its squeeze choice's timing), so keep it to check against the row.
+    bool took_sqout = false;
+    double searched_sqout_ms = 0.0;
+    for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
+        const OutSq& os = out_sqs[(size_t)k];
+        if (os.kind == SqueezeKind::SqOut) {
+            took_sqout = true;
+            searched_sqout_ms = os.offset;
+            continue;
+        }
+        act.sqinouts.push_back(SPSqueeze{os.kind, os.offset});
+    }
+
+    // A squeezed-out note is hit after SP has already ended, and every
+    // note past it is hit after it, so nothing beyond the sqout note
+    // can be a backend squeeze -- there is no way to still be in SP
+    // for it. The deact edge's backend list is shared by every path
+    // that deactivates there, squeezing out or not, so the trim
+    // belongs here, per activation (set_sqout does it). This mirrors
+    // the row loop of create_deactivated_path, which already
+    // takes those notes back out of the score. The chord is
+    // the one the window was offered (Act::sqout_phrase), not always
+    // the window's first.
+    if (took_sqout && oa.deact_edge >= 0 && oa.sqout_phrase != NO_TIME) {
+        act.set_sqout(oa.sqout_phrase);
+        // The record shows the row's offset; the search ranked by
+        // its own. They must be the same number, or the record
+        // would show a squeeze the search didn't rank.
+        const double stored_ms = act.sqout_row()->offset();
+        if (stored_ms != searched_sqout_ms)
+            throw std::logic_error(
+                "rebuild: the search's SqOut offset " +
+                std::to_string(searched_sqout_ms) + " ms differs from its row's " +
+                std::to_string(stored_ms) + " ms at tick " +
+                std::to_string(oa.sqout_phrase));
+    }
+
+    // Every place this window's SP end moved, as the search did it.
+    // Its last end is the deactivation node D (deact_tick()): the node
+    // every backend row's offset was measured against (graph.cpp
+    // add_deact_edge), or, when SP outlasted the chart, the end the
+    // search tracked. Nothing here invents a value.
+    act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
+                            out_ends.begin() + oa.end_end);
+    // D36: a closed window's record ends on its deactivation node, tied
+    // variants included (close_folded_act).
+    if (oa.deact_edge >= 0 &&
+        act.deact_tick() !=
+            std::optional<int64_t>(en.edges[(size_t)oa.deact_edge]->dest->timecode.ticks()))
+        throw std::logic_error("rebuild: a closed window's record ends off its deactivation node");
+
+    // Stamp the frontend transfer scales through the one function
+    // that computes them, from the SP-end steps just stamped. When the
+    // scales can't be computed, every one stays unknown, never a
+    // silent x1.00 (D4). No fresh record reaches this: see 'no fresh
+    // record stores an unknown transfer scale'.
+    if (auto scales = frontend_transfer_scales(act, timing)) {
+        act.transfer_post = scales->post;
+        const auto first = act.sqinouts.begin();
+        for (auto sq = first; sq != act.sqinouts.end(); ++sq)
+            if (is_sqin_squeeze(*sq))
+                sq->transfer = scales->sqins[sqin_rank(first, sq, is_sqin_squeeze)];
+    }
+    return act;
+}
+
+// Whether a built activation holds a row that reads short: any squeeze's row
+// (squeeze_window_ends) or its early fill row (early_fill_row). An owner that
+// gives no row gives nothing short.
+bool has_short_row(const Activation& act, const ChordTimes& chords) {
+    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+        const std::optional<WindowEnds> row = squeeze_window_ends(act, k, chords);
+        if (row && row->is_short()) return true;
+    }
+    const std::optional<WindowEnds> fill = early_fill_row(act, chords);
+    return fill && fill->is_short();
+}
 
 class StampMap {
 public:
@@ -418,7 +550,7 @@ private:
 class Engine {
 public:
     // `options` must outlive the engine: target_act_ticks_ points into it.
-    Engine(const Enum& en, bool has_sp_cap, int32_t sp_cap,
+    Engine(const ScoreGraph& graph, const Enum& en, bool has_sp_cap, int32_t sp_cap,
            const EngineOptions& options, double backend_leeway_ms,
            int32_t max_tied_paths, double early_fill_window_ms)
         : en_(en),
@@ -437,8 +569,13 @@ public:
                                                      : nullptr),
           target_deact_ticks_(options.target_act_ticks ? &options.target_deact_ticks
                                                        : nullptr),
-          free_after_(options.free_after) {
+          free_after_(options.free_after),
+          graph_(graph),
+          safe_paths_(options.safe_paths) {
         index_fills();
+        // The chord list the safe test reads, built once per search and only
+        // when the option is on.
+        if (safe_paths_) chords_ = chord_times(graph_.song());
     }
 
     bool run();
@@ -613,6 +750,17 @@ private:
     bool act_within_limit(int32_t act) const;
     bool passes_ms_filter(const Path& p) const;
 
+    // Under EngineOptions::safe_paths: whether activation `act`, built into
+    // its record the copy-out's way (build_activation), holds a row that
+    // reads short (has_short_row). `live_end_tail` is the running window's
+    // SP-end steps on the live path, or -1 for a closed window, whose steps
+    // are its own. The pools are left as they were.
+    bool act_is_unsafe(int32_t act, int32_t live_end_tail);
+    // Marks `p` unsafe when its newest activation is (act_is_unsafe). Called
+    // in the sweep step a timing joins the path; does nothing with the
+    // option off.
+    void judge_safe(Path& p, int32_t live_end_tail);
+
     // The fills on the base track in chart order, for ready_class.
     void index_fills();
     uint64_t ready_class(const Path& p, uint64_t* passable = nullptr) const;
@@ -643,6 +791,9 @@ private:
     }
     void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                    int32_t* begin, int32_t* end);
+    // One activation's decision log entry, its squeezes, steps and ticks
+    // copied into the out_ pools. emit_acts and act_is_unsafe both use it.
+    OutAct emit_act(const Act& a);
     int32_t push_tick(std::vector<ColNode>& pool, int32_t prev, int64_t tick) {
         pool.push_back(ColNode{prev, tick});
         return (int32_t)pool.size() - 1;
@@ -746,6 +897,12 @@ private:
     const std::vector<int64_t>* target_deact_ticks_ = nullptr;
     // EngineOptions::free_after, read only with target_act_ticks_ (follows_pins).
     bool free_after_ = false;
+    // The graph the search runs on: act_is_unsafe builds its records from it.
+    const ScoreGraph& graph_;
+    // EngineOptions::safe_paths, and the song's chords it reads (set only
+    // when it is on).
+    bool safe_paths_ = false;
+    ChordTimes chords_;
 
     std::vector<Act> acts_;
     std::vector<SqNode> sqs_;
@@ -1045,6 +1202,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.sp_end_time = aiet_val;
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
     c.banked_phrase_ordinal = e.banked_phrase_ordinal;
+    // The early fill is known now: its bars, skips and offset are set.
+    judge_safe(c, c.end_tail);
 
     p.currentskips += 1;
     // The fill just passed over, for the record: the Preview lights it.
@@ -1126,6 +1285,8 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
             a.sqout_phrase = sq->chord;
         }
     }
+    // A squeeze out is known when its window closes, here.
+    if (sq) judge_safe(c, -1);
 
     // Each row adds what it is worth on this path minus what the SP walk
     // already paid for it. The walk pays rows at or before the SP end in
@@ -1194,6 +1355,9 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
     }
+    // A squeeze in is known once its own step is written: its scale is
+    // measured at that step.
+    judge_safe(p, p.end_tail);
 
     // The path may already hold a late SqIn's phrase ahead of it, spent, when
     // this one is offered after it (D34). Both branches keep those spent. A
@@ -1228,6 +1392,32 @@ void Engine::close_last_activation(Path& p) const {
 
 bool Engine::passes_ms_filter(const Path& p) const {
     return !p.over_prefix && act_within_limit(p.act_tail);
+}
+
+// --- safe paths ----------------------------------------------------------
+// The record is copied into the out_ pools the way the copy-out copies it,
+// built by the copy-out's own function, judged, and the pools cut back.
+bool Engine::act_is_unsafe(int32_t act, int32_t live_end_tail) {
+    if (act < 0) return false;
+    const size_t sqs0 = out_sqs_.size();
+    const size_t ends0 = out_ends_.size();
+    const size_t ticks0 = out_ticks_.size();
+    OutAct oa = emit_act(acts_[(size_t)act]);
+    // A running window's steps are on the live path, as emit_acts reads them
+    // for a window still running at the song's end.
+    if (live_end_tail >= 0) emit_ends(live_end_tail, &oa.end_begin, &oa.end_end);
+    const Activation record =
+        build_activation(graph_, en_, oa, out_sqs_, out_ends_, out_ticks_,
+                         graph_.tail_backends(), graph_.timing());
+    out_sqs_.erase(out_sqs_.begin() + (std::ptrdiff_t)sqs0, out_sqs_.end());
+    out_ends_.erase(out_ends_.begin() + (std::ptrdiff_t)ends0, out_ends_.end());
+    out_ticks_.erase(out_ticks_.begin() + (std::ptrdiff_t)ticks0, out_ticks_.end());
+    return has_short_row(record, chords_);
+}
+
+void Engine::judge_safe(Path& p, int32_t live_end_tail) {
+    if (!safe_paths_ || p.unsafe) return;
+    if (act_is_unsafe(p.act_tail, live_end_tail)) p.unsafe = true;
 }
 
 // --- reduce_group --------------------------------------------------------
@@ -1436,6 +1626,15 @@ void Engine::reduce_iteration_paths() {
             removed_[(size_t)i] = 1;
             continue;
         }
+        // Safe paths drops a path with a short row the same way, and for the
+        // same reason it is exact: the verdict was given in the step the
+        // timing joined the path (judge_safe), it never clears, and every
+        // path below it holds that timing too. It reads no part of the Path
+        // limit, whose own rule (filtered_, reduce_group) is unchanged.
+        if (safe_paths_ && p.unsafe) {
+            removed_[(size_t)i] = 1;
+            continue;
+        }
 
         if (is_complete && (!has_optimal_ || p.score > optimal_score_)) {
             has_optimal_ = true;
@@ -1537,6 +1736,32 @@ void Engine::reduce_iteration_paths() {
 }
 
 // --- output --------------------------------------------------------------
+OutAct Engine::emit_act(const Act& a) {
+    sq_scratch_.clear();
+    for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
+        sq_scratch_.push_back(s);
+    }
+
+    OutAct oa;
+    oa.act_node = a.act_node;
+    oa.deact_edge = a.deact_edge;
+    oa.e_offset = a.e_offset;
+    oa.sq_begin = (int32_t)out_sqs_.size();
+    for (size_t k = sq_scratch_.size(); k-- > 0;) {
+        OutSq os;
+        os.kind = sqs_[(size_t)sq_scratch_[k]].kind;
+        os.offset = sqs_[(size_t)sq_scratch_[k]].offset;
+        out_sqs_.push_back(os);
+    }
+    oa.sq_end = (int32_t)out_sqs_.size();
+    oa.final_sp_end = NO_TIME;
+    oa.sqout_phrase = a.sqout_phrase;
+    emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
+    emit_ticks(banks_, a.bank_tail, &oa.bank_begin, &oa.bank_end);
+    emit_ticks(fills_, a.skip_tail, &oa.skip_begin, &oa.skip_end);
+    return oa;
+}
+
 void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                        int32_t* begin, int32_t* end) {
     chain_scratch_.clear();
@@ -1546,31 +1771,7 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
 
     *begin = (int32_t)out_acts_.size();
     for (size_t i = chain_scratch_.size(); i-- > 0;) {
-        const Act& a = acts_[(size_t)chain_scratch_[i]];
-
-        sq_scratch_.clear();
-        for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
-            sq_scratch_.push_back(s);
-        }
-
-        OutAct oa;
-        oa.act_node = a.act_node;
-        oa.deact_edge = a.deact_edge;
-        oa.e_offset = a.e_offset;
-        oa.sq_begin = (int32_t)out_sqs_.size();
-        for (size_t k = sq_scratch_.size(); k-- > 0;) {
-            OutSq os;
-            os.kind = sqs_[(size_t)sq_scratch_[k]].kind;
-            os.offset = sqs_[(size_t)sq_scratch_[k]].offset;
-            out_sqs_.push_back(os);
-        }
-        oa.sq_end = (int32_t)out_sqs_.size();
-        oa.final_sp_end = NO_TIME;
-        oa.sqout_phrase = a.sqout_phrase;
-        emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
-        emit_ticks(banks_, a.bank_tail, &oa.bank_begin, &oa.bank_end);
-        emit_ticks(fills_, a.skip_tail, &oa.skip_begin, &oa.skip_end);
-        out_acts_.push_back(oa);
+        out_acts_.push_back(emit_act(acts_[(size_t)chain_scratch_[i]]));
     }
     *end = (int32_t)out_acts_.size();
 
@@ -1841,6 +2042,7 @@ bool Engine::run() {
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
     root.over_prefix = false;
+    root.unsafe = false;
 
     cur_.clear();
     cur_.push_back(root);
@@ -2008,111 +2210,10 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
         path.trailing_skipped_fill_ticks.assign(out_ticks.begin() + op.skip_begin,
                                                 out_ticks.begin() + op.skip_end);
 
-        for (int j = op.act_begin; j < op.act_end; ++j) {
-            const OutAct& oa = out_acts[(size_t)j];
-            const ScoreGraphNode* node = en.nodes[(size_t)oa.act_node];
-
-            Activation act;
-            act.timecode = node->timecode;
-            // An activation node is a chart note, so it always carries the
-            // chord hit there.
-            act.chord = node->chord.value();
-            act.bank_rise_ticks.assign(out_ticks.begin() + oa.bank_begin,
-                                       out_ticks.begin() + oa.bank_end);
-            act.skipped_fill_ticks.assign(out_ticks.begin() + oa.skip_begin,
-                                          out_ticks.begin() + oa.skip_end);
-            act.frontend_sp_points = node->branch_edge->frontend_sp_points;
-            act.e_offset = oa.e_offset;
-            // The window the engine judged this activation's fill by, the
-            // graph's, so the activation's own E tests give the search's answer.
-            act.e_window_ms = graph.early_fill_window_ms();
-            if (oa.deact_edge >= 0) {
-                act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);
-            } else if (oa.final_sp_end != NO_TIME) {
-                // SP outlasted the chart, so no deact edge was ever built and
-                // no edge holds these notes. Measure the song's trailing notes
-                // against the SP end the search tracked -- the same offset rule
-                // (offset_from_sp_end) a deact edge's rows use, just against a
-                // node the graph never made.
-                const double end_ms = timing.ms_index().at(oa.final_sp_end);
-                for (const BackendSqueeze& b : tail_backends) {
-                    const double off = offset_from_sp_end(b.timecode.ms(), end_ms);
-                    // D5: the same window as every other row, from this
-                    // activation's own SP end, not from the song's last note.
-                    if (!within_squeeze_window(off)) continue;
-                    BackendSqueeze copy = b;
-                    copy.offset_ms = off;
-                    act.backends.push_back(copy);
-                }
-            }
-            // The SqIns go in here. A SqOut is always the last squeeze, and
-            // set_sqout below builds its entry from its row, so its offset is
-            // stored once. The search ranked the path by its own SqOut offset
-            // (its squeeze choice's timing), so keep it to check against the row.
-            bool took_sqout = false;
-            double searched_sqout_ms = 0.0;
-            for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
-                const OutSq& os = out_sqs[(size_t)k];
-                if (os.kind == SqueezeKind::SqOut) {
-                    took_sqout = true;
-                    searched_sqout_ms = os.offset;
-                    continue;
-                }
-                act.sqinouts.push_back(SPSqueeze{os.kind, os.offset});
-            }
-
-            // A squeezed-out note is hit after SP has already ended, and every
-            // note past it is hit after it, so nothing beyond the sqout note
-            // can be a backend squeeze -- there is no way to still be in SP
-            // for it. The deact edge's backend list is shared by every path
-            // that deactivates there, squeezing out or not, so the trim
-            // belongs here, per activation (set_sqout does it). This mirrors
-            // the row loop of create_deactivated_path, which already
-            // takes those notes back out of the score. The chord is
-            // the one the window was offered (Act::sqout_phrase), not always
-            // the window's first.
-            if (took_sqout && oa.deact_edge >= 0 && oa.sqout_phrase != NO_TIME) {
-                act.set_sqout(oa.sqout_phrase);
-                // The record shows the row's offset; the search ranked by
-                // its own. They must be the same number, or the record
-                // would show a squeeze the search didn't rank.
-                const double stored_ms = act.sqout_row()->offset();
-                if (stored_ms != searched_sqout_ms)
-                    throw std::logic_error(
-                        "rebuild: the search's SqOut offset " +
-                        std::to_string(searched_sqout_ms) + " ms differs from its row's " +
-                        std::to_string(stored_ms) + " ms at tick " +
-                        std::to_string(oa.sqout_phrase));
-            }
-
-            // Every place this window's SP end moved, as the search did it.
-            // Its last end is the deactivation node D (deact_tick()): the node
-            // every backend row's offset was measured against (graph.cpp
-            // add_deact_edge), or, when SP outlasted the chart, the end the
-            // search tracked. Nothing here invents a value.
-            act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
-                                    out_ends.begin() + oa.end_end);
-            // D36: a closed window's record ends on its deactivation node, tied
-            // variants included (close_folded_act).
-            if (oa.deact_edge >= 0 &&
-                act.deact_tick() !=
-                    std::optional<int64_t>(en.edges[(size_t)oa.deact_edge]->dest->timecode.ticks()))
-                throw std::logic_error("rebuild: a closed window's record ends off its deactivation node");
-
-            // Stamp the frontend transfer scales through the one function
-            // that computes them, from the SP-end steps just stamped. When the
-            // scales can't be computed, every one stays unknown, never a
-            // silent x1.00 (D4). No fresh record reaches this: see 'no fresh
-            // record stores an unknown transfer scale'.
-            if (auto scales = frontend_transfer_scales(act, timing)) {
-                act.transfer_post = scales->post;
-                const auto first = act.sqinouts.begin();
-                for (auto sq = first; sq != act.sqinouts.end(); ++sq)
-                    if (is_sqin_squeeze(*sq))
-                        sq->transfer = scales->sqins[sqin_rank(first, sq, is_sqin_squeeze)];
-            }
-            path.activations.push_back(std::move(act));
-        }
+        for (int j = op.act_begin; j < op.act_end; ++j)
+            path.activations.push_back(build_activation(graph, en, out_acts[(size_t)j], out_sqs,
+                                                        out_ends, out_ticks, tail_backends,
+                                                        timing));
 
         int depth = op.depth;
         int idx = static_cast<int>(pool.size());
@@ -2169,7 +2270,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
     const bool has_cap = graph.sp_meter_cap().has_value();
     const int32_t cap = static_cast<int32_t>(graph.sp_meter_cap().value_or(0));
 
-    Engine engine(en, has_cap, cap, options, graph.rules().backend_leeway_ms,
+    Engine engine(graph, en, has_cap, cap, options, graph.rules().backend_leeway_ms,
                   static_cast<int32_t>(graph.rules().max_tied_paths),
                   graph.early_fill_window_ms());
     if (on_progress) engine.set_progress_cb(on_progress);
