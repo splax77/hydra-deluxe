@@ -112,15 +112,20 @@ PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes
 double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
                              std::optional<double> chart_offset_s);
 
-// The chart sync rule, chart time to audio time. `audio_offset_ms` is where
-// chart time 0 sits in the audio (app::chart_audio_offset_ms works it out).
-// chart_ms_of_audio_ms is the same rule run backwards.
-inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
-    return chart_ms + audio_offset_ms;
+// The chart sync rule, chart time to audio time, as Clone Hero's clock runs it
+// (TM-05 on docs/clone-hero/03-timing.md). `audio_ms` is a position in the
+// audio file. `audio_offset_ms` is where chart time 0 sits in the audio
+// (app::chart_audio_offset_ms works it out), in the file's own time, so the
+// speed never scales it. `speed_ratio` is the song speed the chart is timed at
+// (SongTiming::speed_ratio): chart time is played time, so one chart ms covers
+// `speed_ratio` ms of the file. chart_ms_of_audio_ms is the same rule run
+// backwards.
+inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms, double speed_ratio) {
+    return chart_ms * speed_ratio + audio_offset_ms;
 }
 
-inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms) {
-    return audio_ms - audio_offset_ms;
+inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms, double speed_ratio) {
+    return (audio_ms - audio_offset_ms) / speed_ratio;
 }
 
 // Asked between a container's audio entries; return false to stop early.

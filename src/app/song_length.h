@@ -33,31 +33,39 @@ std::optional<double> stated_length_ms(std::optional<double> raw_ms);
 std::optional<double> stated_length_ms_of_text(std::string_view text);
 
 // The time Clone Hero adds after a song's end before its results screen
-// (D255, the user's answer 2). song_length_ms adds it last, in chart time.
+// (D255, the user's answer 2), in the audio file's time. song_length_ms adds
+// it last, through the song speed (CR-46 on docs/clone-hero/01-reading-a-chart.md).
 inline constexpr double kSongEndPadMs = 1000.0;
 
 // Does `song`'s end event count toward its length? Only when the parser
-// stored one and it sits at least one beat (Song::tick_resolution ticks) past
-// Song::last_note_end_tick, compared in ticks, as Clone Hero compares it
-// (D255, the user's answer 4). A song with no notes measures from tick 0.
+// stored one and it sits at least one beat past Song::last_note_end_tick,
+// compared in ticks, as Clone Hero compares it (D255, the user's answer 4).
+// The beat is the game's: SongTiming::working_resolution cut to a whole
+// number (CR-41 on docs/clone-hero/01-reading-a-chart.md). A song with no
+// notes measures from tick 0. `song`'s timing must be built.
 bool end_event_counts(const Song& song);
 
 // The song's one length, in chart time (D255, amending D75 items 1 and 2).
 // Three candidates:
 // - the stated length, `meta.length_ms` through stated_length_ms, moved from
-//   audio time into chart time by the chart's delay or Offset
-//   (preview_audio_offset_ms with `meta.delay_ms` and `song.chart_offset_s`,
-//   then app/preview_source.h chart_ms_of_audio_ms). It is dropped when it ends
-//   before the last note's end;
+//   audio time into chart time by the chart's delay or Offset and the song
+//   speed (preview_audio_offset_ms with `meta.delay_ms` and
+//   `song.chart_offset_s`, then app/preview_source.h chart_ms_of_audio_ms at
+//   the timing's SongTiming::speed_ratio). It is dropped when it ends before
+//   the last note's end;
 // - the end event, when end_event_counts says so, through the tempo map;
 // - the last note's end (Song::last_note_end_tick), through the tempo map.
 // Which one wins is the user's answer 1 in D255; the code below is its one
-// statement. kSongEndPadMs is then added. Empty when no candidate gives a
+// statement. kSongEndPadMs is then added, through the same speed ratio, as
+// the game's clock divides it (CR-46). Empty when no candidate gives a
 // length has_song_length accepts (app/preview_view.h): the Preview's clock
 // then runs free.
 //
 // `song` may be parsed at any difficulty and with any drum options: none of
-// the facts read here depends on them.
+// the facts read here depends on them. The song speed does: the length is in
+// the chart time of the speed `song` was timed at. A song with a stated
+// length, an end event or a note must have its timing built, as every parser
+// builds it.
 std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const Song& song);
 
 }  // namespace hydra::app

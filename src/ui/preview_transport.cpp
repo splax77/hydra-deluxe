@@ -6,6 +6,10 @@
 
 namespace hydra::ui {
 
+// The transport's three sync-rule calls pass a speed ratio of 1.0: the
+// playhead plays the stems unstretched, one file ms per clock ms, and the
+// transport holds no song speed.
+
 PreviewTransport::PreviewTransport(app::PreviewClock::Now now)
     : clock_(std::move(now)) {}
 
@@ -15,7 +19,7 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead, double au
     audio_offset_ms_ = audio_offset_ms;
     if (playhead_) {
         playhead_->pause();
-        playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_));
+        playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_, 1.0));
         playhead_->set_gain(gain_);
     }
     clock_.pause();
@@ -35,7 +39,7 @@ void PreviewTransport::play() {
     {
         std::lock_guard<std::mutex> lock(mu_);
         if (playhead_) {
-            playhead_->seek_ms(audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_));
+            playhead_->seek_ms(audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_, 1.0));
             playhead_->play();
         }
     }
@@ -62,7 +66,7 @@ void PreviewTransport::seek_ms(double ms) {
     clock_.seek_ms(ms);
     std::lock_guard<std::mutex> lock(mu_);
     if (!playhead_) return;
-    playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));
+    playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_, 1.0));
     // The clock is the master: while it plays, the audio plays too. The
     // playhead pauses itself when its audio runs out, so a jump back from
     // past that end would otherwise stay silent (finding 73).
