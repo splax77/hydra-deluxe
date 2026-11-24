@@ -754,6 +754,46 @@ TEST_CASE("store: one chart's results at two early-fill windows are two results"
     CHECK(reopened.lookup_one("h1", at_85).record == saved_85.record);
 }
 
+TEST_CASE("store: one chart's results at 100% and 150% are two results") {
+    // Two profiles that differ only in the song speed. The record at 150 is a
+    // real analysis read at 150, of another corpus chart filed under the same
+    // id, so each lookup's answer shows whose record it read.
+    const Profile at100 = at4();
+    REQUIRE(at100.lens.speed_percent == 100);
+    Profile at150 = at4();
+    at150.lens.speed_percent = 150;
+    REQUIRE(at100 != at150);
+    app::AnalysisSettings settings_150 = store_fixture_settings();
+    settings_150.reading().speed_percent = 150;
+    std::string other_chart;
+    for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(store_fixture_settings(), 2))
+        if (c.chart != fixture_chart()) other_chart = c.chart;
+    REQUIRE_MESSAGE(!other_chart.empty(), "the corpus has one chart with paths");
+    const PreparedRecord saved_100 = prepare_record("h1", at100, fixture().record);
+    const PreparedRecord saved_150 =
+        prepare_record("h1", at150, corpus::analyzed(other_chart, settings_150));
+    REQUIRE(saved_100.record != saved_150.record);
+
+    StoreFile file("store_records");
+    {
+        RecordStore store(file.path);
+        // Saved 100 first, then 150, so each lookup must skip the other row.
+        store.save(saved_100);
+        store.save(saved_150);
+        CHECK(store.lookup_one("h1", at100).record == saved_100.record);
+        CHECK(store.lookup_one("h1", at150).record == saved_150.record);
+        CHECK(store.record_count() == 2);
+    }
+    // A speed with no saved result reads Not analyzed, in either store.
+    Profile at200 = at4();
+    at200.lens.speed_percent = 200;
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("h1", at100).record == saved_100.record);
+    CHECK(reopened.lookup_one("h1", at150).record == saved_150.record);
+    CHECK(reopened.lookup_one("h1", at200).status == RecordStatus::NotAnalyzed);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+}
+
 TEST_CASE("store: every path of one analysis carries the same note count") {
     // The record keeps the note count once (record_of takes rank 1's); this is
     // why that loses nothing: every path carries the chart's own note count

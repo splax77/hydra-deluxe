@@ -172,7 +172,9 @@ inline const hydra::Song& song(const std::string& path, const hydra::ChartReadin
     static std::map<std::string, detail::Outcome<hydra::Song>> cache;
     std::ostringstream key;
     key.precision(17);
-    key << path << '|' << hydra::app::chartmode_key(reading) << '|' << rules.fingerprint();
+    // The chart mode leaves the speed out, so the key names it too.
+    key << path << '|' << hydra::app::chartmode_key(reading) << '|' << reading.speed_percent
+        << '|' << rules.fingerprint();
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::Song>& o = it->second;
     if (fresh) {
@@ -239,7 +241,7 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
     key << path << '|' << hydra::app::chartmode_key(settings.reading()) << '|'
-        << settings_key(settings);
+        << settings.reading().speed_percent << '|' << settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
     if (fresh) {
