@@ -9,7 +9,7 @@ damaged.
 
 Excel's sheet holds 1048576 rows and 16384 columns (column XFD), from Excel's
 specifications and limits. The writer refuses a sheet past either, so it never
-writes a file Excel would call damaged (decision 8 of the export plan). The
+writes a file Excel would call damaged. The
 last of the 16384 columns is also where the sheet's default style ends.
 
 In a workbook's style part, the first custom number format takes the id 164.

@@ -146,9 +146,10 @@ TEST_CASE("report numbers: each comparison column's number is the row field its 
     CHECK(number_of(find_column(cols, "optimal"), row) == static_cast<double>(*row.optimal));
     CHECK(number_of(find_column(cols, "delta"), row) == static_cast<double>(*row.delta));
     CHECK(number_of(find_column(cols, "rank"), row) == static_cast<double>(*row.rank));
-    // A whole percent as Excel holds a percent: a share of one.
-    CHECK(number_of(find_column(cols, "percent"), row) == row.percent / 100.0);
-    CHECK(number_of(find_column(cols, "speed"), row) == row.speed / 100.0);
+    // A whole percent as Excel holds a percent: a share of one. The row's
+    // percent is 97 (the cell's "97%") and its speed 100 ("100%").
+    CHECK(number_of(find_column(cols, "percent"), row) == 0.97);
+    CHECK(number_of(find_column(cols, "speed"), row) == 1.0);
     // under_optimal_row's pct_h is 9901 hundredths of a percent (198,010 of
     // 200,000 at kPercentDecimals 2, the cell's "99.01%"), which Excel holds
     // as the share 0.9901.

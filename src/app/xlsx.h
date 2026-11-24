@@ -18,8 +18,8 @@ namespace hydra::app::xlsx {
 
 // The size of an Excel sheet, from Excel's published specifications and
 // limits. A workbook past either one is one Excel calls damaged, so
-// write_xlsx refuses it (the export plan's decision 8). The last column is
-// also where the sheet's default style ends (decision 9).
+// write_xlsx refuses it (docs/adr/0033). The last column is also where the
+// sheet's default style ends (write_xlsx's cols element).
 inline constexpr size_t kExcelMaxRows = 1048576;
 inline constexpr size_t kExcelMaxColumns = 16384;  // column XFD
 
