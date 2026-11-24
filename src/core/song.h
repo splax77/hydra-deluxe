@@ -116,11 +116,6 @@ void check_timing_maps(int64_t tick_resolution,
 inline constexpr int kDefaultTimeSigNumerator = 4;
 inline constexpr int kDefaultTimeSigDenominator = 4;
 
-// The song speed, in percent, at which a chart plays as its file is written:
-// Clone Hero's default speed (TM-34 on docs/clone-hero/03-timing.md). A Song
-// is timed at it until Song::set_speed_percent says otherwise.
-inline constexpr int kNormalSpeedPercent = 100;
-
 // The feature name Song::check_activations adds to Song::features when it
 // places fills for a chart that has none of its own.
 inline constexpr const char* kGeneratedFillsFeature = "Auto-Generated Fills";
@@ -271,9 +266,10 @@ private:
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
 // The last tick of Clone Hero 1.0's measure-line walk, which the walk
-// includes: F10 of docs/clone-hero/code/4045/fill_generator.md, at 100% song
-// speed. The chart's last note end is Song::last_note_end_tick, the one answer
-// to it, read as 0 when the chart has no note, as the game's F10 does.
+// includes: F10 of docs/clone-hero/code/4045/fill_generator.md. The chart's
+// last note end is Song::last_note_end_tick, the one answer to it, read as 0
+// when the chart has no note, as the game's F10 does. The resolution it adds
+// is SongTiming::working_resolution(), so it follows the song speed.
 int64_t ch10_last_line_tick(const Song& song);
 
 // Clone Hero 1.0's measure lines, in tick order: the list its fill generator

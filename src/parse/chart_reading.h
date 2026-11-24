@@ -5,6 +5,8 @@
 #ifndef HYDRA_PARSE_CHART_READING_H
 #define HYDRA_PARSE_CHART_READING_H
 
+#include "core/model.h"  // kNormalSpeedPercent
+
 namespace hydra {
 
 // Which charted difficulty to read. One chart carries all four: a .mid keeps
@@ -13,12 +15,9 @@ namespace hydra {
 // reading reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };
 
-// Clone Hero's song speed setting, a whole percent: its default and its two
-// limits (TM-34 on docs/clone-hero/03-timing.md). The settings file's key
-// table (app/config.cpp) holds the speed setting to these limits.
-inline constexpr int kDefaultSpeedPercent = 100;
-inline constexpr int kMinSpeedPercent = 10;
-inline constexpr int kMaxSpeedPercent = 5000;
+// The song speed setting's default: another name for kNormalSpeedPercent
+// (core/model.h), which owns the speed's default and limits.
+inline constexpr int kDefaultSpeedPercent = kNormalSpeedPercent;
 
 // The four choices that pick which notes a chart is read as (the difficulty,
 // Pro Drums, 2x Bass and Note Shuffle), and the song speed the chart is timed
@@ -36,7 +35,7 @@ struct ChartReading {
     // Song::set_speed_percent before the song's timing is built, so every
     // chart time is read at this speed. It is not part of the chart mode
     // (app::chartmode_key); a stored result keys it in its lens instead.
-    int speed_percent = kDefaultSpeedPercent;
+    int speed_percent = kNormalSpeedPercent;
 
     bool operator==(const ChartReading& o) const {
         return difficulty == o.difficulty && prodrums == o.prodrums && bass2x == o.bass2x &&

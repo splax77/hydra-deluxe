@@ -122,6 +122,16 @@ constexpr double kDefaultEarlyFillWindowMs = 60.0;
 // The most the Early fill window setting allows, in whole ms: the timing step.
 constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kTimingStepMs);
 
+// Clone Hero's song speed setting, a whole percent: its default and its two
+// limits (TM-34 on docs/clone-hero/03-timing.md). The default is the speed a
+// chart plays at as its file is written. Every default of the speed (Song,
+// ChartReading, Settings, store::Lens, HydraRecord, a leaderboard score's
+// base speed) is kNormalSpeedPercent, and the settings file's key table
+// (app/config.cpp) holds the setting to the two limits.
+inline constexpr int kNormalSpeedPercent = 100;
+inline constexpr int kMinSpeedPercent = 10;
+inline constexpr int kMaxSpeedPercent = 5000;
+
 // The squeeze horizon in ms. The search graph only looks this far from the SP
 // end for a reachable squeeze, and backends within it of the deactivation are
 // stored and shown, so nothing the engine collects is trimmed. The Backend
@@ -1007,6 +1017,11 @@ struct HydraRecord {
     // record's profile carries it (store::Lens::efill_window_ms), and
     // prepare_record refuses a profile that names another window.
     double early_fill_window_ms = kDefaultEarlyFillWindowMs;
+    // The song speed, in whole percent, of the Song the search ran on
+    // (Song::speed_percent). analyze_chart sets it. A saved record's profile
+    // carries it (store::Lens::speed_percent), and prepare_record refuses a
+    // profile that names another speed.
+    int speed_percent = kNormalSpeedPercent;
     std::vector<Path> paths;
 
     // The chart's multiplier squeezes, in chart order. They depend on the
