@@ -120,7 +120,7 @@ void StretchSource::measure_start_delay() {
     std::fill(in_.begin(), in_.end(), 0.0f);
     st_->clear();
     if (peak < 0) fail("the start-delay probe's impulse never came out");
-    delay_ = peak - kProbeFrame;
+    start_delay_ = peak - kProbeFrame;
 }
 
 // SoundTouch's buffers (FIFOSampleBuffer) grow when a put needs more room and
@@ -202,8 +202,8 @@ void StretchSource::seek(int64_t frame) {
     // A late start (delay above 0) is dropped from the output; an early one
     // (below 0) is fed that much sooner, so the frame at `file` comes out
     // first either way. At the file's start there is nothing sooner to feed.
-    const int64_t start = std::max<int64_t>(0, file - std::max<int64_t>(0, -delay_));
-    pending_drop_ = std::max<int64_t>(0, file - start + delay_);
+    const int64_t start = std::max<int64_t>(0, file - std::max<int64_t>(0, -start_delay_));
+    pending_drop_ = std::max<int64_t>(0, file - start + start_delay_);
     tail_feeds_ = 0;
     st_->clear();
     plain_->seek(start);

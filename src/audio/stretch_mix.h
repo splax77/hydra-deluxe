@@ -63,7 +63,7 @@ public:
     // how many played frames after a restart the first fed frame comes out
     // (negative if it comes out early). Every seek corrects for it, so it
     // never shows in what read() returns.
-    int64_t start_delay_frames() const { return delay_; }
+    int64_t start_delay_frames() const { return start_delay_; }
 
 private:
     // Feeds the wrapped source (or silence past its end) into SoundTouch until
@@ -83,8 +83,8 @@ private:
     int64_t file_length_;
     int64_t length_;
     int64_t pos_ = 0;
-    int64_t delay_ = 0;
-    int64_t pending_drop_ = 0;   // played frames to drop after a seek (the delay)
+    int64_t start_delay_ = 0;
+    int64_t pending_drop_ = 0;   // played frames to drop after a seek (the start delay)
     int64_t tail_feeds_ = 0;     // silent blocks fed since the wrapped source ended
     int64_t max_tail_feeds_ = 0; // enough silence to push SoundTouch's whole buffer out
     std::vector<float> in_;      // one block of input frames
