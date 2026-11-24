@@ -144,6 +144,10 @@
           "why": "it converts the file dialog's type-list labels and patterns, not a path"
         },
         {
+          "file": "src/ui/win32_dialogs.cpp",
+          "why": "it converts the save dialog's suggested file name (a bare name with no folder), not a path"
+        },
+        {
           "file": "tools/precheck/code_mask.cpp",
           "why": "it counts the UTF-16 units of source text, not a path"
         },
