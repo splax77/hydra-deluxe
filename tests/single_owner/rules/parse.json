@@ -76,6 +76,12 @@
       "added_by": "O3a",
       "pattern": "\"</?(color|size|b|i|u|s|sub|sup)\\b|=\\s*\"(color|size|sub|sup)\"\\s*;|\\{\\s*\"(color|size|b|i|u|s|sub|sup)\"\\s*,\\s*(true|false)\\s*\\}",
       "calls_owner": "\\b(strip_rich_tags|display_title|display_artist)\\(",
+      "exempt": [
+        {
+          "file": "src/app/xlsx.cpp",
+          "why": "writes the workbook's own colour element in a style part, not a song-name tag"
+        }
+      ],
       "must_match": [
         "static const char* kWord = \"color\";",
         "{\"color\", true}, {\"size\", true}, {\"b\", false},   {\"i\", false},",
