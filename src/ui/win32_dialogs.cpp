@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <knownfolders.h>
+#include <shlobj.h>  // SHGetKnownFolderItem, KF_FLAG_DEFAULT
 #include <shobjidl.h>
 #include <wrl/client.h>
 
