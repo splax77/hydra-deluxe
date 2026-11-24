@@ -1236,6 +1236,11 @@ std::vector<std::string> window_pieces(const hydra::app::WindowRowView& w) {
     return out;
 }
 
+// Two pill edges or sizes that come to the same pixel can differ by float
+// rounding alone. The allowance is the one the row-pill width checks in
+// test_paths_row_layout already use for "the same width".
+constexpr float kSamePill = 0.01f;
+
 // Every tag of activation row `a`, from the view the tab drew, is on screen
 // and drawn under its own badge on the row: a pill in the tag's own fill
 // (window_tag_pill), as wide and as tall as the badge's pill, sharing its
@@ -1255,14 +1260,14 @@ int check_row_tags(ImGuiTestContext* ctx, Harness& h, const hydra::app::Activati
         int under = 0;
         for (const ImRect& t : drawn_pills(rect, "##pathdetails",
                                            hydra::ui::window_tag_pill(tag.is_short).fill)) {
-            if (std::fabs(t.Min.x - badge.Min.x) > 0.01f) continue;
+            if (std::fabs(t.Min.x - badge.Min.x) > kSamePill) continue;
             if (t.Min.y <= badge.Max.y || t.Min.y >= badge.Max.y + badge.GetHeight()) continue;
             ++under;
             ctx->LogInfo("badge \"%s\" pill %.1f,%.1f..%.1f,%.1f, tag \"%s\" pill %.1f,%.1f..%.1f,%.1f",
                          a.badges[b].text.c_str(), badge.Min.x, badge.Min.y, badge.Max.x,
                          badge.Max.y, tag.text.c_str(), t.Min.x, t.Min.y, t.Max.x, t.Max.y);
-            IM_CHECK_RETV(std::fabs(t.GetWidth() - badge.GetWidth()) <= 0.01f, checked);
-            IM_CHECK_RETV(std::fabs(t.GetHeight() - badge.GetHeight()) <= 0.01f, checked);
+            IM_CHECK_RETV(std::fabs(t.GetWidth() - badge.GetWidth()) <= kSamePill, checked);
+            IM_CHECK_RETV(std::fabs(t.GetHeight() - badge.GetHeight()) <= kSamePill, checked);
         }
         IM_CHECK_RETV(under == 1, checked);
         ++checked;
