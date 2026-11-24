@@ -246,6 +246,12 @@ TEST_CASE("classify_library_file names each generation of library file") {
         file_of((std::string("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, ") +
                  kEarlyFillWindowColumn + " INTEGER)")
                     .c_str());
+        // With the early-fill column but not the speed column, it is the next
+        // generation, which still lacks the speed.
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksSpeedColumn);
+        file_of((std::string("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, ") +
+                 kEarlyFillWindowColumn + " INTEGER, " + kSpeedColumn + " INTEGER)")
+                    .c_str());
         CHECK(classify_library_file(path) == LibraryFileKind::Current);
         // The older generations are named first: they gain the column too.
         file_of("CREATE TABLE charts (md5 TEXT);"
