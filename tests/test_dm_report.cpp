@@ -1087,8 +1087,8 @@ TEST_CASE("collect_dm_rows reads the Clone Hero cap profile by name") {
 // D103 item 22: a settings change marks the comparison out of date only when
 // it moves a setting the comparison reads. Each analysis setting
 // (kAnalysisFields) is changed alone, the way the settings reset test does.
-TEST_CASE("settings_change_touches: every analysis setting but the SP cap marks the comparison "
-          "out of date") {
+TEST_CASE("settings_change_touches: every analysis setting but the SP cap and the song speed marks "
+          "the comparison out of date") {
     using app::KeyPart;
     const app::Settings before;
     CHECK_FALSE(dmr::settings_change_touches(before, before));
@@ -1107,7 +1107,11 @@ TEST_CASE("settings_change_touches: every analysis setting but the SP cap marks 
         std::visit(Change{after}, f.member);
         CAPTURE(static_cast<int>(f.setting));
         REQUIRE(after.profile() != before.profile());
-        CHECK(dmr::settings_change_touches(before, after) == (f.part != KeyPart::Cap));
+        // The comparison is pinned at Clone Hero's cap and the default speed
+        // (Settings::profile_at_clone_hero_cap), so neither reaches a row.
+        const bool pinned =
+            f.part == KeyPart::Cap || f.setting == app::AnalysisSetting::SongSpeed;
+        CHECK(dmr::settings_change_touches(before, after) == !pinned);
     }
 
     // A setting no report reads.

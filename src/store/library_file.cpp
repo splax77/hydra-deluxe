@@ -72,6 +72,12 @@ bool lacks_early_fill(TableProbe& probe, const std::set<std::string>& tables) {
     return tables.count("profiles") && !probe.has_column("profiles", kEarlyFillWindowColumn);
 }
 
+// Whether the profiles table is there without its song speed column. Reads
+// false when SQLite fails; the caller asks probe.failed().
+bool lacks_speed(TableProbe& probe, const std::set<std::string>& tables) {
+    return tables.count("profiles") && !probe.has_column("profiles", kSpeedColumn);
+}
+
 // The layouts, oldest first. Each test reads only what a release wrote; the
 // releases themselves are in testdata/store/README.md.
 LibraryFileKind kind_of(TableProbe& probe) {
@@ -112,6 +118,11 @@ LibraryFileKind kind_of(TableProbe& probe) {
     const bool lacks_early_fill_column = lacks_early_fill(probe, tables);
     if (probe.failed()) return LibraryFileKind::Unreadable;
     if (lacks_early_fill_column) return LibraryFileKind::LacksEarlyFillColumn;
+    // Results saved per song speed came after the early-fill window; a file a
+    // build before them wrote holds a profiles table without that column.
+    const bool lacks_speed_column = lacks_speed(probe, tables);
+    if (probe.failed()) return LibraryFileKind::Unreadable;
+    if (lacks_speed_column) return LibraryFileKind::LacksSpeedColumn;
     return LibraryFileKind::Current;
 }
 
@@ -129,6 +140,13 @@ bool profiles_table_lacks_early_fill(sqlite3* db) {
     const std::set<std::string> tables = probe.tables();
     if (probe.failed()) return true;
     return lacks_early_fill(probe, tables) || probe.failed();
+}
+
+bool profiles_table_lacks_speed(sqlite3* db) {
+    TableProbe probe(db);
+    const std::set<std::string> tables = probe.tables();
+    if (probe.failed()) return true;
+    return lacks_speed(probe, tables) || probe.failed();
 }
 
 LibraryFileKind classify_library_file(const std::string& dbpath) {

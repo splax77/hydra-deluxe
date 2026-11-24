@@ -21,7 +21,8 @@
 #include <string>
 #include <vector>
 
-#include "net/http.h"  // the transport and its set_fetcher seam
+#include "core/model.h"  // kNormalSpeedPercent
+#include "net/http.h"    // the transport and its set_fetcher seam
 
 namespace hydra::net {
 
@@ -29,10 +30,10 @@ namespace hydra::net {
 // in without touching callers.
 inline constexpr const char* kDefaultApiBase = "https://dmbot-kb5j.onrender.com/api";
 
-// The playback speed, in percent, that counts as normal play. Hydra's optimal
-// is computed for normal speed only, so only these scores can be compared
-// with it.
-inline constexpr int kBaseSpeedPercent = 100;
+// The playback speed, in percent, that counts as normal play: another name
+// for hydra::kNormalSpeedPercent (core/model.h), which owns it. Only scores
+// played at it are compared with Hydra's optimal.
+inline constexpr int kBaseSpeedPercent = hydra::kNormalSpeedPercent;
 inline bool is_base_speed(int speed_percent) { return speed_percent == kBaseSpeedPercent; }
 
 // One user on the ladder, from GET /api/all-users.

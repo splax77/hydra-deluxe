@@ -103,6 +103,7 @@ void check_same_settings(const Settings& r, const Settings& s) {
     CHECK(r.sp_cap == s.sp_cap);
     CHECK(r.legacy_fills == s.legacy_fills);
     CHECK(r.early_fill_window_ms == s.early_fill_window_ms);
+    CHECK(r.speed_percent == s.speed_percent);
     CHECK(r.auto_open_report == s.auto_open_report);
     CHECK(r.dm_last_user == s.dm_last_user);
 }
@@ -129,6 +130,7 @@ TEST_CASE("settings round-trip through an INI file") {
     s.sp_cap = 16;
     s.legacy_fills = true;
     s.early_fill_window_ms = 37;
+    s.speed_percent = 150;
     s.auto_open_report = true;
     s.dm_last_user = "123456789";
 
@@ -329,6 +331,76 @@ TEST_CASE("early_fill_window_ms reaches the search and the result's key together
     CHECK(run.profile == p_max);
 }
 
+// The user's words: "speed setting, default 100". The limits are Clone
+// Hero's own (TM-34), held by the key table.
+TEST_CASE("speed_percent: defaults to 100 and loads at the game's limits") {
+    CHECK(Settings{}.speed_percent == hydra::kNormalSpeedPercent);
+    CHECK(hydra::kNormalSpeedPercent == 100);
+    CHECK(load_ini_text("speed_missing", "sp_cap=8\n").speed_percent == 100);
+    CHECK(load_ini_text("speed_9", "speed_percent=9\n").speed_percent == hydra::kMinSpeedPercent);
+    CHECK(load_ini_text("speed_10", "speed_percent=10\n").speed_percent == 10);
+    CHECK(load_ini_text("speed_5000", "speed_percent=5000\n").speed_percent == 5000);
+    CHECK(load_ini_text("speed_5001", "speed_percent=5001\n").speed_percent ==
+          hydra::kMaxSpeedPercent);
+    CHECK(Settings::clamp(&Settings::speed_percent, 9) == hydra::kMinSpeedPercent);
+    CHECK(Settings::clamp(&Settings::speed_percent, 5001) == hydra::kMaxSpeedPercent);
+    CHECK_THROWS_AS(load_ini_text("speed_text", "speed_percent=fast\n"),
+                    hydra::app::SettingsFileError);
+}
+
+// The speed rides the chart reading into the parsers and the lens into the
+// result's key, and a chart-mode change keeps it.
+TEST_CASE("speed_percent reaches the reading and the result's key, and with_chartmode keeps it") {
+    namespace store = hydra::store;
+    const Settings at_default;
+    Settings at150;
+    at150.speed_percent = 150;
+
+    CHECK(at150.reading().speed_percent == 150);
+    CHECK(at150.to_analysis_settings().reading().speed_percent == 150);
+    CHECK(at150.lens().speed_percent == 150);
+    CHECK(at150.with_reading(at150.reading()).speed_percent == 150);
+
+    // A chart-mode change sets the four chart-mode choices and keeps the speed.
+    const std::optional<Settings> hard = at150.with_chartmode("Hard Drums, 1x Bass");
+    REQUIRE(hard.has_value());
+    CHECK(hard->speed_percent == 150);
+    CHECK(hard->reading().speed_percent == 150);
+    CHECK(hard->chartmode_key() == "Hard Drums, 1x Bass");
+    // The speed is no part of the chart mode.
+    CHECK(at150.chartmode_key() == at_default.chartmode_key());
+
+    // The two profiles differ in the lens's speed and nowhere else.
+    const store::Profile p100 = at_default.profile();
+    const store::Profile p150 = at150.profile();
+    CHECK(p100 != p150);
+    CHECK(p100.chartmode == p150.chartmode);
+    CHECK(p100.cap == p150.cap);
+    store::Lens rest = p150.lens;
+    rest.speed_percent = p100.lens.speed_percent;
+    CHECK(rest == p100.lens);
+
+    // A batch reads and files at the same speed.
+    const hydra::app::BatchRun run = at150.batch_run();
+    CHECK(run.settings.reading().speed_percent == run.profile.lens.speed_percent);
+    CHECK(run.profile == p150);
+}
+
+// The settings summary names the speed as "Song speed" and describe_settings'
+// value.
+TEST_CASE("settings summary: the song speed, off its default") {
+    using hydra::ui::detail::reset_settings_tooltip;
+    using hydra::ui::detail::settings_button_label;
+    Settings s;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).speed == "100%");
+    s.speed_percent = 150;
+    const std::string speed = hydra::app::describe_settings(s.to_analysis_settings()).speed;
+    CHECK(speed == "150%");
+    CHECK(settings_button_label(s, false) == "Analysis settings: Song speed " + speed);
+    CHECK(reset_settings_tooltip(s, false) == "Resets: Song speed " + speed);
+    CHECK(s.with_analysis_defaults().speed_percent == 100);
+}
+
 TEST_CASE("blank and comment lines load, and keys and values are trimmed") {
     const Settings r = load_ini_text("tidy", "# a comment line\n"
                                              "\n"
@@ -408,6 +480,7 @@ TEST_CASE("settings: a value outside its range loads at the nearest edge") {
         {"preview_volume", &Settings::preview_volume},
         {"sp_cap", &Settings::sp_cap},
         {"early_fill_window_ms", &Settings::early_fill_window_ms},
+        {"speed_percent", &Settings::speed_percent},
     };
     const int window = static_cast<int>(hydra::kSqueezeWindowMs);
     // Beyond every key's edges on both sides, and a value inside each range.
@@ -751,6 +824,30 @@ TEST_CASE("profile_at_clone_hero_cap differs from profile only in the cap") {
     // Already at Clone Hero's cap, the variant is profile() itself.
     s.sp_cap = hydra::kCloneHeroSpCap;
     CHECK(s.profile_at_clone_hero_cap() == s.profile());
+}
+
+// The user's words: "Keep comparing at 100%". The leaderboard report reads
+// this profile, so it stays on the default speed whatever speed is set.
+TEST_CASE("profile_at_clone_hero_cap holds the default speed at any speed setting") {
+    namespace store = hydra::store;
+
+    Settings at100 = every_key_part_changed();
+    at100.sp_cap = 8;
+    REQUIRE(at100.speed_percent == hydra::kNormalSpeedPercent);
+    Settings at150 = at100;
+    at150.speed_percent = 150;
+
+    const store::Profile from150 = at150.profile_at_clone_hero_cap();
+    CHECK(from150.lens.speed_percent == hydra::kNormalSpeedPercent);
+    CHECK(from150.lens.speed_percent != at150.profile().lens.speed_percent);
+    // Otherwise it is the profile the same settings give at the default speed.
+    CHECK(from150 == at100.profile_at_clone_hero_cap());
+    CHECK(from150.chartmode == at150.profile().chartmode);
+
+    // At Clone Hero's cap the only difference from profile() is the speed.
+    at150.sp_cap = hydra::kCloneHeroSpCap;
+    at100.sp_cap = hydra::kCloneHeroSpCap;
+    CHECK(at150.profile_at_clone_hero_cap() == at100.profile());
 }
 
 TEST_CASE("profile_with_fills differs from profile only in the fill rule") {

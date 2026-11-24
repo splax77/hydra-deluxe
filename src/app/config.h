@@ -137,6 +137,7 @@ enum class AnalysisSetting {
     SpCap,
     Fills,
     EarlyFillWindow,
+    SongSpeed,
     ScoreRange,
     PathLimit
 };
@@ -199,6 +200,13 @@ struct Settings {
     // config.cpp. Part of a result's key, like the fill rule. INI line:
     // early_fill_window_ms=60.
     int early_fill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
+
+    // The song speed in whole percent, as Clone Hero's speed setting holds it
+    // (kNormalSpeedPercent and its limits in core/model.h; the key table in
+    // config.cpp holds it to them). It rides the chart reading (reading()) into
+    // the parsers, and is part of a result's key through lens(). INI line:
+    // speed_percent=100.
+    int speed_percent = kNormalSpeedPercent;
 
     // Open the batch's path report window as soon as Hydra builds it. It
     // covers only the path report, not the leaderboard comparison (D103 item
@@ -276,7 +284,7 @@ struct Settings {
     bool effective_bass2x() const;
 
     // The chart reading these settings ask for: difficulty(), view_prodrums,
-    // effective_bass2x() and view_noteshuffle (ChartReading).
+    // effective_bass2x(), view_noteshuffle and speed_percent (ChartReading).
     ChartReading reading() const;
 
     // These settings with the view fields set to ask for `reading`, the rest
@@ -288,9 +296,9 @@ struct Settings {
     std::string chartmode_key() const;
 
     // These settings with the Difficulty, Pro Drums, 2x Bass and Note Shuffle
-    // choices that make chartmode_key() spell `chartmode`, the rest kept as they
-    // are. When several choices spell it, the first one this function tries
-    // wins. nullopt when no choice spells it.
+    // choices that make chartmode_key() spell `chartmode`, the rest (the song
+    // speed among them) kept as they are. When several choices spell it, the
+    // first one this function tries wins. nullopt when no choice spells it.
     std::optional<Settings> with_chartmode(const std::string& chartmode) const;
 
     // with_chartmode for a caller that cannot go on without the mode: throws
@@ -318,8 +326,8 @@ struct Settings {
     store::CapQuery cap_query() const;
 
     // The rest of the settings a stored result is keyed by: the ms limit, the
-    // score range, the fill rule and the early-fill window, in the store's
-    // canonical form.
+    // score range, the fill rule, the early-fill window and the song speed, in
+    // the store's canonical form.
     store::Lens lens() const;
 
     // The profile a chart is analyzed and filed under with these settings:
@@ -327,8 +335,9 @@ struct Settings {
     // the named variants below, which start from it.
     store::Profile profile() const;
 
-    // profile() at Clone Hero's own SP cap (kCloneHeroSpCap), whatever cap
-    // these settings hold: the profile the leaderboard comparison reads.
+    // profile() at Clone Hero's own SP cap (kCloneHeroSpCap) and the default
+    // song speed (kNormalSpeedPercent), whatever cap and speed these
+    // settings hold: the profile the leaderboard comparison reads.
     store::Profile profile_at_clone_hero_cap() const;
 
     // profile() with its lens's fill rule set to `rule`, the rest kept: the
@@ -365,7 +374,7 @@ struct AnalysisField {
 // tests/test_config.cpp walks it, so a new analysis setting is a new row here
 // (concept audit M13). The second half of that test catches a keyed setting
 // left out of it.
-inline const std::array<AnalysisField, 11> kAnalysisFields{{
+inline const std::array<AnalysisField, 12> kAnalysisFields{{
     {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
     {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},
     {&Settings::view_bass2x, AnalysisSetting::Bass2x, KeyPart::ChartMode},
@@ -373,6 +382,7 @@ inline const std::array<AnalysisField, 11> kAnalysisFields{{
     {&Settings::sp_cap, AnalysisSetting::SpCap, KeyPart::Cap},
     {&Settings::legacy_fills, AnalysisSetting::Fills, KeyPart::Lens},
     {&Settings::early_fill_window_ms, AnalysisSetting::EarlyFillWindow, KeyPart::Lens},
+    {&Settings::speed_percent, AnalysisSetting::SongSpeed, KeyPart::Lens},
     {&Settings::depth_value, AnalysisSetting::ScoreRange, KeyPart::Lens},
     {&Settings::depth_mode, AnalysisSetting::ScoreRange, KeyPart::Lens},
     {&Settings::mslimit_enabled, AnalysisSetting::PathLimit, KeyPart::Lens},
@@ -395,6 +405,7 @@ struct SettingsText {
     std::string cap;     // the SP cap: bars_text
     std::string timing;  // the path limit: "10 ms", or "off"
     std::string early_fill;  // the early-fill window: "60 ms"
+    std::string speed;       // the song speed: "100%"
 };
 SettingsText describe_settings(const AnalysisSettings& settings);
 

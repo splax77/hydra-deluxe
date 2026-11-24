@@ -181,12 +181,18 @@ PathSummary read_summary(sqlite3_stmt* s, int first_idx) {
 // The lens's columns, in Lens's field order, the order bind_lens binds them.
 // The profile rows and lens_match are built from this list.
 constexpr const char* kLensColumnList =
+    "ms_enabled, ms_value, depth_mode, depth_value, legacy_fills, efill_window_ms, speed_percent";
+
+// The lens columns a file from before the song speed holds: every one but the
+// speed, which no file kept before add_speed_column. add_speed_column copies
+// such a profiles table's rows through it.
+constexpr const char* kLensColumnsBeforeSpeed =
     "ms_enabled, ms_value, depth_mode, depth_value, legacy_fills, efill_window_ms";
 
-// The lens columns an older file holds: every one but the early-fill window,
-// which no file kept before add_early_fill_column. convert_results reads a
-// Convertible file's results table through it, and add_early_fill_column
-// copies an older profiles table's rows through it.
+// The lens columns an older file holds: every one but the early-fill window
+// and the speed, which no file kept before add_early_fill_column.
+// convert_results reads a Convertible file's results table through it, and
+// add_early_fill_column copies an older profiles table's rows through it.
 constexpr const char* kLensColumnsBeforeEarlyFill =
     "ms_enabled, ms_value, depth_mode, depth_value, legacy_fills";
 
@@ -199,9 +205,13 @@ constexpr bool list_is(const char* list, const char* head, const char* tail) {
         if (*list != *tail) return false;
     return *list == '\0';
 }
-static_assert(list_is(kLensColumnList, kLensColumnsBeforeEarlyFill, kEarlyFillWindowColumn),
-              "the lens columns are the older file's five and then the early-fill window, "
+static_assert(list_is(kLensColumnList, kLensColumnsBeforeSpeed, kSpeedColumn),
+              "the lens columns are the pre-speed file's six and then the song speed, "
               "by the name library_file.h probes for");
+static_assert(list_is(kLensColumnsBeforeSpeed, kLensColumnsBeforeEarlyFill,
+                      kEarlyFillWindowColumn),
+              "the pre-speed lens columns are the older file's five and then the early-fill "
+              "window, by the name library_file.h probes for");
 
 // An older file's results summary columns, in the order read_summary reads
 // them. Only convert_results reads them, to turn each row into a record.
@@ -224,8 +234,8 @@ static_assert(count_list_names(kSummaryColumnList) == 10,
 
 // bind_lens walks the lens's slots by hand, so the assert stops the build
 // when kLensColumnList grows and it doesn't.
-static_assert(count_list_names(kLensColumnList) == 6,
-              "bind_lens binds six slots: grow it and Lens with the list");
+static_assert(count_list_names(kLensColumnList) == 7,
+              "bind_lens binds seven slots: grow it and Lens with the list");
 // convert_results reads an older file's lens by hand the same way.
 static_assert(count_list_names(kLensColumnsBeforeEarlyFill) == 5,
               "convert_results reads five lens slots: grow it with the list");
@@ -401,7 +411,7 @@ constexpr size_t kHashesPerQuery = 10000;
 // with ms_enabled = -1 means "the settings are unknown". No lens has -1, so
 // those rows are never candidates and read as no row at all.
 
-// "the row at alias `a` carries exactly this lens". Six bound parameters, in
+// "the row at alias `a` carries exactly this lens". Seven bound parameters, in
 // Lens's field order. `a` is "" or "r.".
 std::string lens_match(const char* a) {
     return "(" + each_column(kLensColumnList, a, "=?", " AND ") + ")";
@@ -413,7 +423,8 @@ int bind_lens(sqlite3_stmt* s, int idx, const Lens& lens) {
     sqlite3_bind_int(s, idx + 3, lens.depth_value);
     sqlite3_bind_int(s, idx + 4, lens.legacy_fills);
     sqlite3_bind_int(s, idx + 5, lens.efill_window_ms);
-    return idx + 6;
+    sqlite3_bind_int(s, idx + 6, lens.speed_percent);
+    return idx + 7;
 }
 // "the row at alias `a` was stored at the lookup's SP cap". One bound
 // parameter, bound by bind_cap. `a` is "" or "r.".
@@ -659,9 +670,9 @@ RecordRow record_of(std::string song_id, const HydraRecord& analysis) {
 namespace {
 
 // Throws std::invalid_argument when `profile` is not what `analysis` ran
-// under: its cap, its ms limit, its fill rule or its early-fill window. Each
-// mismatch would file the
-// analysis under settings it doesn't belong to. `who` starts the message.
+// under: its cap, its ms limit, its fill rule, its early-fill window or its
+// song speed. Each mismatch would file the analysis under settings it doesn't
+// belong to. `who` starts the message.
 void check_profile_fits(const Profile& profile, const HydraRecord& record, const char* who) {
     const std::string w = std::string(who) + ": ";
     if (!record.sp_cap) throw std::invalid_argument(w + "record carries no sp_cap");
@@ -698,6 +709,13 @@ void check_profile_fits(const Profile& profile, const HydraRecord& record, const
                                     std::to_string(profile.lens.efill_window_ms) +
                                     " ms but the record was analyzed at " +
                                     std::to_string(record.early_fill_window_ms) + " ms");
+    // Both sides are the same whole percent (the speed setting), so an exact
+    // comparison is the right one.
+    if (profile.lens.speed_percent != record.speed_percent)
+        throw std::invalid_argument(w + "key asks for a song speed of " +
+                                    std::to_string(profile.lens.speed_percent) +
+                                    "% but the record was analyzed at " +
+                                    std::to_string(record.speed_percent) + "%");
 }
 
 }  // namespace
@@ -886,6 +904,12 @@ void RecordStore::set_up_schema(LibraryFileKind kind) {
     if (kind == LibraryFileKind::Convertible || kind == LibraryFileKind::LacksFailureColumns ||
         kind == LibraryFileKind::LacksAlbumColumn || kind == LibraryFileKind::LacksEarlyFillColumn)
         add_early_fill_column();
+    // And from before the song speed; the early-fill rebuild just above, or a
+    // table made above, already has it.
+    if (kind == LibraryFileKind::Convertible || kind == LibraryFileKind::LacksFailureColumns ||
+        kind == LibraryFileKind::LacksAlbumColumn ||
+        kind == LibraryFileKind::LacksEarlyFillColumn || kind == LibraryFileKind::LacksSpeedColumn)
+        add_speed_column();
     // The saves and the scan's purge leave a profile they emptied in place:
     // the deletion reads every record, too slow to run on each save. Every
     // read joins records to profiles, so an empty profile shows nowhere.
@@ -913,27 +937,51 @@ void RecordStore::add_early_fill_column() {
     try {
         in_transaction([&] {
             if (!profiles_table_lacks_early_fill(writer_.db)) return;
-            const std::string old_table = kProfilesBeforeEarlyFillTable;
-            exec(("ALTER TABLE profiles RENAME TO " + old_table).c_str());
-            // records and record_paths exist already, so this makes only the
-            // new profiles table.
-            create_result_tables();
-            // Every old row is filed under the default window: no older
-            // file recorded one.
-            const std::string shared =
-                std::string("id, chartmode, sp_cap, ") + kLensColumnsBeforeEarlyFill;
-            exec(("INSERT INTO profiles (" + shared + ", " + kEarlyFillWindowColumn +
-                  ", hyversion, rules_fp) SELECT " + shared + ", " +
-                  std::to_string(Lens{}.efill_window_ms) + ", hyversion, rules_fp FROM " +
-                  old_table)
-                     .c_str());
-            exec(("DROP TABLE " + old_table).c_str());
+            // Every old row is filed under the default window and the default
+            // speed: no older file recorded either. The new table holds both.
+            rebuild_profiles(kProfilesBeforeEarlyFillTable, kLensColumnsBeforeEarlyFill,
+                             std::string(kEarlyFillWindowColumn) + ", " + kSpeedColumn,
+                             std::to_string(Lens{}.efill_window_ms) + ", " +
+                                 std::to_string(Lens{}.speed_percent));
         });
     } catch (const std::bad_alloc&) {
         throw;
     } catch (const std::exception& e) {
         throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
     }
+}
+
+void RecordStore::add_speed_column() {
+    // A failure undoes the rebuild (in_transaction), so the file is as it
+    // was: DatabaseUpgrade says so. Running out of memory keeps its own type.
+    try {
+        in_transaction([&] {
+            if (!profiles_table_lacks_speed(writer_.db)) return;
+            // Every old row is filed under the default speed: no older file
+            // recorded one.
+            rebuild_profiles(kProfilesBeforeSpeedTable, kLensColumnsBeforeSpeed, kSpeedColumn,
+                             std::to_string(Lens{}.speed_percent));
+        });
+    } catch (const std::bad_alloc&) {
+        throw;
+    } catch (const std::exception& e) {
+        throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
+    }
+}
+
+void RecordStore::rebuild_profiles(const char* old_table, const std::string& kept_lens,
+                                   const std::string& added_columns,
+                                   const std::string& added_values) {
+    exec((std::string("ALTER TABLE profiles RENAME TO ") + old_table).c_str());
+    // records and record_paths exist already, so this makes only the new
+    // profiles table.
+    create_result_tables();
+    const std::string shared = "id, chartmode, sp_cap, " + kept_lens;
+    exec(("INSERT INTO profiles (" + shared + ", " + added_columns +
+          ", hyversion, rules_fp) SELECT " + shared + ", " + added_values +
+          ", hyversion, rules_fp FROM " + old_table)
+             .c_str());
+    exec((std::string("DROP TABLE ") + old_table).c_str());
 }
 
 void RecordStore::add_failure_columns() {
@@ -977,8 +1025,9 @@ void RecordStore::convert_results() {
             static constexpr int kFirstLens = count_list_names(kLeadColumns);
             static constexpr int kFirstSummary =
                 kFirstLens + count_list_names(kLensColumnsBeforeEarlyFill);
-            // The results table never had the early-fill window, so every row
-            // keeps the lens's default (add_early_fill_column says why).
+            // The results table never had the early-fill window or the song
+            // speed, so every row keeps the lens's defaults for both
+            // (add_early_fill_column and add_speed_column say why).
             const std::string sql = std::string("SELECT ") + kLeadColumns + ", " +
                                     kLensColumnsBeforeEarlyFill + ", " + kSummaryColumnList +
                                     " FROM results WHERE " + kept + " ORDER BY result_id";

@@ -22,7 +22,10 @@ std::optional<double> stated_length_ms_of_text(std::string_view text) {
 bool end_event_counts(const Song& song) {
     if (!song.end_event_tick) return false;
     const int64_t last_note_end = song.last_note_end_tick.value_or(0);
-    return *song.end_event_tick >= last_note_end + song.tick_resolution();
+    // The game's beat here is its working resolution cut to a whole number
+    // (CR-41 on docs/clone-hero/01-reading-a-chart.md).
+    const auto beat = static_cast<int64_t>(song.timing().working_resolution());
+    return *song.end_event_tick >= last_note_end + beat;
 }
 
 std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const Song& song) {
@@ -34,10 +37,13 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const S
         end_event_counts(song) ? std::optional<double>(chart_ms(*song.end_event_tick))
                                : std::nullopt;
 
+    // Read only once a candidate needs it, so a song with nothing to measure
+    // needs no timing.
+    const auto speed_ratio = [&] { return song.timing().speed_ratio(); };
     std::optional<double> stated;
     if (const std::optional<double> raw = stated_length_ms(meta.length_ms)) {
         const double stated_chart_ms = chart_ms_of_audio_ms(
-            *raw, preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s));
+            *raw, preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s), speed_ratio());
         // A stated length that ends before the last note is wrong (a song.ini
         // that says 6:17 for a 13:41 song), so it is dropped.
         if (!last_note || stated_chart_ms >= *last_note) stated = stated_chart_ms;
@@ -52,7 +58,9 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const S
         length = end_event ? end_event : last_note;
 
     if (!length || !has_song_length(*length)) return std::nullopt;
-    return *length + kSongEndPadMs;
+    // The pad is in the file's time, like the stated length, so the clock
+    // divides it by the speed too (CR-46 on docs/clone-hero/01-reading-a-chart.md).
+    return *length + kSongEndPadMs / speed_ratio();
 }
 
 }  // namespace hydra::app
