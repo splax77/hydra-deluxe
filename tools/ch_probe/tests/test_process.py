@@ -93,6 +93,26 @@ class DecodeHelpersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             process.decode_double(b"\x00\x00\x00\x00")
 
+    def test_decode_doubles_reads_each_value_in_order(self):
+        raw = struct.pack("<3d", 37.5, -1.25, 85.0)
+        self.assertEqual(process.decode_doubles(raw), (37.5, -1.25, 85.0))
+        self.assertEqual(process.decode_doubles(memoryview(raw)[8:16]), (-1.25,))
+        self.assertEqual(process.decode_doubles(b""), ())
+
+    def test_decode_doubles_wrong_length(self):
+        with self.assertRaises(ValueError):
+            process.decode_doubles(b"\x00" * 12)
+
+    def test_decode_i32s_reads_signed_values(self):
+        # ff ff ff ff is -1 as a signed i32, not 4294967295.
+        raw = struct.pack("<3i", 7, -1, 2_000_000)
+        self.assertEqual(process.decode_i32s(raw), (7, -1, 2_000_000))
+        self.assertEqual(process.decode_i32s(b"\xff\xff\xff\xff"), (-1,))
+
+    def test_decode_i32s_wrong_length(self):
+        with self.assertRaises(ValueError):
+            process.decode_i32s(b"\x00" * 6)
+
     def test_decode_f32_known_pattern(self):
         # 100.0 as a little-endian IEEE float is 00 00 c8 42.
         self.assertEqual(process.decode_f32(bytes([0x00, 0x00, 0xC8, 0x42])), 100.0)

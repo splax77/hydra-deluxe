@@ -58,10 +58,21 @@ struct BackendRowView {
     bool warn = false;    // a squeezed-out row the engine counts (it costs points)
 };
 
+// The Dynamic Hit Window tag a badge carries: its timing's
+// WindowRowView::tag and is_short.
+struct BadgeTag {
+    std::string text;
+    bool is_short = false;
+};
+
 // One timing badge on an activation row (activation_badges).
 struct ActivationBadge {
     std::string text;
     bool warn = false;
+    // The tag of this badge's own Dynamic Hit Window row, drawn under the
+    // badge. build_activations pairs each badge with its row; unset when the
+    // timing has no row, and always unset from activation_badges alone.
+    std::optional<BadgeTag> tag;
 };
 
 // The label every Dynamic Hit Window row starts with.
@@ -70,7 +81,7 @@ inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
 // One Dynamic Hit Window row: the game's own windows for the notes a timing
 // involves, beside Hydra's fixed one (core/note_window.h owns the numbers and
 // each note's word, role_word). The view draws kDynamicHitWindowLabel, then
-// each end, then `tag` apart.
+// each end; `tag` is drawn under the timing's badge (ActivationBadge::tag).
 struct WindowFigure {
     std::string word;    // role_word of the end; empty on an early fill's one end
     std::string figure;  // that note's window side: "77.9 ms"
@@ -98,7 +109,8 @@ struct ActivationRowView {
     std::string measure;         // format_measure of the activation, e.g. "m32.1.0"
     int sp_bars = 0;             // bars banked when you activate
     std::string bars;            // "3 bars" / "1 bar"
-    std::vector<ActivationBadge> badges;  // activation_badges(); empty = no badge
+    // activation_badges(), each with its window row's tag; empty = no badge.
+    std::vector<ActivationBadge> badges;
     bool difficult = false;      // Activation::is_difficult(): the timeline mark warn-coloured
     // Where the activation falls in the song, 0..1: its onset over the song's
     // length. Unset when the caller passed no timing or no length.
@@ -170,6 +182,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
 // "squeeze out 163.0 ms", "squeeze in 12.6 ms", "early fill 30.0 ms".
 // Each is warn-coloured by its own
 // ActivationTiming::difficult. Empty when the activation has no timing.
+// No badge here has a tag; build_activations adds them.
 std::vector<ActivationBadge> activation_badges(const Activation& act);
 
 // The longest text one activation badge can hold, for laying out a row that

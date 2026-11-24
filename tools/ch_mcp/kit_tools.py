@@ -34,7 +34,6 @@ from __future__ import annotations
 import dataclasses
 import math
 import os
-import struct
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -47,6 +46,7 @@ from tools.ch_mcp.game_tools import PressResult
 from tools.ch_probe.constants import ms_to_s, s_to_ms
 from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS
 from tools.ch_probe.input_driver import Lane
+from tools.ch_probe.process import DOUBLE_BYTES, I32_BYTES, decode_doubles, decode_i32s
 
 KIT_AGENT_NAME = "kit"
 KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
@@ -754,8 +754,6 @@ FRAME_CLOCK_COUNT = "count"
 FRAME_CLOCK_LAYOUT_KEY = "layout"
 FRAME_CLOCK_ERROR = "error"
 FRAME_CLOCK_LAYOUT = "clock_ms f64le[count], then frame i32le[count]"
-_CLOCK_FORMAT = "<{}d"
-_FRAME_FORMAT = "<{}i"
 # How long play_chart.live_in_game waits, after the run's last stop event,
 # for the frame clock logs the agent still owes; it only keeps a run from
 # waiting forever on a log that never comes. The agent sends each log right
@@ -794,16 +792,17 @@ def frame_clock_rows(message: dict) -> List[Tuple[int, Any]]:
     data = message.get(FA.PAYLOAD_DATA)
     # Frida may hand an empty buffer over as no data.
     data = b"" if data is None and count == 0 else data
-    clock_format, frame_format = _CLOCK_FORMAT.format(count), _FRAME_FORMAT.format(count)
-    want = struct.calcsize(clock_format) + struct.calcsize(frame_format)
+    clock_bytes = count * DOUBLE_BYTES
+    want = clock_bytes + count * I32_BYTES
     if not isinstance(data, (bytes, bytearray, memoryview)):
         raise FrameClockBroken(f"the frame clock log says {count} frames, which is {want} "
                                f"bytes, but came with no data")
     if len(data) != want:
         raise FrameClockBroken(f"the frame clock log says {count} frames, which is {want} "
                                f"bytes, but holds {len(data)} bytes")
-    clocks = struct.unpack_from(clock_format, data, 0)
-    frames = struct.unpack_from(frame_format, data, struct.calcsize(clock_format))
+    view = memoryview(data)
+    clocks = decode_doubles(view[:clock_bytes])
+    frames = decode_i32s(view[clock_bytes:])
     return [(frame, int(clock) if clock.is_integer() else clock)
             for frame, clock in zip(frames, clocks)]
 

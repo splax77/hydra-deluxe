@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero finds and reads a chart: the notes file, the song id, tracks, song.ini keys, sections, solos and the song end.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-23.
 
 ## Finding the notes file
 
@@ -442,13 +442,13 @@ Found: 2026-10-18, session c433b17f; listed 2026-10-30 in session b02ab3e6 (the 
 
 ### CR-42 Chart field +0xB0 is the resolution times a factor, not the Offset
 
-Rule: the setter for chart field +0xB0 accepts only a positive finite number and stores it times a float read from another object; the caller passes the .mid division (ticks per beat). The song-end handoff's line 97 ("the chart's offset") is wrong. That the float is the song speed ratio, so the field is one beat at the current speed, has not been verified.
+Rule: the setter for chart field +0xB0 accepts only a positive finite number and stores it times a float read from another object; the caller passes the .mid division (ticks per beat). The song-end handoff's line 97 ("the chart's offset") is wrong. The float is the song speed ratio, so +0xB0 is the file's resolution times the speed, and +0xB8 keeps the file's own value (page 3, TM-56).
 Label: Proven in the game's code
-Evidence: decompile lines 14456 to 14483 (FUN_18212c0b0: the guard at line 14465, the stores at lines 14466 to 14470) and its caller at line 42845, read on 2026-10-30. A listing is committed as docs/audit/note-shuffle/step0/open1/song_set_resolution_212C0B0.asm, not re-read for this row.
+Evidence: decompile lines 14456 to 14483 (FUN_18212c0b0: the guard at line 14465, the stores at lines 14466 to 14470) and its caller at line 42845, read on 2026-10-30. A listing is committed as docs/audit/note-shuffle/step0/open1/song_set_resolution_212C0B0.asm, not re-read for this row. The float's source was traced on 2026-11-23: `code/6142/songentry_load_35C110.asm` lines 141 to 174 pass the speed ratio to the chart-read settings, which `code/6142/chart_settings_ctor_20E73E0.asm` stores at +0x14 (line 32), and `code/6142/song_resolution_set_212C0B0.asm` lines 12 to 19 multiply by that +0x14.
 Game code (6142): RVA `0x212C0B0`, decompile lines 14456 to 14483.
 Hydra: none: Hydra keeps no copy of this field; `end_event_counts` uses `Song::tick_resolution` because Hydra works at 100% speed.
 Ruling: none needed.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the float traced 2026-11-23, session 46353d99.
 
 ### CR-43 The last note end is the largest gem end over every track
 
@@ -482,9 +482,9 @@ Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps sea
 
 ### CR-46 The length is Min(end event, Max(audio length, last note end)) plus 1 second
 
-Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min. Both chart times are first multiplied by a setting's ratio (its value divided by 100), which the listing's notes read as the playback speed. This is one branch of the coroutine; on the other branch it reuses a length it already stored.
+Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min. Both chart times are first multiplied by the speed ratio. The game's chart times are the file's times divided by the speed (page 3, TM-56), so this puts them back in the audio file's seconds to be compared with the audio length. The clock then divides the whole length, the 1 second included, by the ratio, so at 50% the song ends twice as late in real time and the pad is 2 seconds. This is one branch of the coroutine; on the other branch it reuses a length it already stored.
 Label: Proven in the game's code
-Evidence: `code/6142/gm_load_coroutine_D8D80.asm`, re-read 2026-11-08. Line 316 calls `0x210C090`, the ratio getter of page 3's TM-39 (`code/6142/speed_ratio_210C090.asm` lines 10 to 13), on a setting loaded at lines 310 to 312; that this setting is `song_speed` is what `code/6142/speed_ratio_210C090.md` line 3 and `code/6142/settings_load_374D50.md` line 6 say, and it was not re-traced. Lines 324 to 342 take the last note end (`0x212E130`, CR-43), turn it into seconds with `0x212B9C0` and multiply it by the ratio. Line 344 reads the audio length from the audio manager, and line 351 takes System.Math.Max of the two. Line 357 asks whether the end event counts (`0x212C7E0`, CR-41); when it does, lines 363 to 377 turn the end event into seconds times the ratio, and line 380 takes System.Math.Min. Line 388 adds the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet), and line 389 stores the result. Lines 300 to 309 are the other branch: when a byte flag is clear, it loads the stored length and jumps past the build. What sets that flag was not read.
+Evidence: `code/6142/gm_load_coroutine_D8D80.asm`, re-read 2026-11-08. Line 316 calls `0x210C090`, the ratio getter of page 3's TM-39 (`code/6142/speed_ratio_210C090.asm` lines 10 to 13), on a setting loaded at lines 310 to 312; that this setting is `song_speed` is what `code/6142/speed_ratio_210C090.md` line 3 and `code/6142/settings_load_374D50.md` line 6 say, and it was not re-traced. Lines 324 to 342 take the last note end (`0x212E130`, CR-43), turn it into seconds with `0x212B9C0` and multiply it by the ratio. Line 344 reads the audio length from the audio manager, and line 351 takes System.Math.Max of the two. Line 357 asks whether the end event counts (`0x212C7E0`, CR-41); when it does, lines 363 to 377 turn the end event into seconds times the ratio, and line 380 takes System.Math.Min. Line 388 adds the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet), and line 389 stores the result. Lines 300 to 309 are the other branch: when a byte flag is clear, it loads the stored length and jumps past the build. What sets that flag was not read. Both branches hand the length to the clock constructor, which divides it by the ratio (`code/6142/clock_ctor_16C9A0.asm` line 29, read 2026-11-23, session 46353d99).
 Game code (6142): load coroutine RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 300 to 389; first read 2026-10-18 in session b71e9156.
 Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37. Hydra applies no ratio; it scores at 1x only (TM-44).
 Ruling: D255 item 2: "Copy the pad (Recommended)".

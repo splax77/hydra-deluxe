@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-22.
+Last write-back: 2026-11-23.
 
 ## Written fills
 
@@ -208,6 +208,16 @@ Game code (6142): the drums engine constructor, RVA `0x20DF680`, `code/6142/engi
 Hydra: `kCh11FillLeadBeats` times `tick_resolution` in src/search/graph.cpp lines 68 and 69.
 Ruling: none needed: same rule
 Found: 2026-10-12, the fill evidence read; listed 2026-10-30, session b02ab3e6 (the reference build).
+
+### FL-47 The 1.1 fill lead does not change with the speed
+
+Rule: The four-beat lead is built from the file's own resolution, not the speed-scaled one, and the deadline compares it with the clock's chart tick, so the lead is four beats of the chart at every speed. In real time it lasts longer at a slower speed.
+Label: Proven in the game's code
+Evidence: FL-20's listing reads chart +0xB8 (`code/6142/engine_ctor_20DF680.asm` line 57), which `code/6142/song_resolution_set_212C0B0.asm` stores as the file's value; the speed-scaled resolution is +0xB0 (page 3, TM-56). The clock's tick at engine+0x108 (FL-22) is made by the chart's time-to-tick method (`code/6142/engine_clock_update_20F4950.asm` lines 42 and 74 call `0x212BCC0`), which reads +0xB0, so a time in game seconds gives the file's own tick. The 1.0 build was not read for speed.
+Game code (6142): the drum engine constructor, RVA `0x20DF680`; the engine clock update, RVA `0x20F4950`; time to tick, RVA `0x212BCC0`.
+Hydra: `kCh11FillLeadBeats` in src/search/graph.h, in ticks; Hydra has no speed model (page 3, TM-44).
+Ruling: none needed: same rule
+Found: 2026-11-23, session 46353d99.
 
 ### FL-21 The deadline's "half" is twice a base of resolution times 7.5
 

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -84,20 +85,57 @@ using ScheduleCheck = std::function<void(const std::string& path, const Song& so
                                          const std::vector<const Activation*>& acts,
                                          const PathReplay& pr, const json& sch)>;
 
+// One stored path of a corpus chart: its activations in walk order, its
+// replay and its schedule. The activation pointers point into the record
+// corpus::analyzed caches for the run; the replay and the schedule are
+// plain values.
+struct StoredPathSchedule {
+    std::vector<const Activation*> acts;
+    PathReplay replay;
+    json schedule;
+};
+
+// Every stored path of corpus chart `path` under `cfg`, in all_paths()
+// order, replayed and scheduled once per run and shared by every case.
+// Keyed the way corpus::analyzed keys its records, so other settings get
+// their own entry. A throw is kept and rethrown to every caller, as
+// corpus::analyzed does.
+const std::vector<StoredPathSchedule>& stored_path_schedules(const std::string& path,
+                                                             const app::AnalysisSettings& cfg) {
+    static std::map<std::string, corpus::detail::Outcome<std::vector<StoredPathSchedule>>> cache;
+    std::ostringstream key;
+    key << path << '|' << app::chartmode_key(cfg.reading()) << '|' << corpus::settings_key(cfg);
+    auto [it, fresh] = cache.try_emplace(key.str());
+    corpus::detail::Outcome<std::vector<StoredPathSchedule>>& o = it->second;
+    if (fresh) {
+        try {
+            const Song& song = corpus::song(path, cfg.reading());
+            const HydraRecord& rec = corpus::analyzed(path, cfg);
+            std::vector<StoredPathSchedule> out;
+            for (const Path* p : rec.all_paths()) {
+                StoredPathSchedule s;
+                for (const Activation& a : p->walk_activations()) s.acts.push_back(&a);
+                s.replay = replay_stored_path(song, *p, cfg.rules);
+                s.schedule = schedule::schedule_json(song, s.acts, s.replay.result, cfg.rules);
+                out.push_back(std::move(s));
+            }
+            o.value.emplace(std::move(out));
+        } catch (...) {
+            o.error = std::current_exception();
+        }
+    }
+    if (o.error) std::rethrow_exception(o.error);
+    return *o.value;
+}
+
 void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCheck& check) {
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading());
         const std::string empty_msg = path + " loads with no notes";
         CHECK_MESSAGE(!song.is_empty(), empty_msg);
         if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            check(path, song, acts, pr, sch);
-        }
+        for (const StoredPathSchedule& s : stored_path_schedules(path, cfg))
+            check(path, song, s.acts, s.replay, s.schedule);
     }
 }
 
@@ -200,9 +238,8 @@ TEST_CASE("schedule: paid_by matches in_sp on every corpus path") {
         const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;  // no notes to read under cfg, so no path to replay
         INFO(path);
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
+        for (const StoredPathSchedule& s : stored_path_schedules(path, cfg)) {
+            const PathReplay& pr = s.replay;
             for (const ReplayChord& c : pr.result.chords) {
                 INFO("chord " << c.index);
                 for (const ReplayPayment& pay : c.paid_by) {
