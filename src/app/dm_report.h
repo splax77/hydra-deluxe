@@ -48,10 +48,6 @@ inline constexpr const char* kStatusNotInLibrary = "not in library";
 // lists: shown, never compared. collect_dm_rows decides it (D284 item 2).
 inline constexpr const char* kStatusOtherSpeed = "other speed";
 
-// The decimals every comparison percent is written to: DmReportRow::pct_h,
-// the % of opt cells on the page and in the window, and the average tile.
-inline constexpr int kPercentDecimals = 2;
-
 // One table row: a single leaderboard score plus the Hydra record it joins to.
 struct DmReportRow {
     std::string song;
@@ -61,10 +57,10 @@ struct DmReportRow {
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no scored best path
     std::optional<int64_t> delta;       // optimal - actual (points left)
-    // Actual as a percent of optimal, in whole hundredths of a percent
-    // (percent_steps, the number the cell's text is written from: 9901 reads
-    // 99.01%). Set only at base speed with an optimal score above zero.
-    std::optional<int64_t> pct_h;
+    // The timing Hydra's best path needs: its saved figure through
+    // shown_timing (core/model.h), the path report's Hardest ms for rank 1.
+    // Unset with no scored best path, or when the path needs no timing.
+    std::optional<double> timing_required;
     bool is_fc = false;
     int percent = 0;
     int speed = net::kBaseSpeedPercent;
@@ -191,7 +187,7 @@ DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows,
 // The colour a row's status chip is drawn in.
 report::ChipToken status_token(const std::string& status);
 
-// The comparison's nine tiles over the rows a window shows: `shown` holds
+// The comparison's tiles over the rows a window shows: `shown` holds
 // their indices into `rows`. The counts are tally_dm_rows'.
 std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
                                    const std::vector<size_t>& shown);

@@ -12,10 +12,10 @@
       "anchor": "SortKey{}",
       "must_match": [
         "return ms ? SortKey{*ms} : SortKey{};",
-        "return has_percent(r) ? SortKey{static_cast<double>(*r.pct_h)} : SortKey{};"
+        "return r.timing_required ? SortKey{*r.timing_required} : SortKey{};"
       ],
       "must_not_match": [
-        "return has_percent(r) ? optional_key(r.pct_h) : SortKey{};",
+        "c.sort_key = [](const DmReportRow& r) { return optional_key(r.timing_required); };",
         "return r.posted.empty() ? SortKey{} : SortKey{r.posted};",
         "c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };"
       ],
@@ -26,7 +26,7 @@
           "why": "the one conversion every report view's optional columns call"
         }
       ],
-      "note": "The path view and the DM view both call this one conversion, so a view that writes it out again is a second copy. A column with its own reason to give an empty key (the DM view's posted date, a percent shown only beside an optimal score) writes the condition and calls optional_key or SortKey{} for the empty case, which this row does not flag."
+      "note": "The path view and the DM view both call this one conversion, so a view that writes it out again is a second copy. A column with its own reason to give an empty key (the DM view's posted date) writes the condition and calls optional_key or SortKey{} for the empty case, which this row does not flag."
     }
   ]
 }

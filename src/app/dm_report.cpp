@@ -6,11 +6,10 @@
 #include <utility>
 
 #include "app/config.h"          // Settings::with_known_chartmode, profile_at_clone_hero_cap
-#include "app/display_format.h"  // format_percent, percent_steps
 #include "app/library_query.h"   // fold_for_search
 #include "app/report.h"  // library_lookup, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
-#include "core/model.h"  // counted, group_thousands
+#include "core/model.h"  // counted, group_thousands, shown_timing
 #include "parse/song.h"  // display_title, display_artist, display_charter, kUnknownTitle
 #include "search/graph.h"  // fill_rule_for, fill_rule_name
 #include "store/chart_index.h"
@@ -130,10 +129,12 @@ std::vector<DmReportRow> collect_dm_rows(store::StoreReads& store,
         // above optimal.
         const bool base = net::is_base_speed(s.speed);
         if (rec && rec->has_scored_best_path()) {
-            int64_t opt = *rec->summary().score;
+            const store::PathSummary best = rec->summary();
+            int64_t opt = *best.score;
             row.optimal = opt;
             row.delta = opt - s.score;
-            if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, kPercentDecimals);
+            // The figure the path report shows as rank 1's Hardest ms.
+            row.timing_required = shown_timing(best.hardest_ms);
             const bool above = s.score > opt;
             row.status = above            ? kStatusAboveOptimal
                          : s.score == opt ? kStatusAtOptimal
@@ -182,33 +183,18 @@ report::ChipToken status_token(const std::string& status) {
 std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
                                    const std::vector<size_t>& shown) {
     const DmReportStats stats = tally_dm_rows(rows, shown);
-    int64_t pct_sum = 0;
-    int64_t pct_rows = 0;
     int64_t points_left = 0;
     for (size_t i : shown) {
         const DmReportRow& r = rows[i];
-        if (r.pct_h) {
-            pct_sum += *r.pct_h;
-            ++pct_rows;
-        }
         // Only a score under optimal leaves points on the table, and its
         // delta is the points it left.
         if (r.status == kStatusUnderOptimal && r.delta) points_left += *r.delta;
     }
-    // The mean of the cells' percents. Each pct_h is in format_percent's
-    // steps, so the sum over pct_rows rows of 100% each, in those steps, is
-    // the mean as format_percent writes it: the same rounding as a cell, so
-    // one row's tile reads exactly its cell.
-    std::string average = report::kDash;
-    if (pct_rows > 0)
-        average = format_percent(
-            pct_sum, pct_rows * percent_steps(1, 1, kPercentDecimals), kPercentDecimals);
     // A status with no tile ("no paths", D62 item 1) still counts in Scores
     // shown.
     std::vector<report::Tile> tiles = {{"Scores shown", group_thousands(stats.total)}};
     for (const StatusWords& w : kStatusWords)
         if (w.tile) tiles.push_back({w.name, group_thousands(stats.*w.count)});
-    tiles.push_back({"Avg % of optimal", average});
     tiles.push_back({"Points left on table", group_thousands(points_left)});
     return tiles;
 }

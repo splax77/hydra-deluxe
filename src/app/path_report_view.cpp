@@ -1,34 +1,22 @@
 #include "app/path_report_view.h"
 
-#include <cstdlib>
-
 #include "app/display_format.h"  // format_avg_mult, py_round3, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
-#include "core/model.h"          // group_thousands, format_ms
+#include "core/model.h"          // group_thousands
 #include "core/squeeze_rating.h" // timing_tiers, beyond_tier, none_tier
 
 namespace hydra::app::path_report_view {
 
 using report_view::CellKind;
 using report_view::CellLook;
-using report::kDash;
+using report_view::kMsNumberFormat;
+using report_view::ms_cell;
+using report_view::ms_number;
 using report_view::optional_key;
 using report_view::SortKey;
 using report_view::text_column;
 
 namespace {
-
-// A timing cell: the app's own text (format_ms), or a dash with none.
-std::string ms_cell(const std::optional<double>& ms) {
-    return ms ? format_ms(*ms) : std::string(kDash);
-}
-
-// A timing as a spreadsheet number: the figure ms_cell's text shows, so Excel
-// and the window round an exact half the same way (format_ms's, not Excel's).
-std::optional<double> ms_number(const std::optional<double>& ms) {
-    if (!ms) return std::nullopt;
-    return std::strtod(format_ms(*ms).c_str(), nullptr);
-}
 
 // A column of whole numbers read straight from the row, grouped in
 // thousands where the page grouped them.
@@ -52,9 +40,6 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
     c.number_format = grouped ? report_view::kGroupedNumberFormat : report_view::kWholeNumberFormat;
     return c;
 }
-
-// The Excel form of format_ms's text (core/model.h): one decimal, then " ms".
-constexpr const char* kMsNumberFormat = "0.0\" ms\"";
 
 // The Excel form of format_avg_mult's text (app/display_format.h): three
 // decimals.
