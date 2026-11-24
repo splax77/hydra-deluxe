@@ -135,6 +135,16 @@ itself; `tools\build_slot.ps1` owns those limits.
 `tools\build_slot.ps1 -Repo <worktree>` builds another worktree under the pass
 the caller already holds.
 
+The pass is given by the plan run, not asked for per task. A plan's work
+builds once per phase, on the run's branch `plan/<slug>/<phase>`, after every
+task of the phase is reviewed and merged there. A second build is given only
+after a reviewed fix, and a session with no open run gets a pass only when the
+user types `allow build`. `docs/agents/plan-runs.md` says how a run is opened,
+joined and closed. `build_cpp.ps1` records each build it starts, with its
+commit and whether it passed or failed, in `builds.jsonl` in the repo's git
+common folder; `tools\build_record.ps1` owns that record, and the hooks read
+it to count a phase's builds.
+
 A build folder remembers the Visual Studio install and the compiler, linker
 and librarian it was first set up with. A Visual Studio update can remove that
 compiler version or move the install to a new version. CMake then refuses to
