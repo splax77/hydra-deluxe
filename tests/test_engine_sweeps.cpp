@@ -24,6 +24,7 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"
+#include "core/note_window.h"
 #include "core/replay.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
@@ -686,8 +687,8 @@ TEST_CASE("settings_key: equal settings share a key, and every field moves it") 
     // (src/search/pather.h), so a new field stops the build here until it
     // gets its own binding name and its own moved() line below.
     [[maybe_unused]] const auto& [field_depth_mode, field_depth_value, field_ms_filter,
-                                  field_sp_cap, field_legacy_fills, field_early_fill_window_ms,
-                                  field_rules] = plain;
+                                  field_safe_paths, field_sp_cap, field_legacy_fills,
+                                  field_early_fill_window_ms, field_rules] = plain;
 
     // One field moved off the default must move the key.
     const auto moved = [&](const char* field, SearchSettings s) {
@@ -703,6 +704,9 @@ TEST_CASE("settings_key: equal settings share a key, and every field moves it") 
     s = plain;
     s.ms_filter = 10.0;
     moved("ms_filter", s);
+    s = plain;
+    s.safe_paths = !plain.safe_paths;
+    moved("safe_paths", s);
     s = plain;
     s.sp_cap = plain.sp_cap - 1;
     moved("sp_cap", s);
@@ -784,4 +788,276 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(max_sp_bars(cap, fewer_phrases_than_cap) == fewer_phrases_than_cap);
     CHECK(max_sp_bars(cap, no_phrases) == no_phrases);
     CHECK(max_sp_bars(std::nullopt, more_phrases_than_cap) == more_phrases_than_cap);
+}
+
+// ---- Safe paths (EngineOptions::safe_paths) --------------------------------
+// Every check below judges a path by the two Dynamic Hit Window owners
+// themselves, squeeze_window_ends and early_fill_row (core/note_window.h),
+// never by a rule of its own.
+
+namespace {
+
+// How many of `path`'s rows read short: each squeeze's row and the early
+// fill row of every activation it walks, its variant tail included. An
+// owner that gives no row adds nothing.
+int short_rows(const Path& path, const ChordTimes& chords) {
+    int n = 0;
+    for (const Activation& act : path.walk_activations()) {
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            const std::optional<WindowEnds> row = squeeze_window_ends(act, k, chords);
+            if (row && row->is_short()) ++n;
+        }
+        const std::optional<WindowEnds> fill = early_fill_row(act, chords);
+        if (fill && fill->is_short()) ++n;
+    }
+    return n;
+}
+
+// Every path in `roots`, its tied variants included, by path_identity.
+std::set<std::string> identities(const std::vector<Path>& roots) {
+    std::set<std::string> out;
+    for (const Path* p : flatten_paths(roots)) out.insert(path_identity(*p));
+    return out;
+}
+
+// The same, keeping only the paths with no short row.
+std::set<std::string> safe_identities(const std::vector<Path>& roots, const ChordTimes& chords) {
+    std::set<std::string> out;
+    for (const Path* p : flatten_paths(roots))
+        if (short_rows(*p, chords) == 0) out.insert(path_identity(*p));
+    return out;
+}
+
+// The app's default settings with Safe paths set to `on`.
+SearchSettings safe_settings(bool on) {
+    SearchSettings s;
+    s.safe_paths = on;
+    return s;
+}
+
+}  // namespace
+
+// Tests A, G, H and I over the corpus (testdata/input), at the default
+// settings with Safe paths on. A: no returned main-list path, nor any tied
+// variant under it, holds a short row. G: the main search never empties. H:
+// the all-0 paths' short rows are counted and printed; a count above 0 goes
+// to the user with the chart, it does not fail here. I: early_fill_row is
+// unset on every activation without the early fill badge and is
+// early_fill_window_end on every one with it.
+TEST_CASE("safe paths: no main-list path holds a short row, and the search never empties") {
+    int charts = 0, searched = 0, paths_walked = 0, short_found = 0, emptied = 0;
+    int allzero_walked = 0, allzero_short = 0, badge_acts = 0, plain_acts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        ++charts;
+        if (!loads_notes(song, path)) continue;
+        CAPTURE(path);
+        const ChordTimes chords = chord_times(song);
+        HydraRecord record;
+        try {
+            record = analyze_chart(song, safe_settings(true));
+        } catch (const std::exception& e) {
+            ++emptied;
+            MESSAGE("safe paths: the main search emptied on " << path << ": " << e.what());
+            continue;
+        }
+        ++searched;
+        CHECK(record.safe_paths);
+        for (const Path* p : record.all_paths()) {
+            ++paths_walked;
+            const int n = short_rows(*p, chords);
+            short_found += n;
+            CHECK_MESSAGE(n == 0, "short row on " << p->pathstring());
+            for (const Activation& act : p->walk_activations()) {
+                const std::optional<WindowEnds> row = early_fill_row(act, chords);
+                if (!act.is_e_critical()) {
+                    ++plain_acts;
+                    CHECK_FALSE(row.has_value());
+                    continue;
+                }
+                ++badge_acts;
+                const std::optional<WindowEnds> owner = early_fill_window_end(act, chords);
+                REQUIRE(row.has_value() == owner.has_value());
+                if (row) CHECK(row->safe_ms == owner->safe_ms);
+            }
+        }
+        for (const Path* p : best_allzero_paths(record)) {
+            ++allzero_walked;
+            const int n = short_rows(*p, chords);
+            allzero_short += n;
+            if (n > 0) MESSAGE("safe paths: all-0 short row on " << path << ": " << p->pathstring());
+        }
+    }
+    MESSAGE("safe paths main list: " << searched << " charts searched, " << paths_walked
+                                     << " paths walked, " << short_found << " short rows found");
+    MESSAGE("safe paths emptied: " << emptied << " charts");
+    MESSAGE("safe paths all-0: " << allzero_walked << " paths walked, " << allzero_short
+                                 << " short rows found");
+    CHECK(charts == corpus_chart_count());
+    CHECK(short_found == 0);
+    CHECK(emptied == 0);
+    // Test I needs both kinds of activation to mean anything.
+    CHECK(badge_acts > 0);
+    CHECK(plain_acts > 0);
+}
+
+// Test B. With every path kept, the safe search's list is exactly the plain
+// list with its short-row paths taken out by the owners, and the safe top is
+// the best of those. A path judged too late could knock a safe path out
+// before it was dropped, and this fails then.
+TEST_CASE("safe paths: nothing safe is lost at the keep-everything band") {
+    const std::vector<std::pair<const char*, Song>> songs = {
+        {"late sqin", test::make_late_sqin_song()},
+        {"early sqout", test::make_early_sqout_song()},
+        {"sqin then collect", test::sqin_then_collect_song()},
+        {"clamp", test::clamp_song()},
+        {"mid sp phrase", test::mid_sp_phrase_song()},
+        {"banked phrase fold", test::banked_phrase_fold_song()},
+        {"ready time fold", test::ready_time_fold_song()},
+    };
+    for (const auto& [name, song] : songs) {
+        CAPTURE(name);
+        const ScoreGraph graph(song, kCloneHeroSpCap);
+        const ChordTimes chords = chord_times(song);
+        EngineOptions off = test::wide_search();
+        EngineOptions on = off;
+        on.safe_paths = true;
+        const std::vector<Path> plain = run_search(graph, off);
+        const std::vector<Path> safe = run_search(graph, on);
+        CHECK(identities(safe) == safe_identities(plain, chords));
+        std::optional<int64_t> best_safe;
+        for (const Path* p : flatten_paths(plain))
+            if (short_rows(*p, chords) == 0 && (!best_safe || p->totalscore() > *best_safe))
+                best_safe = p->totalscore();
+        REQUIRE(best_safe.has_value());
+        REQUIRE_FALSE(safe.empty());
+        CHECK(safe.front().totalscore() == *best_safe);
+    }
+}
+
+// Test C. Off is the default, and an explicit off runs the same search.
+TEST_CASE("safe paths: off changes nothing") {
+    CHECK_FALSE(EngineOptions{}.safe_paths);
+    CHECK_FALSE(SearchSettings{}.safe_paths);
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        ++charts;
+        if (!loads_notes(song, path)) continue;
+        CAPTURE(path);
+        const ScoreGraph graph(song, kCloneHeroSpCap);
+        EngineOptions explicit_off;
+        explicit_off.safe_paths = false;
+        const std::vector<Path> plain = run_search(graph, EngineOptions{});
+        const std::vector<Path> off = run_search(graph, explicit_off);
+        REQUIRE(plain.size() == off.size());
+        for (size_t i = 0; i < plain.size(); ++i) {
+            CHECK(path_identity(plain[i]) == path_identity(off[i]));
+            CHECK(plain[i].tied_pathcount() == off[i].tied_pathcount());
+        }
+    }
+    CHECK(charts == corpus_chart_count());
+}
+
+// Test D. On the first corpus chart whose top path the option changes, the
+// option and the Path limit (the app's default value, Settings::mslimit_value)
+// work apart: with the option on, the list has no short row whatever the
+// limit; with it off, the limit's result is the plain limit search's.
+TEST_CASE("safe paths: separate from the Path limit") {
+    const double limit = static_cast<double>(app::Settings{}.mslimit_value);
+    bool found = false;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        HydraRecord plain_off, plain_on;
+        try {
+            plain_off = analyze_chart(song, safe_settings(false));
+            plain_on = analyze_chart(song, safe_settings(true));
+        } catch (const std::exception&) {
+            continue;  // test G names any chart the safe search empties
+        }
+        if (path_identity(plain_off.best_path()) == path_identity(plain_on.best_path())) continue;
+        found = true;
+        CAPTURE(path);
+        MESSAGE("safe paths separate-from-limit chart: " << path);
+        const ChordTimes chords = chord_times(song);
+
+        SearchSettings limit_only;
+        limit_only.ms_filter = limit;
+        SearchSettings limit_off_safe_on = safe_settings(true);
+        SearchSettings limit_on_safe_off = safe_settings(false);
+        limit_on_safe_off.ms_filter = limit;
+        SearchSettings both = safe_settings(true);
+        both.ms_filter = limit;
+
+        for (const SearchSettings& s : {limit_off_safe_on, both}) {
+            const HydraRecord r = analyze_chart(song, s);
+            for (const Path* p : r.all_paths())
+                CHECK_MESSAGE(short_rows(*p, chords) == 0, "short row on " << p->pathstring());
+        }
+        const HydraRecord today = analyze_chart(song, limit_only);
+        const HydraRecord off = analyze_chart(song, limit_on_safe_off);
+        CHECK(identities(off.paths) == identities(today.paths));
+        CHECK(path_identity(off.best_path()) == path_identity(today.best_path()));
+        CHECK(off.ms_limit == today.ms_limit);
+        break;
+    }
+    // P15: the corpus holds a chart the option changes; none means test A's
+    // log has nothing to show the user.
+    CHECK(found);
+}
+
+// Test E. The all-0 pass never runs a safe search, so its paths are the same
+// with the option on and off.
+TEST_CASE("safe paths: the all-0 section does not change") {
+    CHECK_FALSE(allzero_options().safe_paths);
+    int compared = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        if (compared == 5) break;
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        CAPTURE(path);
+        HydraRecord off, on;
+        try {
+            off = analyze_chart(song, safe_settings(false));
+            on = analyze_chart(song, safe_settings(true));
+        } catch (const std::exception&) {
+            continue;  // test G names any chart the safe search empties
+        }
+        // The record holds its all-0 paths only when its best path is not
+        // already one (attach_allzero), and the option can move the best path.
+        if (best_path_is_allzero(off) || best_path_is_allzero(on)) continue;
+        ++compared;
+        CHECK(identities(off.allzero_paths) == identities(on.allzero_paths));
+    }
+    CHECK(compared > 0);
+}
+
+// Test F. The Path Builder never runs a safe search: best_finish and
+// search_target give the same result for the same windows with the option on
+// and off.
+TEST_CASE("safe paths: the Path Builder does not change") {
+    const std::vector<PinnedWindow> none;
+    CHECK_FALSE(best_finish_options(safe_settings(true), none).safe_paths);
+    int compared = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        if (compared == 3) break;
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        CAPTURE(path);
+        const HydraRecord& rec = corpus::analyzed(path, safe_settings(false));
+        if (rec.paths.empty() || rec.best_path().activations.empty()) continue;
+        ++compared;
+        std::vector<PinnedWindow> first = pinned_windows(rec.best_path());
+        first.resize(1);
+        const TargetResult finish_off = best_finish(song, safe_settings(false), first);
+        const TargetResult finish_on = best_finish(song, safe_settings(true), first);
+        CHECK(identities(finish_off.paths) == identities(finish_on.paths));
+        const std::vector<PinnedWindow> all = pinned_windows(rec.best_path());
+        const TargetResult target_off = search_target(song, safe_settings(false), all);
+        const TargetResult target_on = search_target(song, safe_settings(true), all);
+        CHECK(identities(target_off.paths) == identities(target_on.paths));
+        CHECK(target_off.failed_reason == target_on.failed_reason);
+    }
+    CHECK(compared > 0);
 }
