@@ -16,6 +16,7 @@
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseReadSentence
 #include "core/model.h"
+#include "core/strutil.h"  // ends_with
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
@@ -295,9 +296,7 @@ bool row_reads(const std::string& text, const std::string& name, const std::stri
         if (end == std::string::npos) end = text.size();
         std::string line = text.substr(start, end - start);
         while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
-        if (line.find(name) != std::string::npos && line.size() >= value.size() &&
-            line.compare(line.size() - value.size(), value.size(), value) == 0)
-            return true;
+        if (line.find(name) != std::string::npos && hydra::ends_with(line, value)) return true;
         start = end + 1;
     }
     return false;
