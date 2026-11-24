@@ -53,7 +53,7 @@ int64_t ceil_div(int64_t a, int64_t b) { return -floor_div(-a, b); }
 
 // ---- MsIndex ------------------------------------------------------------
 
-MsIndex::MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r) {
+MsIndex::MsIndex(const std::map<int64_t, double>& bpm_map, double working_resolution) {
     // A song's opening tempo is the mark at tick 0. check_timing_maps refuses
     // a chart without one; this throw is the backstop.
     if (bpm_map.find(0) == bpm_map.end())
@@ -66,9 +66,11 @@ MsIndex::MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r) {
     for (const auto& kv : bpm_map) {
         keys_.push_back(kv.first);
         bpm_.push_back(kv.second);
-        // tps = bpm * tick_r / 60, in this order: reordering the float operations
-        // changes the last bit, and stored results were made with this order.
-        tps_.push_back(kv.second * static_cast<double>(tick_r) / 60.0);
+        // tps = bpm * working resolution / 60, in this order: reordering the
+        // float operations changes the last bit, and stored results were made
+        // with this order. At 100% the working resolution is the file's
+        // resolution exactly, so this is the same double as bpm * tick_r / 60.
+        tps_.push_back(kv.second * working_resolution / 60.0);
     }
 
     // Accumulated section by section, with the same arithmetic as at(). As with
@@ -299,16 +301,27 @@ const std::map<int64_t, std::pair<int, int>>& same_ticks(
     if (!same) throw std::out_of_range("time signature and tpm maps name different ticks");
     return sig_map;
 }
+
+// The speed ratio, once it is a finite number above 0: a time divided by
+// anything else is no time at all.
+double positive_ratio(double speed_ratio) {
+    if (!(speed_ratio > 0.0) || !std::isfinite(speed_ratio))
+        throw std::invalid_argument("song speed ratio must be a finite number above 0");
+    return speed_ratio;
+}
 }  // namespace
 
 SongTiming::SongTiming(int64_t tick_r,
                        const std::map<int64_t, int64_t>& tpm_map,
                        const std::map<int64_t, double>& bpm_map,
-                       const std::map<int64_t, std::pair<int, int>>& sig_map)
+                       const std::map<int64_t, std::pair<int, int>>& sig_map,
+                       double speed_ratio)
     : tick_r_(tick_r),
+      speed_ratio_(positive_ratio(speed_ratio)),
+      working_r_(static_cast<double>(tick_r) * speed_ratio_),
       grid_(same_ticks(tpm_map, sig_map), tick_r),
       count_(tpm_map),
-      ms_(bpm_map, tick_r) {}
+      ms_(bpm_map, working_r_) {}
 
 Timecode SongTiming::plusmeasure(const Timecode& tc, int64_t add_measures) const {
     return timecode(count_.tick_after(tc.ticks(), add_measures));

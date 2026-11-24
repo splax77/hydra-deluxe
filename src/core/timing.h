@@ -68,17 +68,21 @@ It last_at_or_before(It first, It last, const Key& key, KeyOf key_of) {
 }
 
 // Where each tempo section starts and the time elapsed by then.
-// Built from a bpm map (tick -> BPM) and the tick resolution.
+// Built from a bpm map (tick -> BPM) and the working resolution, which
+// SongTiming::working_resolution owns. Every ms it gives is played time: at
+// another song speed, the time Clone Hero's clock reads at that tick (TM-56
+// on docs/clone-hero/03-timing.md).
 class MsIndex {
 public:
-    MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r);
+    MsIndex(const std::map<int64_t, double>& bpm_map, double working_resolution);
 
     // Milliseconds at an absolute tick (defined for negative ticks too: they
     // read back at the opening tempo).
     double at(int64_t ticks) const;
 
-    // Ticks-per-second of the tempo section containing `ticks` (a tick exactly
-    // on a tempo change reads the new tempo, same rule as at()).
+    // The file's ticks per played second in the tempo section containing
+    // `ticks` (a tick exactly on a tempo change reads the new tempo, same rule
+    // as at()).
     double tps_at(int64_t ticks) const;
 
     // The chart's BPM in force at `ticks`, read the same way as tps_at.
@@ -270,15 +274,30 @@ constexpr int64_t sp_bars_to_measures(int64_t bars) { return kMeasuresPerSpBar *
 // A song's timing context: resolution plus the three indexes, built once and
 // reused to make Timecodes. The maps must contain a tick-0 entry (as every
 // real chart does), and the time signature map must have the tpm map's keys,
-// or construction throws std::out_of_range.
+// or construction throws std::out_of_range. `speed_ratio` is the song speed
+// as a ratio; Song::set_speed_percent owns turning the percent into it, and
+// it must be above 0 or construction throws std::invalid_argument.
 class SongTiming {
 public:
     SongTiming(int64_t tick_r,
                const std::map<int64_t, int64_t>& tpm_map,
                const std::map<int64_t, double>& bpm_map,
-               const std::map<int64_t, std::pair<int, int>>& sig_map);
+               const std::map<int64_t, std::pair<int, int>>& sig_map,
+               double speed_ratio = 1.0);
 
+    // The file's own resolution, ticks per beat. The measure grid, the
+    // continuous count and the readers the game gives the file's value read
+    // this one (SP-51 on docs/clone-hero/05-star-power.md, FL-47 on
+    // docs/clone-hero/04-fills.md).
     int64_t tick_resolution() const { return tick_r_; }
+    // The song speed this timing was built at, as a ratio (1.0 is 100%).
+    double speed_ratio() const { return speed_ratio_; }
+    // The resolution Clone Hero works in at this speed: the file's resolution
+    // times the speed ratio (chart +0xB0, CR-42 on
+    // docs/clone-hero/01-reading-a-chart.md). MsIndex is built from it, and
+    // so is every tick-to-time answer. A reader that counts a beat the way the
+    // game's +0xB0 does cuts it to a whole number itself, as the game does.
+    double working_resolution() const { return working_r_; }
     const MeasureIndex& measure_index() const { return grid_; }
     const MeasureCount& measure_count() const { return count_; }
     const MsIndex& ms_index() const { return ms_; }
@@ -320,6 +339,8 @@ public:
 
 private:
     int64_t tick_r_;
+    double speed_ratio_;
+    double working_r_;
     MeasureIndex grid_;
     MeasureCount count_;
     MsIndex ms_;

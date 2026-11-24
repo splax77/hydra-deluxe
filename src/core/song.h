@@ -10,6 +10,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -115,6 +116,11 @@ void check_timing_maps(int64_t tick_resolution,
 inline constexpr int kDefaultTimeSigNumerator = 4;
 inline constexpr int kDefaultTimeSigDenominator = 4;
 
+// The song speed, in percent, at which a chart plays as its file is written:
+// Clone Hero's default speed (TM-34 on docs/clone-hero/03-timing.md). A Song
+// is timed at it until Song::set_speed_percent says otherwise.
+inline constexpr int kNormalSpeedPercent = 100;
+
 // The feature name Song::check_activations adds to Song::features when it
 // places fills for a chart that has none of its own.
 inline constexpr const char* kGeneratedFillsFeature = "Auto-Generated Fills";
@@ -201,12 +207,29 @@ public:
     // fill that lands on no chord does not set it (FL-28).
     bool coda_skipped_fill = false;
 
-    // Snapshot the timing indexes from the current maps. Called once the tempo
-    // track has been fully mapped and before any timecode is made. Timing
-    // that can't measure time is refused here (check_timing_maps).
+    // The song speed the chart is timed at, a whole percent (kNormalSpeedPercent
+    // until set). Every tick-to-time answer follows it, through
+    // SongTiming::speed_ratio (TM-56 on docs/clone-hero/03-timing.md). Set it
+    // before build_timing: the timecodes a song holds are made from its
+    // timing, so a later change would leave them at the old speed, and this
+    // throws std::logic_error then. A percent of 0 or below throws
+    // std::invalid_argument. The one place the percent becomes the ratio.
+    void set_speed_percent(int percent) {
+        if (timing_) throw std::logic_error("song speed set after build_timing");
+        if (percent <= 0) throw std::invalid_argument("song speed percent must be above 0");
+        speed_percent_ = percent;
+        speed_ratio_ = static_cast<double>(percent) / static_cast<double>(kNormalSpeedPercent);
+    }
+    int speed_percent() const { return speed_percent_; }
+
+    // Snapshot the timing indexes from the current maps, at the song speed.
+    // Called once the tempo track has been fully mapped and before any
+    // timecode is made. Timing that can't measure time is refused here
+    // (check_timing_maps).
     void build_timing() {
         check_timing_maps(tick_resolution_, tpm_changes, bpm_changes);
-        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes, timesig_changes);
+        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes, timesig_changes,
+                        speed_ratio_);
     }
     const SongTiming& timing() const { return *timing_; }
     Timecode timecode(int64_t ticks) const { return timing_->timecode(ticks); }
@@ -236,6 +259,8 @@ private:
     void place_fills_ch11(const core::Rules& rules);
 
     int64_t tick_resolution_;
+    int speed_percent_ = kNormalSpeedPercent;
+    double speed_ratio_ = 1.0;
     std::optional<SongTiming> timing_;
 };
 
