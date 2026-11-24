@@ -265,7 +265,7 @@ GeneratedDmReport generate_dm_report(store::StoreReads& store,
 
 bool settings_change_touches(const Settings& before, const Settings& after) {
     // generate_dm_report lists the one profile the comparison names, which
-    // is at Clone Hero's SP cap whatever the cap setting, so the cap reaches
+    // Settings::profile_at_clone_hero_cap pins, so a setting it pins reaches
     // no row.
     return before.profile_at_clone_hero_cap() != after.profile_at_clone_hero_cap();
 }
