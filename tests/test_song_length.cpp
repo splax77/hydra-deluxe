@@ -3,7 +3,9 @@
 // last note over every instrument, plus the pad. The scan reads the stated
 // length and the delay with the names. No audio is opened for any of it.
 // Every expected length is the candidate the rule picks, read from the song's
-// own tempo map, plus app::kSongEndPadMs.
+// own tempo map, plus app::kSongEndPadMs through the song speed. The chart
+// sync rule (app/preview_source.h) is tested here too, as the step that moves
+// the stated length into chart time.
 
 #include "doctest.h"
 
@@ -57,6 +59,13 @@ hydra::Song song_at(const std::string& notespath) {
 hydra::Song song_of(const std::vector<uint8_t>& chart) {
     return hydra::load_songbytes_chart(chart, kExpert2x);
 }
+// The chart `chart` (bytes) parsed at Expert with 2x kick, timed at the song
+// speed `speed_percent` (ChartReading::speed_percent).
+hydra::Song song_of_at_speed(const std::vector<uint8_t>& chart, int speed_percent) {
+    hydra::ChartReading reading = kExpert2x;
+    reading.speed_percent = speed_percent;
+    return hydra::load_songbytes_chart(chart, reading);
+}
 
 // The song's length the way an analysis at Expert with 2x kick works it out:
 // the scan's timing and the chart parsed once.
@@ -84,12 +93,14 @@ double end_event_ms(const hydra::Song& song) {
 }
 
 // `meta`'s stated length moved into `song`'s chart time by the delay rule's
-// owners (preview_audio_offset_ms, chart_ms_of_audio_ms).
+// owners (preview_audio_offset_ms, chart_ms_of_audio_ms), at the speed
+// `song` is timed at.
 double stated_chart_ms(const ChartTimingMeta& meta, const hydra::Song& song) {
     const std::optional<double> raw = hydra::app::stated_length_ms(meta.length_ms);
     REQUIRE(raw.has_value());
     return hydra::app::chart_ms_of_audio_ms(
-        *raw, hydra::app::preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s));
+        *raw, hydra::app::preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s),
+        song.timing().speed_ratio());
 }
 
 // short_chart_with_long_audio's chart with `ini` as its song.ini.
@@ -435,6 +446,106 @@ TEST_CASE("song length: a .sng's song_length key and a .srb's song_length_ms fie
     const std::optional<double> length = length_after_scan(zero);
     REQUIRE(length.has_value());
     CHECK(*length == last_note_ms(song_at(zero)) + kSongEndPadMs);
+}
+
+TEST_CASE("song length: at 50% a stated length is twice its 100% length, pad included") {
+    // CR-46: the game builds the length in the audio file's time, adds the
+    // 1 s pad, and its clock divides the whole by the speed. The stated
+    // length stands here: it ends well past the two drum notes.
+    const std::vector<uint8_t> chart = drums_and("");
+    const ChartTimingMeta meta{200000.0, 250.0};
+    const hydra::Song normal = song_of(chart);
+    const hydra::Song half = song_of_at_speed(chart, 50);
+    REQUIRE(half.timing().speed_ratio() == 0.5);
+    const std::optional<double> at_100 = hydra::app::song_length_ms(meta, normal);
+    const std::optional<double> at_50 = hydra::app::song_length_ms(meta, half);
+    REQUIRE(at_100.has_value());
+    REQUIRE(at_50.has_value());
+    CHECK(*at_50 == 2.0 * *at_100);
+    // At 50% the pad is 2 s of chart time.
+    CHECK(*at_50 - stated_chart_ms(meta, half) == 2.0 * kSongEndPadMs);
+    // At 100% the length is today's: the stated length, less the delay, plus
+    // the 1 s pad.
+    CHECK(*at_100 == stated_chart_ms(meta, normal) + kSongEndPadMs);
+    CHECK(stated_chart_ms(meta, normal) == 200000.0 - 250.0);
+}
+
+TEST_CASE("song length: at 50% an end event or last note length is twice its 100% length") {
+    // The chart times come from the song's own tempo map at its speed, and
+    // the pad is divided by the same speed.
+    for (const std::string& more : {end_event_at(3840), std::string()}) {
+        const std::vector<uint8_t> chart = drums_and(more);
+        const std::optional<double> at_100 = hydra::app::song_length_ms({}, song_of(chart));
+        const hydra::Song half = song_of_at_speed(chart, 50);
+        const std::optional<double> at_50 = hydra::app::song_length_ms({}, half);
+        REQUIRE(at_100.has_value());
+        REQUIRE(at_50.has_value());
+        CHECK(*at_50 == doctest::Approx(2.0 * *at_100));
+        const double end_ms = more.empty() ? last_note_ms(half) : end_event_ms(half);
+        CHECK(*at_50 - end_ms == doctest::Approx(2.0 * kSongEndPadMs));
+    }
+}
+
+TEST_CASE("song length: at 200% the end event counts only two file beats past the last note") {
+    // CR-41: the game's margin is its working resolution, the file's
+    // resolution times the speed, cut to a whole number. At 200% that is two
+    // of the file's beats.
+    const hydra::Song bare = song_of(drums_and(""));
+    REQUIRE(bare.last_note_end_tick.has_value());
+    const int64_t last = *bare.last_note_end_tick;
+    const int64_t file_beat = bare.tick_resolution();
+    const auto counts_at = [&](int speed_percent, int64_t end_tick) {
+        return hydra::app::end_event_counts(
+            song_of_at_speed(drums_and(end_event_at(end_tick)), speed_percent));
+    };
+    // At 100%, one file beat, as today.
+    CHECK(counts_at(100, last + file_beat));
+    CHECK_FALSE(counts_at(100, last + file_beat - 1));
+    // At 200%, two file beats: one beat past the last note no longer counts.
+    CHECK(counts_at(200, last + 2 * file_beat));
+    CHECK_FALSE(counts_at(200, last + 2 * file_beat - 1));
+    CHECK_FALSE(counts_at(200, last + file_beat));
+
+    // The length follows: at 200% an end event one file beat past the last
+    // note is ignored and the last note ends the song.
+    const hydra::Song fast = song_of_at_speed(drums_and(end_event_at(last + file_beat)), 200);
+    const std::optional<double> length = hydra::app::song_length_ms({}, fast);
+    REQUIRE(length.has_value());
+    CHECK(*length == last_note_ms(fast) + kSongEndPadMs / 2.0);
+}
+
+TEST_CASE("song length: the end event's margin is the working resolution cut to a whole number") {
+    // At 33% the file's 192 ticks a beat make a working resolution of
+    // 63.36 ticks; the game cuts it to 63 (CR-41), never rounds it up to 64.
+    const hydra::Song bare = song_of_at_speed(drums_and(""), 33);
+    REQUIRE(bare.tick_resolution() == 192);
+    REQUIRE(bare.last_note_end_tick.has_value());
+    const int64_t last = *bare.last_note_end_tick;
+    CHECK(hydra::app::end_event_counts(song_of_at_speed(drums_and(end_event_at(last + 63)), 33)));
+    CHECK_FALSE(
+        hydra::app::end_event_counts(song_of_at_speed(drums_and(end_event_at(last + 62)), 33)));
+}
+
+TEST_CASE("chart sync rule: song_length_ms's audio-to-chart step runs both ways at 50%, 100% and 200%") {
+    // TM-05: the game's clock is (audio position - delay) / speed. The delay
+    // is in the file's time and is never scaled.
+    const double offset_ms = 250.0;
+    for (const double ratio : {0.5, 1.0, 2.0}) {
+        CAPTURE(ratio);
+        for (const double chart_ms : {0.0, 1234.5, 200000.0}) {
+            CAPTURE(chart_ms);
+            const double audio_ms = hydra::app::audio_ms_of_chart_ms(chart_ms, offset_ms, ratio);
+            CHECK(hydra::app::chart_ms_of_audio_ms(audio_ms, offset_ms, ratio) ==
+                  doctest::Approx(chart_ms));
+        }
+        // Chart time 0 is the delay's place in the audio at every speed.
+        CHECK(hydra::app::audio_ms_of_chart_ms(0.0, offset_ms, ratio) == offset_ms);
+    }
+    // At 200% one chart second covers two seconds of the file.
+    CHECK(hydra::app::audio_ms_of_chart_ms(1000.0, offset_ms, 2.0) == 2000.0 + offset_ms);
+    // At 100% both are the one-offset rule.
+    CHECK(hydra::app::audio_ms_of_chart_ms(1234.5, offset_ms, 1.0) == 1234.5 + offset_ms);
+    CHECK(hydra::app::chart_ms_of_audio_ms(1234.5, offset_ms, 1.0) == 1234.5 - offset_ms);
 }
 
 TEST_CASE("song length: the library keeps what the scan read, so a stored row gives the same length") {
