@@ -675,10 +675,13 @@ void test_export_button(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
     IM_CHECK(ctx->ItemExists(frame::kExportButton));
     IM_CHECK(ctx->ItemExists("Refresh"));
+    // Three frames after each change: the test engine still answers an item
+    // drawn up to two frames ago (ImGuiTestEngine_FindItemInfo), so after two
+    // the button the Ready frame drew would still be found.
     for (const ReportBuild state :
          {ReportBuild::Building, ReportBuild::Cancelled, ReportBuild::Failed}) {
         f.path.state = state;
-        ctx->Yield(2);
+        ctx->Yield(3);
         IM_CHECK(!ctx->ItemExists(frame::kExportButton));
     }
     f.path.state = ReportBuild::Ready;
@@ -771,8 +774,10 @@ void test_export_sheet(ImGuiTestContext* ctx) {
             IM_CHECK(selected.rows[r][c].style == plain.rows[r][c].style);
 
     // After a search, the sheet holds the rows the search kept, as many as
-    // the count line says and first the row drawn first.
-    const std::string search = quoted_title(harness(ctx), 0);
+    // the count line says and first the row drawn first. The window's search
+    // takes plain words, not quoted phrases (report_view::search_words), so
+    // it gets one row's song as typed.
+    const std::string search = rows.front().song;
     ctx->ItemInputValue("##search", search.c_str());
     ctx->Yield(2);
     ctx->ItemClick(frame::kExportButton);
