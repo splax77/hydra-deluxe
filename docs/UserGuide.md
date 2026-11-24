@@ -136,6 +136,7 @@ The panel has three groups. A change applies the moment you make it, and there i
 | `Clone Hero rules` | `Song speed` | 100%<!-- default: kNormalSpeedPercent --> |
 | `Paths kept` | `Score range` | 4<!-- default: kDefaultDepthValue --> scores |
 | `Paths kept` | `Path limit` | on<!-- default: Settings::mslimit_enabled -->, 10 ms<!-- default: Settings::mslimit_value --> |
+| `Paths kept` | `Safe paths` | off<!-- default: Settings::safe_paths --> |
 
 At the bottom of the panel, `Reset to defaults` puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
 
@@ -164,6 +165,8 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 `Score range` sets how many extra paths below optimal to keep, and its dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
 `Path limit`, when checked, keeps extra paths only when every squeeze and required early fill on them is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
+
+`Safe paths`, when checked, drops every path that holds a squeeze or early fill whose `Dynamic Hit Window:` row reads short (see the Paths tab). It drops the best path too, so the paths you see are the best ones whose every row reads `safe`. It is separate from the `Path limit`: neither setting reads the other, and a path that ties the best score gets no exception here. It is off by default. The Path Builder ignores it. Results are kept per setting, so a result with Safe paths on and one with it off sit side by side.
 
 ## Searching the library
 
@@ -412,7 +415,7 @@ The table has one row for each of stars 1 to 7:
 
 `Analyze library...` analyzes the songs in your library in one background run, called a batch. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows.
 
-First a window titled `Analyze library` asks you to confirm. It says how many songs it will analyze and lists the settings it will use: `Difficulty`, `SP cap`, `Fills`, `Early fill window`, `Song speed`, `Score range` and `Path limit`. To change those, cancel and edit the Analysis settings. Click `Start analyzing` to begin, or `Cancel`.
+First a window titled `Analyze library` asks you to confirm. It says how many songs it will analyze and lists the settings it will use: `Difficulty`, `SP cap`, `Fills`, `Early fill window`, `Song speed`, `Score range`, `Path limit` and `Safe paths`. To change those, cancel and edit the Analysis settings. Click `Start analyzing` to begin, or `Cancel`.
 
 A batch skips songs that already have a current result under these settings. A `Stale` result isn't current, so a batch runs those songs again with the box unchecked. To analyze the songs with a current result again too, check `Also re-analyze charts that already have a result`. When every song already has a current result and the box is off, the window says `Every chart here already has a result.` and `Start analyzing` stays greyed out.
 
@@ -465,7 +468,7 @@ The window never changes its rows behind your back. After a batch, a report buil
 
 ### The path report
 
-The path report is one table of paths, squeeze timings and scores for the songs in your library, under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Each chart shows its top 5 paths. A song that can't be analyzed has no rows, and neither has a song with no result. Lines above the table count both.
+The path report is one table of paths, squeeze timings and scores for the songs in your library, under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, early fill window, song speed, score range, path limit and Safe paths. Each chart shows its top 5 paths. A song that can't be analyzed has no rows, and neither has a song with no result. Lines above the table count both.
 
 ![The path report over the 98 test charts, sorted by Score](images/path-report.png)
 
@@ -528,7 +531,7 @@ When every song either can't be analyzed or has no result, the window shows the 
 
 A report built before any song has a result under the current settings, while other results exist, says `The path report could not be built.` and names the settings it looked under, like `Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, Clone Hero 1.1 fills). Analyze with these settings, or change them.` When nothing is analyzed at all, it says `Nothing is analyzed yet. Click a song or run a batch to analyze it.`
 
-The path report depends on every Analysis setting: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Changing one marks the report out of date. `Refresh` then analyzes the songs that have no result under the new settings before it lists them. When more than 500 songs need it, the window asks first, the same way: `Analyze` runs the batch, and `Cancel` builds the report from the results already saved. Under settings you have never analyzed, that is every song in your library.
+The path report depends on every Analysis setting: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, early fill window, song speed, score range, path limit and Safe paths. Changing one marks the report out of date. `Refresh` then analyzes the songs that have no result under the new settings before it lists them. When more than 500 songs need it, the window asks first, the same way: `Analyze` runs the batch, and `Cancel` builds the report from the results already saved. Under settings you have never analyzed, that is every song in your library.
 
 ### Old report files
 

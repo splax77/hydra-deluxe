@@ -40,7 +40,7 @@ The sections below explain each difference.
 
 **Results live in a database.** Hydra Deluxe saves them in `hydra.db` instead of a JSON file. Saving one result doesn't rewrite every other result, so a big library stays fast.
 
-**Every result remembers its settings.** A result is saved together with the settings it ran under: difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, the `1.0 fills` rule, the early fill window, score range and path limit. It also remembers the rules in `hydra_rules.ini` it ran under. Change a setting and the library shows the results for the new one. Change it back and the old results return without analyzing again. The public version keeps one result per chart mode and replaces it when you re-analyze.
+**Every result remembers its settings.** A result is saved together with the settings it ran under: difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, the `1.0 fills` rule, the early fill window, song speed, score range, path limit and Safe paths. It also remembers the rules in `hydra_rules.ini` it ran under. Change a setting and the library shows the results for the new one. Change it back and the old results return without analyzing again. The public version keeps one result per chart mode and replaces it when you re-analyze.
 
 **Results know when they're out of date.** Each result carries a stamp of the analysis that made it. When an update changes the analysis, older results show as `Stale` so you know to re-analyze. A release that only changes the screen keeps your library as it is.
 
