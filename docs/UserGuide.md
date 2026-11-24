@@ -133,6 +133,7 @@ The panel has three groups. A change applies the moment you make it, and there i
 | `Clone Hero rules` | `SP cap` | 4 bars |
 | `Clone Hero rules` | `1.0 fills` | off |
 | `Clone Hero rules` | `Early fill window` | 60 ms<!-- default: Settings::early_fill_window_ms --> |
+| `Clone Hero rules` | `Song speed` | 100%<!-- default: kNormalSpeedPercent --> |
 | `Paths kept` | `Score range` | 4<!-- default: kDefaultDepthValue --> scores |
 | `Paths kept` | `Path limit` | on<!-- default: Settings::mslimit_enabled -->, 10 ms<!-- default: Settings::mslimit_value --> |
 
@@ -157,6 +158,8 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 `1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. On a chart with no fills of its own, 1.0 also places the fills by its own rule, so they can sit on other measure lines than under 1.1. Leave it off for current Clone Hero, and check it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
 `Early fill window` sets how far from a fill's deadline your Star Power may come ready and still count as an early fill (the `E` in a path). Ready up to this many ms after the deadline, you can still summon the fill by hitting early; later than that, the fill never spawns, so no path activates there. Ready less than this many ms before the deadline, the activation is marked `E`. One number sets both sides. It starts at 60 ms and goes from 0 to 85 ms, the hit window. At 0 no activation is an early fill. Results are kept per window, so a 60 ms result and an 85 ms result for the same song sit side by side.
+
+`Song speed` analyzes the chart at the song speed you set in Clone Hero, as a percent. 100% is the chart's own speed and the default, and the box takes 10% to 5000%, the game's own limits. Clone Hero plays every note sooner or later by the speed, but each note's hit window stays the same size in real time. Hydra Deluxe follows the same rule. Every squeeze and timing figure, every time on the Paths tab, the Preview and the Path Builder, and the song's length are in played time at that speed, so at 200% a squeeze needs half the milliseconds it needs at 100%, and the song is half as long. The timing bands don't move: the `Rating` words and the report's timing tiers stay in steps of 85 ms at every speed, so a faster speed can make a squeeze easier. The `Early fill window`, the `Path limit` and the backend leeway count played milliseconds too. Star Power lasts the same number of beats at every speed, and so does Clone Hero 1.1's 4-beat fill deadline; only how long they take in real time changes. The game builds the `Dynamic Hit Window:` row from the real-time gaps between notes, so the row's windows narrow at faster speeds. The Preview plays the song at this speed, with the audio time-stretched so its pitch stays the same. Results are kept per speed, so a 100% result and a 150% result for the same song sit side by side. The leaderboard comparison always reads the 100% results, whatever this setting says.
 
 `Score range` sets how many extra paths below optimal to keep, and its dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
@@ -409,7 +412,7 @@ The table has one row for each of stars 1 to 7:
 
 `Analyze library...` analyzes the songs in your library in one background run, called a batch. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows.
 
-First a window titled `Analyze library` asks you to confirm. It says how many songs it will analyze and lists the settings it will use: `Difficulty`, `SP cap`, `Fills`, `Early fill window`, `Score range` and `Path limit`. To change those, cancel and edit the Analysis settings. Click `Start analyzing` to begin, or `Cancel`.
+First a window titled `Analyze library` asks you to confirm. It says how many songs it will analyze and lists the settings it will use: `Difficulty`, `SP cap`, `Fills`, `Early fill window`, `Song speed`, `Score range` and `Path limit`. To change those, cancel and edit the Analysis settings. Click `Start analyzing` to begin, or `Cancel`.
 
 A batch skips songs that already have a current result under these settings. A `Stale` result isn't current, so a batch runs those songs again with the box unchecked. To analyze the songs with a current result again too, check `Also re-analyze charts that already have a result`. When every song already has a current result and the box is off, the window says `Every chart here already has a result.` and `Start analyzing` stays greyed out.
 
@@ -535,7 +538,7 @@ Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmc
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the `Compare dmleaderboards user` box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
-The comparison needs Expert, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Any `SP cap` setting works, because the comparison always uses SP cap 4, Clone Hero's rule. Only songs analyzed at SP cap 4 under the rest of the current settings can match, so set `SP cap` to 4 and analyze your library first for a full comparison.
+The comparison needs Expert, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Any `SP cap` and `Song speed` setting works, because the comparison always uses SP cap 4, Clone Hero's rule, and 100% speed. Only songs analyzed at SP cap 4 and 100% under the rest of the current settings can match. For a full comparison, click `Reset to defaults` in the Analysis settings and analyze your library first. The comparison's footer says the same for charts with no current result: `Reset to defaults, analyze them, then compare again.`
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up. While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list.
 
@@ -553,7 +556,7 @@ Every row gets one status. The status dropdown shows one status at a time, or `A
 | `Not in your library` | Scores for a chart the last scan didn't find, at any speed. |
 | `Other speed` | Scores played at a speed other than 100%, for a chart in your library. |
 
-A score played at another speed is `Other speed` whenever its chart is in your library, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
+A score played at another speed is `Other speed` whenever its chart is in your library, whatever else is true of it. The comparison reads Hydra Deluxe's optimal at 100% speed, whatever the `Song speed` setting says. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
