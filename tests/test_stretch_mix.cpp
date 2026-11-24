@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "audio/decode.h"
-#include "audio/frames.h"
 #include "audio/player.h"
 #include "audio/stretch_mix.h"
 #include "audio_util.h"
@@ -76,8 +75,9 @@ TEST_CASE("StretchSource: 200% plays half the file's frames, 50% twice as many")
     struct Case {
         double ratio;
         int64_t played;
+        double played_ms;
     };
-    for (const Case c : {Case{2.0, kFile / 2}, Case{0.5, kFile * 2}}) {
+    for (const Case c : {Case{2.0, 24000, 500.0}, Case{0.5, 96000, 2000.0}}) {
         CAPTURE(c.ratio);
         StretchSource src(impulse_source(kFile, -1), c.ratio);
         CHECK(src.length_frames() == c.played);
@@ -89,10 +89,10 @@ TEST_CASE("StretchSource: 200% plays half the file's frames, 50% twice as many")
         std::vector<float> more(16 * kChannels);
         CHECK(src.read(more.data(), 16) == 0);
 
-        // The Playhead counts the same played frames: the song lasts 1 s / ratio.
+        // The Playhead counts the same played frames.
         Playhead p(std::make_unique<StretchSource>(impulse_source(kFile, -1), c.ratio));
         CHECK(p.length_frames() == c.played);
-        CHECK(p.length_ms() == doctest::Approx(1000.0 / c.ratio));
+        CHECK(p.length_ms() == doctest::Approx(c.played_ms));
     }
 }
 
@@ -123,7 +123,7 @@ TEST_CASE("StretchSource: through the Playhead, a seek in played ms lands at pla
     std::vector<float> got(static_cast<std::size_t>(kLook) * kChannels);
     CHECK(p.read_frames(got.data(), kLook) == kLook);
     CHECK(loudest_frame(got) == kAfter);
-    CHECK(p.position_frames() == frames_of_ms(500.0, kRate) + kLook);
+    CHECK(p.position_frames() == 24000 + kLook);  // played 500 ms is 24000 frames, plus the read
 }
 
 // The start delay is measured with an impulse when the source is built
