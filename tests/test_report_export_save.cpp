@@ -38,7 +38,11 @@ TEST_CASE("report export save: a good write says where it saved and keeps the fo
     const testtemp::ScopedFile file("report_export_save", ".xlsx");
     ExportNote note;
     app.save_report_export(one_cell_sheet(), file.path, note);
-    CHECK(note.text == std::string(hydra::ui::kExportSavedPrefix) + file.path);
+    // The line's own words, then the file exactly as picked.
+    const std::string prefix = hydra::ui::kExportSavedPrefix;
+    REQUIRE(note.text.size() > prefix.size());
+    CHECK(note.text.compare(0, prefix.size(), prefix) == 0);
+    CHECK(note.text.substr(prefix.size()) == file.path);
     CHECK_FALSE(note.problem);
     CHECK(std::filesystem::exists(hydra::os_path(std::filesystem::u8path(file.path))));
     CHECK(app.settings.export_folder ==
