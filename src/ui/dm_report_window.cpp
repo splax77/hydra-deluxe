@@ -2,12 +2,14 @@
 // (ui/report_window.h) filled with the comparison's rows, columns
 // (app/dm_report_view.h), tiles (dm_tiles) and its Status control.
 
+#include <ctime>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "app/dm_report_view.h"
+#include "app/export_name.h"  // local_date, dm_report_export_name
 #include "app/html_page.h"  // charts_search_hint
 #include "app/user_messages.h"
 #include "imgui.h"
@@ -31,6 +33,9 @@ using app::dm_report::DmReportRow;
 using app::dm_report::GeneratedDmReport;
 using app::report_view::TableView;
 namespace view_rules = app::dm_report_view;
+
+// The heading's words after "Hydra", which also name the exported sheet.
+constexpr const char* kHeading = "vs dmleaderboards";
 
 // The controls' choices, handed to the view.
 void apply_filters(DmWindow& w) {
@@ -90,16 +95,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
         }
         return;
     }
-    report_frame::RowLook<DmReportRow> look;
-    look.chip = [](const DmReportRow& r) { return app::dm_report::status_token(r.status); };
-    // A score whose chart the library doesn't list has nothing to select
-    // (D103 item 12).
-    look.clickable = [](const DmReportRow& r) {
-        return r.status != app::dm_report::kStatusNotInLibrary;
-    };
-    look.unclickable_hint =
-        app::dm_report::status_words(app::dm_report::kStatusNotInLibrary).name;
-    report_frame::table("##dmtable", w.memory, view, w.widths, look, input.callbacks,
+    report_frame::table("##dmtable", w.memory, view, w.widths, dm_row_look(), input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }
 
@@ -113,6 +109,19 @@ std::string comparison_player(const std::string& picked, const GeneratedDmReport
 }
 
 }  // namespace
+
+report_frame::RowLook<DmReportRow> dm_row_look() {
+    report_frame::RowLook<DmReportRow> look;
+    look.chip = [](const DmReportRow& r) { return app::dm_report::status_token(r.status); };
+    // A score whose chart the library doesn't list has nothing to select
+    // (D103 item 12).
+    look.clickable = [](const DmReportRow& r) {
+        return r.status != app::dm_report::kStatusNotInLibrary;
+    };
+    look.unclickable_hint =
+        app::dm_report::status_words(app::dm_report::kStatusNotInLibrary).name;
+    return look;
+}
 
 void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) {
     if (!*open) {
@@ -128,7 +137,9 @@ void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) 
 
     report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "dmleaderboards: " + player + " \xE2\x80\x94 Hydra###dmreport";  // U+2014
-    frame.heading = "vs dmleaderboards";
+    frame.heading = kHeading;
+    frame.export_excel =
+        report_frame::export_action(w.view.get(), dm_row_look(), kHeading, input.callbacks);
     // The picker box's two sentences; the server gives no count.
     frame.building_lines = {app::kComparisonBuilding, app::kLeaderboardWaking};
     frame.failure_sentence = app::kComparisonFailed;
@@ -158,10 +169,22 @@ DmReportInput dm_report_input(AppState& app) {
     in.callbacks.cancel = [&app] {
         app.cancel_dm_report();
         app.dm_report.window_open = false;
+        app.dm_report.export_note = {};
         app.reopen_dm_picker();
     };
     in.callbacks.compare_another = [&app] { app.reopen_dm_picker(); };
-    // The window clears window_open itself through its `open` flag.
+    // Called from the window's header, so the window being drawn is the
+    // report window, which the save dialog sits over. The file names the
+    // player the window's title names.
+    in.callbacks.export_excel = [&app](const app::xlsx::Sheet& sheet) {
+        const std::string player = comparison_player(app.dm_player_name(), app.dm_report.result.get());
+        app.export_report(sheet,
+                          app::dm_report_export_name(player, app::local_date(std::time(nullptr))),
+                          ImGui::GetWindowViewport()->PlatformHandleRaw, app.dm_report.export_note);
+    };
+    // The window clears window_open itself through its `open` flag; the
+    // export line goes with the close.
+    in.callbacks.close = [&app] { app.dm_report.export_note = {}; };
     return in;
 }
 

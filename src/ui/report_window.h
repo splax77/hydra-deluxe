@@ -24,8 +24,9 @@
 
 #include "app/dm_report.h"
 #include "app/report.h"
+#include "app/report_export.h"  // build_sheet, SheetLook
 #include "app/report_view.h"
-#include "app/xlsx.h"  // Rgb
+#include "app/xlsx.h"  // Rgb, Sheet
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
@@ -51,6 +52,9 @@ struct ReportCallbacks {
     // The comparison's "Compare another player..." (both its header and its
     // failed state).
     std::function<void()> compare_another;
+    // "Export to Excel...": the table as the window shows it, as a sheet
+    // (app/report_export.h), for the caller to save.
+    std::function<void(const app::xlsx::Sheet& sheet)> export_excel;
     // The window was closed: its title bar's X, its Close button, Esc or
     // Ctrl+W.
     std::function<void()> close;
@@ -99,6 +103,11 @@ struct ReportWindowInput {
     // The comparison's player, which the title names even while that
     // player's scores are still fetching. Unused by the path report.
     std::string player;
+    // The line under the subtitle about the last Excel export
+    // (ReportSlot::export_note, ui/app_state.h): its words, empty for no
+    // line, and whether they say the save failed.
+    std::string note;
+    bool note_problem = false;
     ReportCallbacks callbacks;
 };
 
@@ -139,6 +148,8 @@ ReportWindowInput<Result> input_from_slot(const Slot<Result>& slot, ReportBuild 
     in.batch_finished = slot.batch_finished;
     in.failure_message = slot.message;
     in.failure_error = slot.error;
+    in.note = slot.export_note.text;
+    in.note_problem = slot.export_note.problem;
     return in;
 }
 
@@ -185,6 +196,13 @@ struct Frame {
     std::string footer;
     // Whether the window offers "Compare another player...".
     bool compare_another = false;
+    // The click on "Export to Excel...", which the header offers beside
+    // Refresh only when this is set (export_action). A window sets it only
+    // while it holds a view of its rows.
+    std::function<void()> export_excel;
+    // The line under the subtitle, as the input gives it (empty: none).
+    std::string note;
+    bool note_problem = false;
     const ReportCallbacks* callbacks = nullptr;
 };
 
@@ -199,6 +217,8 @@ Frame frame_from(const ReportWindowInput<Result>& input) {
     f.batch_finished = input.batch_finished;
     f.failure_message = input.failure_message;
     f.failure_error = input.failure_error;
+    f.note = input.note;
+    f.note_problem = input.note_problem;
     f.callbacks = &input.callbacks;
     if (input.result) {
         f.subtitle = input.result->subtitle;
@@ -455,6 +475,46 @@ CellPaint cell_paint(const app::report_view::Column<Row>& column, const Row& row
     return paint;
 }
 
+// The colours the Excel export copies the table in: the window's own, asked
+// from the functions the table draws with, with `look` the window's row look.
+// A chip's outline becomes its cell's border. The answers read ImGui's live
+// style, so build the sheet inside the frame that asks.
+template <class Row>
+app::report_export::SheetLook<Row> sheet_look(const RowLook<Row>& look) {
+    app::report_export::SheetLook<Row> sheet;
+    sheet.background = to_rgb(table_background());
+    sheet.text = to_rgb(window_text());
+    sheet.header_fill = to_rgb(header_fill());
+    sheet.header_text = to_rgb(header_text());
+    sheet.row_fill = [](size_t place) { return row_fill(place); };
+    sheet.ink = [look](const app::report_view::Column<Row>& column, const Row& row) {
+        const CellPaint paint = cell_paint(column, row, look);
+        app::report_export::CellInk ink;
+        ink.font = to_rgb(paint.color);
+        if (paint.chip) ink.border = ink.font;
+        return ink;
+    };
+    return sheet;
+}
+
+// The header's "Export to Excel..." button.
+inline constexpr const char* kExportButton = "Export to Excel...";
+
+// A window's Frame::export_excel: at the click, `view` as it then stands
+// becomes a sheet named `sheet_name`, in sheet_look(look), handed to
+// callbacks.export_excel. Empty, so no button, when the window holds no view.
+template <class Row>
+std::function<void()> export_action(const app::report_view::TableView<Row>* view,
+                                    RowLook<Row> look, std::string sheet_name,
+                                    const ReportCallbacks& callbacks) {
+    if (!view) return {};
+    return [view, look = std::move(look), sheet_name = std::move(sheet_name), &callbacks] {
+        if (callbacks.export_excel)
+            callbacks.export_excel(
+                app::report_export::build_sheet(*view, sheet_look(look), sheet_name));
+    };
+}
+
 // The table: the "#" column, then the view's columns, its rows in the view's
 // order, each column as wide as the width rule (ui/column_widths.h) says.
 // `widths` is the view's measure, kept beside it by the window; it is taken
@@ -607,6 +667,12 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
 }
 
 }  // namespace report_frame
+
+// Each window's row look: the one chip rule (and, for the comparison, which
+// rows can be clicked) that its table draws with and its Excel export copies.
+// Defined in path_report_window.cpp and dm_report_window.cpp.
+report_frame::RowLook<app::report::ReportRow> path_row_look();
+report_frame::RowLook<app::dm_report::DmReportRow> dm_row_look();
 
 }  // namespace hydra::ui
 

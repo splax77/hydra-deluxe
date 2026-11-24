@@ -60,7 +60,8 @@ void call(const std::function<void()>& f) {
     if (f) f();
 }
 
-// "Hydra <heading>", the subtitle, "Built HH:MM" and the header's buttons.
+// "Hydra <heading>", the subtitle, the export line, "Built HH:MM" and the
+// header's buttons.
 // "Built HH:MM" is text, so it follows the heading; only the buttons go to
 // the right edge (place_control_at_line_end). Close shows in every state and
 // clears *open, as Esc and Ctrl+W do in begin(); end() then calls close.
@@ -79,6 +80,7 @@ void header(bool* open, const Frame& f) {
         ImGui::SameLine();
         ImGui::TextColored(kDimTextColor, "Built %s", clock_text(*f.built).c_str());
         if (f.compare_another) buttons.push_back("Compare another player...");
+        if (f.export_excel) buttons.push_back(kExportButton);
         buttons.push_back("Refresh");
     }
     buttons.push_back("Close");
@@ -86,6 +88,10 @@ void header(bool* open, const Frame& f) {
     if (built) {
         if (f.compare_another) {
             if (ImGui::Button("Compare another player...")) call(cb.compare_another);
+            ImGui::SameLine();
+        }
+        if (f.export_excel) {
+            if (ImGui::Button(kExportButton)) f.export_excel();
             ImGui::SameLine();
         }
         if (ImGui::Button("Refresh")) call(cb.refresh);
@@ -98,6 +104,13 @@ void header(bool* open, const Frame& f) {
     if (*subtitle) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(kDimTextColor, "%s", subtitle);
+        ImGui::PopTextWrapPos();
+    }
+    // The last Excel export's line: dim news, or a failed save in the
+    // warning colour.
+    if (!f.note.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(f.note_problem ? kWarningColor : kDimTextColor, "%s", f.note.c_str());
         ImGui::PopTextWrapPos();
     }
 }
