@@ -79,6 +79,7 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
         values.cap + (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
     out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
     out.early_fill = values.early_fill;
+    out.speed = values.speed;
     out.score_range = values.depth;
     out.path_limit = values.timing;
     return out;
@@ -103,7 +104,7 @@ std::string change_phrase(const app::Settings& s, const app::SettingsText& value
     case AnalysisSetting::SpCap: return "SP cap " + values.cap;
     case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
     case AnalysisSetting::EarlyFillWindow: return std::string(kEarlyFillWindowName) + " " + values.early_fill;
-    case AnalysisSetting::SongSpeed: return "Song speed " + values.speed;
+    case AnalysisSetting::SongSpeed: return std::string(kSongSpeedName) + " " + values.speed;
     case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
     case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
     }
@@ -373,6 +374,7 @@ void render_batch_confirm(AppState& app) {
         row("SP cap", d.sp_cap);
         row("Fills", d.fills);
         row(kEarlyFillWindowName, d.early_fill);
+        row(kSongSpeedName, d.speed);
         row("Score range", d.score_range);
         row("Path limit", d.path_limit);
         ImGui::EndTable();

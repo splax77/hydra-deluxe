@@ -355,6 +355,11 @@ struct Settings {
 // call this: it keeps running on the defaults instead (AppState::settings_error).
 int load_tool_settings(Settings& out, std::optional<bool> legacy_fills_flag);
 
+// The label of the panel button that applies Settings::with_analysis_defaults.
+// render_reset_button (src/ui/settings_bar.cpp) draws it, and the leaderboard
+// comparison's footer names it, so the footer's advice says what the button says.
+inline constexpr const char* kResetToDefaultsLabel = "Reset to defaults";
+
 // One field of the analysis set: the Settings member, the panel setting it
 // belongs to and the key part it is filed under. Its default is the one a
 // default-constructed Settings holds.

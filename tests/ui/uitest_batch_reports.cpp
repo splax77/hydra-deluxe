@@ -308,7 +308,7 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     const hydra::ui::detail::BatchSettingsSummary settings =
         hydra::ui::detail::batch_settings_summary(h.app->settings);
     for (const std::string* line : {&settings.difficulty, &settings.sp_cap, &settings.fills,
-                                    &settings.early_fill, &settings.score_range,
+                                    &settings.early_fill, &settings.speed, &settings.score_range,
                                     &settings.path_limit}) {
         if (line->empty() || text.find(*line) == std::string::npos)
             IM_ERRORF("the confirm does not list the setting \"%s\"", line->c_str());
