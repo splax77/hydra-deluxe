@@ -1347,11 +1347,13 @@ void test_preview_song_speed(ImGuiTestContext* ctx) {
 
     const double fast_end = pc.playback_end_ms();
     IM_CHECK_FLOAT_NEAR_EQ(fast_end, normal_end / 2.0, 0.01);
-    // At the end the box reads "end / end", in the Preview clock's own words.
+    // At the end the box reads "end / end", in the Preview clock's own words
+    // (clock_str of the length the Preview plays to). That length is half the
+    // 100% one, checked just above.
     pc.seek_ms(fast_end);
-    const std::string half_text = hydra::app::clock_str(normal_end / 2.0);
+    const std::string end_text = hydra::app::clock_str(fast_end);
     const std::string box = pc.time_box().timestamp;
-    IM_CHECK_STR_EQ(box.c_str(), (half_text + " / " + half_text).c_str());
+    IM_CHECK_STR_EQ(box.c_str(), (end_text + " / " + end_text).c_str());
 
     // It plays at the new speed.
     pc.seek_ms(0.0);
