@@ -988,12 +988,18 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     // Leaves the layout in `l`, so a caller can see where the badges went
     // (IM_CHECK returns early, so the lambda can't return it).
     hydra::ui::ActivationRowLayout l;
+    // `tags` runs entry for entry with `badges`: each badge's tag text, unset
+    // when it has none.
     auto check = [&](const std::string& widest_measure, const std::string& measure,
-                     const std::string& bars, const std::vector<std::string>& badges) {
+                     const std::string& bars, const std::vector<std::string>& badges,
+                     const std::vector<std::optional<std::string>>& tags = {}) {
         std::vector<float> badge_ws;
         for (const std::string& b : badges) badge_ws.push_back(figure_w(b));
+        std::vector<std::optional<float>> tag_ws;
+        for (const std::optional<std::string>& t : tags)
+            tag_ws.push_back(t ? std::optional<float>(figure_w(*t)) : std::nullopt);
         l = hydra::ui::activation_row_layout(figure_w(widest_measure), figure_w(bars), badge_ws,
-                                             pill_text_w, row_w, line, scale);
+                                             pill_text_w, row_w, line, scale, tag_ws);
         const float measure_end = l.measure_x + figure_w(measure);
         const float bars_end = l.bars_x + figure_w(bars);
         ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, %d badges, pill from %.1f, "
@@ -1010,6 +1016,12 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         for (const hydra::app::ActivationBadge& b : a.badges) out.push_back(b.text);
         return out;
     };
+    auto tags = [](const hydra::app::ActivationRowView& a) {
+        std::vector<std::optional<std::string>> out;
+        for (const hydra::app::ActivationBadge& b : a.badges)
+            out.push_back(b.tag ? std::optional<std::string>(b.tag->text) : std::nullopt);
+        return out;
+    };
     const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
@@ -1017,7 +1029,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK(!view.acts.empty());
     if (view.acts.empty()) return;
     for (const hydra::app::ActivationRowView& a : view.acts)
-        check(widest, a.measure, a.bars, texts(a));
+        check(widest, a.measure, a.bars, texts(a), tags(a));
     // One, two and three of the longest badge beside the longest pieces. In
     // the mono font even one of them reaches the bars at the narrowest panel,
     // so all three cases go under the measure.
@@ -1026,17 +1038,19 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest, longest});
     IM_CHECK_GE(l.badge_lines, 2);  // three don't fit on one line under the measure
 
-    // The drawn row: Burnout's row 1 with its own badges is as tall as the
-    // layout makes it, all in the mono font.
+    // The drawn row: Burnout's row 1 with its own badges and their tags is as
+    // tall as the layout makes it, all in the mono font.
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImRect row1_rect = ctx->ItemInfo("**/##act1").RectFull;
     const float row1_h = row1_rect.GetHeight();
-    check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
+    check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]), tags(view.acts[0]));
     // The drawn row is as tall as the layout's row; the Selectable's rect
     // reaches half the item spacing past its size on each side.
     IM_CHECK_EQ(row1_h, l.row_h + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
+        for (const std::optional<std::string>& t : tags(view.acts[0]))
+            if (t) pieces.push_back(*t);
         pieces.push_back(std::to_string(view.acts[0].number));
         pieces.push_back(view.acts[0].notation);
         pieces.push_back(view.acts[0].measure);
@@ -1212,14 +1226,53 @@ void check_tapped_out_box_fits() {
 }
 
 // The pieces a Dynamic Hit Window row draws, from the row view the tab drew
-// (app::WindowRowView): the label, each end's word when it has one, its
-// window and its chord, and the tag.
+// (app::WindowRowView): the label, and each end's word when it has one, its
+// window and its chord. The row's tag is drawn on the activation row
+// instead (check_row_tags).
 std::vector<std::string> window_pieces(const hydra::app::WindowRowView& w) {
     std::vector<std::string> out = {hydra::app::kDynamicHitWindowLabel};
     for (const hydra::app::WindowFigure& f : w.figures)
         out.push_back((f.word.empty() ? std::string() : f.word + " ") + f.figure + " " + f.chord);
-    out.push_back(w.tag);
     return out;
+}
+
+// Two pill edges or sizes that come to the same pixel can differ by float
+// rounding alone. The allowance is the one the row-pill width checks in
+// test_paths_row_layout already use for "the same width".
+constexpr float kSamePill = 0.01f;
+
+// Every tag of activation row `a`, from the view the tab drew, is on screen
+// and drawn under its own badge on the row: a pill in the tag's own fill
+// (window_tag_pill), as wide and as tall as the badge's pill, sharing its
+// left edge, and starting below the badge's pill, before another pill's
+// height has passed. Returns how many tags it checked.
+int check_row_tags(ImGuiTestContext* ctx, Harness& h, const hydra::app::ActivationRowView& a) {
+    const std::string id = "**/##act" + std::to_string(a.number);
+    const ImRect rect = ctx->ItemInfo(id.c_str()).RectFull;
+    const std::vector<ImRect> badges = drawn_pills(rect);
+    IM_CHECK_RETV(badges.size() == a.badges.size(), 0);
+    int checked = 0;
+    for (size_t b = 0; b < a.badges.size(); ++b) {
+        if (!a.badges[b].tag) continue;
+        const hydra::app::BadgeTag& tag = *a.badges[b].tag;
+        IM_CHECK_RETV(on_screen(h, tag.text), checked);
+        const ImRect& badge = badges[b];
+        int under = 0;
+        for (const ImRect& t : drawn_pills(rect, "##pathdetails",
+                                           hydra::ui::window_tag_pill(tag.is_short).fill)) {
+            if (std::fabs(t.Min.x - badge.Min.x) > kSamePill) continue;
+            if (t.Min.y <= badge.Max.y || t.Min.y >= badge.Max.y + badge.GetHeight()) continue;
+            ++under;
+            ctx->LogInfo("badge \"%s\" pill %.1f,%.1f..%.1f,%.1f, tag \"%s\" pill %.1f,%.1f..%.1f,%.1f",
+                         a.badges[b].text.c_str(), badge.Min.x, badge.Min.y, badge.Max.x,
+                         badge.Max.y, tag.text.c_str(), t.Min.x, t.Min.y, t.Max.x, t.Max.y);
+            IM_CHECK_RETV(std::fabs(t.GetWidth() - badge.GetWidth()) <= kSamePill, checked);
+            IM_CHECK_RETV(std::fabs(t.GetHeight() - badge.GetHeight()) <= kSamePill, checked);
+        }
+        IM_CHECK_RETV(under == 1, checked);
+        ++checked;
+    }
+    return checked;
 }
 
 // Whether an activation's opened row holds any Dynamic Hit Window row.
@@ -1245,11 +1298,19 @@ void check_early_fill_window(Harness& h, const hydra::app::WindowRowView& w) {
 
 // The Dynamic Hit Window row: on Burnout's squeeze out, on no activation
 // without a timing badge, and on Tapped Out's squeeze out and both its early
-// fills, each in a box. Every expected text is the row view the tab drew.
+// fills, each in a box, with each row's tag under its badge on the activation
+// row, open or closed. Every expected text is the row view the tab drew.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));  // every row starts closed
+    {
+        // With every row closed, row 1's tag is already under its badge.
+        const hydra::app::ActivationsView& closed = shown_activations(*h.app);
+        IM_CHECK(!closed.acts.empty());
+        if (closed.acts.empty()) return;
+        IM_CHECK_GE(check_row_tags(ctx, h, closed.acts[0]), 1);
+    }
 
     // Burnout's activation 1 has a squeeze with a window row.
     ctx->ItemClick("**/##act1");
@@ -1264,33 +1325,23 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     if (k1 >= burnout.acts[0].squeeze_windows.size()) return;
     const hydra::app::WindowRowView w1 = *burnout.acts[0].squeeze_windows[k1];
     for (const std::string& piece : window_pieces(w1)) IM_CHECK(on_screen(h, piece));
-    // The tag is a badge: its pill, in the squeeze's box, is as wide as the
-    // pill of the activation row's badge above it, and painted in its own
-    // tag's fill (window_tag_pill), not the shared pill's.
+    // The opened row keeps its tag under its badge, and the squeeze's box
+    // draws no pill: nothing below the box's own background is in the shared
+    // fill or in the row's tag fill (window_tag_pill).
+    IM_CHECK_GE(check_row_tags(ctx, h, burnout.acts[0]), 1);
     {
         const std::string box_id = "##sq1_" + std::to_string(k1);
-        const std::vector<ImRect> row_pills = drawn_pills(ctx->ItemInfo("**/##act1").RectFull);
         ImGuiWindow* box = window_named(box_id.c_str());
         IM_CHECK(box != nullptr);
-        IM_CHECK_EQ(row_pills.size(), burnout.acts[0].badges.size());
-        IM_CHECK(!row_pills.empty());
-        if (!box || row_pills.empty()) return;
-        // The box's own background, in the shared fill, starts at its top;
-        // nothing below it is in the shared fill. Fails if the tag's pill is
-        // painted in the shared fill.
+        if (!box) return;
+        // The box's own background, in the shared fill, starts at its top.
         int shared_below_top = 0;
         for (const ImRect& p : drawn_pills(box->Rect(), box_id.c_str()))
             if (p.Min.y > box->Pos.y + 2.0f) ++shared_below_top;
         IM_CHECK_EQ(shared_below_top, 0);
-        // Fails if the tag is not drawn in its own tag's fill.
-        const std::vector<ImRect> tags =
-            drawn_pills(box->Rect(), box_id.c_str(), hydra::ui::window_tag_pill(w1.is_short).fill);
-        IM_CHECK_EQ(static_cast<int>(tags.size()), 1);
-        if (tags.size() != 1) return;
-        ctx->LogInfo("row badge pill %.3f wide, tag pill %.3f wide", row_pills[0].GetWidth(),
-                     tags[0].GetWidth());
-        IM_CHECK_LE(std::fabs(tags[0].GetWidth() - row_pills[0].GetWidth()), 0.01f);
-        IM_CHECK_LE(std::fabs(tags[0].GetHeight() - row_pills[0].GetHeight()), 0.01f);
+        // Fails if the box still draws the tag.
+        IM_CHECK(drawn_pills(box->Rect(), box_id.c_str(), hydra::ui::window_tag_pill(w1.is_short).fill)
+                     .empty());
     }
 
     // Activation 2 has no window row in the view, and none shows.
@@ -1320,6 +1371,14 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, act4.early_fill));
     IM_CHECK(window_named("##ef4") != nullptr);
     check_early_fill_window(h, *act4.early_fill_window);
+    // Its timings' tags, the squeeze's and the early fill's among them, sit
+    // under their own badges.
+    {
+        int tagged = 0;
+        for (const hydra::app::ActivationBadge& b : act4.badges) tagged += b.tag ? 1 : 0;
+        IM_CHECK_GE(tagged, 2);
+        IM_CHECK_EQ(check_row_tags(ctx, h, act4), tagged);
+    }
     if (ctx->IsError()) return;
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;

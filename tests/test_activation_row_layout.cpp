@@ -2,6 +2,7 @@
 // start after the widest measure with a gap, never before kRowMinBarsX; the
 // badges sit flush right, and when they would reach back into the bars they
 // all move under the measure, wrapping onto more lines when one is too short.
+// A badge's Dynamic Hit Window tag stacks under it, and the row grows for it.
 //
 // Every piece of the row is drawn in the mono font, Courier Prime, which the
 // GUI harness measures at 9.6 px a character ("m1024.1.120" is 105.6 px), on
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "app/path_view.h"  // longest_activation_badge
@@ -56,15 +58,34 @@ const float kWideRow = 3.0f * kNarrowRow;
 // Every pill sized for the longest badge, as the Paths tab sizes it, unless a
 // case gives another pill text width (unscaled).
 ActivationRowLayout layout(float measure_w, float bars_w, const std::vector<float>& badges,
-                           float row_w, float scale = 1.0f, float pill_text_w = -1.0f) {
+                           float row_w, float scale = 1.0f, float pill_text_w = -1.0f,
+                           const std::vector<std::optional<float>>& tags = {}) {
     if (pill_text_w < 0.0f) pill_text_w = longest_badge_w();
     return activation_row_layout(measure_w * scale, bars_w * scale, badges, pill_text_w * scale,
-                                 row_w * scale, kLine * scale, scale);
+                                 row_w * scale, kLine * scale, scale, tags);
 }
 
 std::vector<float> scaled(std::vector<float> ws, float scale) {
     for (float& w : ws) w *= scale;
     return ws;
+}
+
+std::vector<std::optional<float>> scaled(std::vector<std::optional<float>> ws, float scale) {
+    for (std::optional<float>& w : ws)
+        if (w) *w *= scale;
+    return ws;
+}
+
+// One tag's text width: "65.9 ms short", 13 characters, a tag the user's
+// mockup shows.
+const float kTagW = mono(13);
+
+// Tags on the first and third of `count` badges, none on the second, so a
+// row mixes tagged and untagged badges.
+std::vector<std::optional<float>> some_tags(size_t count) {
+    std::vector<std::optional<float>> out(count);
+    for (size_t k = 0; k < count; k += 2) out[k] = kTagW;
+    return out;
 }
 
 // Calls fn(row_w) for every row width from kNarrowRow to kWideRow, a pixel apart.
@@ -96,12 +117,30 @@ void check_twice(const ActivationRowLayout& one, const ActivationRowLayout& two)
     REQUIRE(two.pill_x.size() == one.pill_x.size());
     REQUIRE(two.badge_y.size() == one.badge_y.size());
     REQUIRE(two.badge_line.size() == one.badge_line.size());
+    REQUIRE(two.tag_y.size() == one.tag_y.size());
     for (size_t k = 0; k < one.pill_x.size(); ++k) {
         CAPTURE(k);
         CHECK(two.pill_x[k] == doctest::Approx(2.0f * one.pill_x[k]));
         CHECK(two.badge_y[k] == doctest::Approx(2.0f * one.badge_y[k]));
         CHECK(two.badge_line[k] == one.badge_line[k]);
+        REQUIRE(two.tag_y[k].has_value() == one.tag_y[k].has_value());
+        if (one.tag_y[k]) CHECK(*two.tag_y[k] == doctest::Approx(2.0f * *one.tag_y[k]));
     }
+}
+
+// Every pill of `l`, badges and tags, with which badge line it sits on.
+struct LinePill {
+    PillRect rect;
+    int line = 0;
+};
+std::vector<LinePill> all_pills(const ActivationRowLayout& l, float line, float scale) {
+    std::vector<LinePill> out;
+    for (size_t k = 0; k < l.pill_x.size(); ++k) {
+        out.push_back({pill_rect(l.pill_x[k], l.badge_y[k], l.pill_w, line, scale), l.badge_line[k]});
+        if (l.tag_y[k])
+            out.push_back({pill_rect(l.pill_x[k], *l.tag_y[k], l.pill_w, line, scale), l.badge_line[k]});
+    }
+    return out;
 }
 
 }  // namespace
@@ -368,4 +407,147 @@ TEST_CASE("activation row: badges under the measure start one pad before the mea
     CHECK(two.badge_line[0] == 1);
     CHECK(two.badge_line[1] == 1);
     CHECK(two.badge_line[2] == 2);
+}
+
+TEST_CASE("activation row: badges with no tag get no tag place") {
+    const float w = longest_badge_w();
+    for_each_row([&](size_t count, float row_w) {
+        CAPTURE(count);
+        CAPTURE(row_w);
+        const ActivationRowLayout l = layout(mono(11), kBars12, std::vector<float>(count, w), row_w);
+        REQUIRE(l.tag_y.size() == count);
+        for (const std::optional<float>& t : l.tag_y) CHECK_FALSE(t.has_value());
+    });
+}
+
+TEST_CASE("activation row: a tag beside the bars sits under its badge and grows the row") {
+    // Burnout-sized pieces at the narrowest column, as in the flush-right case:
+    // one badge that fits beside the bars, with a tag.
+    for (const float scale : {1.0f, 2.0f}) {
+        CAPTURE(scale);
+        const ActivationRowLayout plain =
+            layout(mono(7), kBars3, {longest_badge_w() * scale}, kNarrowRow, scale);
+        const ActivationRowLayout l = layout(mono(7), kBars3, {longest_badge_w() * scale},
+                                             kNarrowRow, scale, -1.0f, {kTagW * scale});
+        REQUIRE(l.badge_lines == 0);
+        REQUIRE(l.tag_y[0].has_value());
+        // The badge stays where it was, flush right on the row's own line.
+        CHECK(l.pill_x[0] == doctest::Approx(plain.pill_x[0]));
+        CHECK(l.badge_y[0] == doctest::Approx(l.text_y));
+        CHECK(plain.row_h == doctest::Approx(kRowLineH * scale));
+        // The tag's pill shares the badge's edges, starts one top padding
+        // below the badge's pill, and the row ends one top padding below it.
+        const float line = kLine * scale;
+        const PillRect badge = pill_rect(l.pill_x[0], l.badge_y[0], l.pill_w, line, scale);
+        const PillRect tag = pill_rect(l.pill_x[0], *l.tag_y[0], l.pill_w, line, scale);
+        CHECK(tag.y0 - badge.y1 == doctest::Approx(top_pad(scale)));
+        CHECK(l.row_h - tag.y1 == doctest::Approx(top_pad(scale)));
+        CHECK(l.row_h > plain.row_h);
+    }
+}
+
+TEST_CASE("activation row: tags never move a badge sideways or onto another line") {
+    // Tags narrower than the pill keep every badge's x, line and width; only
+    // the heights change.
+    const float w = longest_badge_w();
+    REQUIRE(kTagW < w);
+    for_each_row([&](size_t count, float row_w) {
+        CAPTURE(count);
+        CAPTURE(row_w);
+        const std::vector<float> badges(count, w);
+        const ActivationRowLayout plain = layout(mono(11), kBars12, badges, row_w);
+        const ActivationRowLayout tagged =
+            layout(mono(11), kBars12, badges, row_w, 1.0f, -1.0f, some_tags(count));
+        CHECK(tagged.pill_w == doctest::Approx(plain.pill_w));
+        CHECK(tagged.badge_lines == plain.badge_lines);
+        CHECK(tagged.bars_x == doctest::Approx(plain.bars_x));
+        for (size_t k = 0; k < count; ++k) {
+            CAPTURE(k);
+            CHECK(tagged.pill_x[k] == doctest::Approx(plain.pill_x[k]));
+            CHECK(tagged.badge_line[k] == plain.badge_line[k]);
+            CHECK(tagged.tag_y[k].has_value() == (k % 2 == 0));
+        }
+        CHECK(tagged.row_h > plain.row_h);
+    });
+}
+
+TEST_CASE("activation row: a tag wider than every badge widens every pill") {
+    // A tag of the longest badge's width plus four characters, beside one
+    // short badge.
+    const float wide_tag = longest_badge_w() + mono(4);
+    const ActivationRowLayout l =
+        layout(mono(11), kBars12, {mono(17), mono(17)}, kWideRow, 1.0f, -1.0f, {wide_tag});
+    CHECK(l.pill_w == doctest::Approx(hydra::ui::shared_pill_width(longest_badge_w(), wide_tag, 1.0f)));
+}
+
+TEST_CASE("activation row: the layout with tags scales with the DPI") {
+    const float w = longest_badge_w();
+    for (size_t count = 1; count <= 3; ++count) {
+        for_each_row_w([&](float row_w) {
+            CAPTURE(count);
+            CAPTURE(row_w);
+            const std::vector<float> badges(count, w);
+            const ActivationRowLayout one =
+                layout(mono(11), kBars12, badges, row_w, 1.0f, -1.0f, some_tags(count));
+            const ActivationRowLayout two = layout(mono(11), kBars12, scaled(badges, 2.0f), row_w,
+                                                   2.0f, -1.0f, scaled(some_tags(count), 2.0f));
+            check_twice(one, two);
+        });
+    }
+}
+
+TEST_CASE("activation row: badge lines with tags keep the top padding and never overlap") {
+    // Beside the bars or under the measure: each line's pills, tags included,
+    // start one top padding below the previous line's lowest pill (the bars'
+    // text bottom for the first line under the measure), and the row ends one
+    // top padding below its lowest pill. No two pills overlap.
+    const float w = longest_badge_w();
+    for (const float scale : {1.0f, 2.0f}) {
+        bool beside = false;
+        bool under = false;
+        for_each_row([&](size_t count, float row_w) {
+            CAPTURE(scale);
+            CAPTURE(count);
+            CAPTURE(row_w);
+            const ActivationRowLayout l =
+                layout(mono(11), kBars12, scaled(std::vector<float>(count, w), scale), row_w,
+                       scale, -1.0f, scaled(some_tags(count), scale));
+            const float line = kLine * scale;
+            const float pad = top_pad(scale);
+            const std::vector<LinePill> pills = all_pills(l, line, scale);
+            for (size_t a = 0; a < pills.size(); ++a)
+                for (size_t b = a + 1; b < pills.size(); ++b) {
+                    CAPTURE(a);
+                    CAPTURE(b);
+                    const PillRect& ra = pills[a].rect;
+                    const PillRect& rb = pills[b].rect;
+                    const bool apart = ra.x1 <= rb.x0 || rb.x1 <= ra.x0 || ra.y1 <= rb.y0 || rb.y1 <= ra.y0;
+                    CHECK(apart);
+                }
+            float lowest = 0.0f;
+            for (const LinePill& p : pills) lowest = (std::max)(lowest, p.rect.y1);
+            CHECK(l.row_h - lowest == doctest::Approx(pad));
+            if (l.badge_lines == 0) {
+                beside = true;
+                return;
+            }
+            under = true;
+            float above = l.text_y + line;  // the bars' text bottom, then each line's lowest pill
+            for (int ln = 1; ln <= l.badge_lines; ++ln) {
+                CAPTURE(ln);
+                float top = 1e9f;
+                float bottom = 0.0f;
+                for (const LinePill& p : pills) {
+                    if (p.line != ln) continue;
+                    top = (std::min)(top, p.rect.y0);
+                    bottom = (std::max)(bottom, p.rect.y1);
+                }
+                CHECK(top - above == doctest::Approx(pad));
+                above = bottom;
+            }
+        });
+        CAPTURE(scale);
+        CHECK(beside);
+        CHECK(under);
+    }
 }

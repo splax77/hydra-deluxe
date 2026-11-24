@@ -1926,7 +1926,99 @@ void check_any_row(const WindowRowView& row, const WindowEnds& ends, RowKindsSee
     REQUIRE_FALSE(row.figures.empty());
 }
 
+// How many badge tags check_badge_tags checked, by kind, and how many squeeze
+// badges it could not tell apart from another squeeze of theirs.
+struct BadgeTagCounts {
+    int fill = 0;
+    int squeeze = 0;
+    int skipped = 0;
+};
+
+// A badge's tag against the owner's window for its timing: the tag starts
+// with the size of the owner's sum, it is short exactly when the owner says
+// so, and it is the tag of the row the view built for that timing.
+void check_badge_tag(const BadgeTag& tag, const WindowEnds& ends, const WindowRowView& row) {
+    CAPTURE(tag.text);
+    CHECK(tag.text.rfind(format_ms(std::fabs(ends.safe_ms)), 0) == 0);
+    CHECK(tag.is_short == ends.is_short());
+    CHECK(tag.text == row.tag);
+    CHECK(tag.is_short == row.is_short);
+}
+
+// Every badge of `av` carries the tag of its own timing's window, and none
+// when the owner gives that timing no window. Badge i words badge_timings()
+// entry i (activation_badges). Its timing is found without the view's
+// pairing: the early fill badge is the activation's early fill
+// (core::early_fill_window_end); a squeeze badge is the one squeeze of its
+// kind whose difficulty is the badge's ms (core::squeeze_window_ends). A
+// squeeze badge two squeezes could match is skipped and counted.
+void check_badge_tags(const Activation& act, const ActivationRowView& av, const ChordTimes& chords,
+                      BadgeTagCounts& counts) {
+    const std::vector<ActivationTiming> timings = act.badge_timings();
+    REQUIRE(av.badges.size() == timings.size());
+    REQUIRE(av.squeeze_windows.size() == act.sqinouts.size());
+    for (size_t b = 0; b < timings.size(); ++b) {
+        CAPTURE(b);
+        CAPTURE(av.badges[b].text);
+        const std::optional<BadgeTag>& tag = av.badges[b].tag;
+        if (timings[b].part == TimingPart::EarlyFill) {
+            const std::optional<WindowEnds> ends = early_fill_window_end(act, chords);
+            REQUIRE(tag.has_value() == ends.has_value());
+            if (!ends) continue;
+            REQUIRE(av.early_fill_window.has_value());
+            check_badge_tag(*tag, *ends, *av.early_fill_window);
+            ++counts.fill;
+            continue;
+        }
+        const SqueezeKind kind =
+            timings[b].part == TimingPart::SqueezeIn ? SqueezeKind::SqIn : SqueezeKind::SqOut;
+        std::vector<size_t> matches;
+        for (size_t k = 0; k < act.sqinouts.size(); ++k)
+            if (act.sqinouts[k].kind == kind && act.sqinouts[k].difficulty() == timings[b].ms)
+                matches.push_back(k);
+        REQUIRE_FALSE(matches.empty());
+        if (matches.size() > 1) {
+            ++counts.skipped;
+            continue;
+        }
+        const size_t k = matches[0];
+        const std::optional<WindowEnds> ends = squeeze_window_ends(act, k, chords);
+        REQUIRE(tag.has_value() == ends.has_value());
+        if (!ends) continue;
+        REQUIRE(av.squeeze_windows[k].has_value());
+        check_badge_tag(*tag, *ends, *av.squeeze_windows[k]);
+        ++counts.squeeze;
+    }
+}
+
 }  // namespace
+
+// Each badge on the Paths tab's row carries its own timing's Dynamic Hit
+// Window tag. Tapped Out's best path has both kinds on one row: its fourth
+// activation holds a squeeze with a row and an early fill with a row.
+TEST_CASE("dynamic hit window: each badge carries its own timing's tag") {
+    for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &beg()}) {
+        const Path& best = ar->record.best_path();
+        const ChordTimes chords = chord_times(ar->song);
+        const std::vector<Activation> acts = best.all_activations();
+        const ActivationsView view = window_rows_of(*ar, best, chords);
+        REQUIRE(view.acts.size() == acts.size());
+        BadgeTagCounts counts;
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            check_badge_tags(acts[i], view.acts[i], chords, counts);
+        }
+        CHECK(counts.squeeze >= 1);
+        if (ar == &tapped_out()) CHECK(counts.fill >= 1);
+    }
+}
+
+// activation_badges alone, as the Path Builder reads it, carries no tag.
+TEST_CASE("dynamic hit window: activation_badges alone carries no tag") {
+    const AnalysisResult& ar = tapped_out();
+    for (const Activation& act : ar.record.best_path().all_activations())
+        for (const ActivationBadge& b : activation_badges(act)) CHECK_FALSE(b.tag.has_value());
+}
 
 // Every row on every kept path of every corpus chart: rows equal badges, an
 // early fill row has one end and no word, the tag's word follows the sum's
@@ -1950,11 +2042,13 @@ TEST_CASE("dynamic hit window: every corpus row") {
                 CAPTURE(path.pathstring());
                 CAPTURE(av.number);
 
-                // Every timing badge has its row.
+                // Every timing badge has its row, and carries that row's tag.
                 size_t shown = av.early_fill_window ? 1 : 0;
                 for (const std::optional<WindowRowView>& w : av.squeeze_windows)
                     shown += w ? 1 : 0;
                 CHECK(shown == av.badges.size());
+                BadgeTagCounts tag_counts;
+                check_badge_tags(act, av, chords, tag_counts);
 
                 if (av.early_fill_window) {
                     const std::optional<WindowEnds> ends = early_fill_window_end(act, chords);

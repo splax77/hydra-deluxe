@@ -335,6 +335,20 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         for (size_t k = 0; k < act.sqinouts.size(); ++k)
             av.squeeze_windows[k] = squeeze_window_view(act, k, chords);
         av.early_fill_window = early_fill_window_view(act, chords);
+        // Each badge carries its own timing's row tag. The badges are one per
+        // Activation::badge_timings entry, in its order, and that list says
+        // which part each entry is and keeps the squeezes in sqinouts order,
+        // the order squeeze_windows is in.
+        {
+            const std::vector<ActivationTiming> timings = act.badge_timings();
+            size_t squeeze = 0;
+            for (size_t b = 0; b < timings.size(); ++b) {
+                const std::optional<WindowRowView>& w =
+                    timings[b].part == TimingPart::EarlyFill ? av.early_fill_window
+                                                             : av.squeeze_windows.at(squeeze++);
+                if (w) av.badges.at(b).tag = BadgeTag{w->tag, w->is_short};
+            }
+        }
 
         av.backends.reserve(rate.backends.size());
         // The rows the backend limit hides, by side of the SP end. A hidden
