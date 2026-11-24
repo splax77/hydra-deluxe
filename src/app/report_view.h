@@ -107,6 +107,17 @@ struct Column {
 inline constexpr const char* kGroupedNumberFormat = "#,##0";
 inline constexpr const char* kWholeNumberFormat = "0";
 
+// A timing cell, the same in every report: the app's own text (format_ms,
+// core/model.h), or report::kDash with none.
+std::string ms_cell(const std::optional<double>& ms);
+
+// A timing as a spreadsheet number: the figure ms_cell's text shows, so Excel
+// and the window round an exact half the same way (format_ms's, not Excel's).
+std::optional<double> ms_number(const std::optional<double>& ms);
+
+// The Excel form of format_ms's text (core/model.h): one decimal, then " ms".
+inline constexpr const char* kMsNumberFormat = "0.0\" ms\"";
+
 // A value the row may lack, as a sort key: its number, or an empty key when
 // unset. Every report view's optional columns sort through this.
 template <class T>

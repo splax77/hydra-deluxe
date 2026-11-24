@@ -1,9 +1,21 @@
 #include "app/report_view.h"
 
+#include <cstdlib>
+
 #include "app/library_query.h"  // fold_for_search
-#include "core/model.h"         // group_thousands, counted
+#include "app/report.h"         // kDash
+#include "core/model.h"         // group_thousands, counted, format_ms
 
 namespace hydra::app::report_view {
+
+std::string ms_cell(const std::optional<double>& ms) {
+    return ms ? format_ms(*ms) : std::string(report::kDash);
+}
+
+std::optional<double> ms_number(const std::optional<double>& ms) {
+    if (!ms) return std::nullopt;
+    return std::strtod(format_ms(*ms).c_str(), nullptr);
+}
 
 std::vector<std::string> search_words(std::string_view typed) {
     // fold_for_search turns every run of whitespace into one space, so a

@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "app/display_format.h"  // py_round3
-#include "app/dm_report.h"       // DmReportRow, kPercentDecimals, kStatus*
+#include "app/dm_report.h"       // DmReportRow, kStatus*
 #include "app/dm_report_view.h"
 #include "app/path_report_view.h"
 #include "app/report.h"          // ReportRow, kDash
@@ -77,7 +77,7 @@ DmReportRow under_optimal_row() {
     r.actual = 198010;
     r.optimal = 200000;
     r.delta = 1990;
-    r.pct_h = 9901;
+    r.timing_required = 12.25;
     r.is_fc = true;
     r.percent = 97;
     r.speed = 100;
@@ -150,10 +150,13 @@ TEST_CASE("report numbers: each comparison column's number is the row field its 
     // percent is 97 (the cell's "97%") and its speed 100 ("100%").
     CHECK(number_of(find_column(cols, "percent"), row) == 0.97);
     CHECK(number_of(find_column(cols, "speed"), row) == 1.0);
-    // under_optimal_row's pct_h is 9901 hundredths of a percent (198,010 of
-    // 200,000 at kPercentDecimals 2, the cell's "99.01%"), which Excel holds
-    // as the share 0.9901.
-    CHECK(number_of(find_column(cols, "pct_h"), row) == 0.9901);
+    // Timing required's number is the path report's Hardest ms number for
+    // the same figure (both rows hold 12.25 ms).
+    const std::vector<Column<ReportRow>> path_cols = path_report_view::path_columns();
+    const ReportRow path_row = full_path_row();
+    REQUIRE(path_row.ms == row.timing_required);
+    CHECK(number_of(find_column(cols, "timing"), row) ==
+          number_of(find_column(path_cols, "ms"), path_row));
 
     for (const char* id : {"actual", "optimal", "delta"}) {
         CAPTURE(id);
@@ -178,10 +181,10 @@ TEST_CASE("report numbers: an unset comparison value gives no number") {
     DmReportRow row = under_optimal_row();
     row.optimal.reset();
     row.delta.reset();
-    row.pct_h.reset();
+    row.timing_required.reset();
     row.rank.reset();
     row.status = dm_report::kStatusNotInLibrary;
-    for (const char* id : {"optimal", "delta", "pct_h", "rank"}) {
+    for (const char* id : {"optimal", "delta", "timing", "rank"}) {
         CAPTURE(id);
         const Column<DmReportRow>& c = find_column(cols, id);
         REQUIRE(c.number);
@@ -199,28 +202,29 @@ TEST_CASE("report numbers: the comparison's FC, Posted, Status and name columns 
     }
 }
 
-TEST_CASE("report numbers: a % of opt cell has no number exactly when it shows the dash") {
+TEST_CASE("report numbers: a Timing required cell has no number exactly when it shows the dash") {
     const std::vector<Column<DmReportRow>> cols = dm_report_view::dm_columns();
-    const Column<DmReportRow>& c = find_column(cols, "pct_h");
+    const Column<DmReportRow>& c = find_column(cols, "timing");
     REQUIRE(c.number);
 
-    DmReportRow both = under_optimal_row();
-    DmReportRow no_pct = both;
-    no_pct.pct_h.reset();
-    DmReportRow no_optimal = both;  // pct_h left set, as only has_percent guards it
-    no_optimal.optimal.reset();
-    DmReportRow neither = both;
-    neither.pct_h.reset();
-    neither.optimal.reset();
+    // A path that needs timing, one that needs none, and a score with no
+    // Hydra result at all.
+    DmReportRow timed = under_optimal_row();
+    DmReportRow needs_none = timed;
+    needs_none.timing_required.reset();
+    DmReportRow no_result = needs_none;
+    no_result.optimal.reset();
+    no_result.delta.reset();
+    no_result.status = dm_report::kStatusNotInLibrary;
 
     int dashes = 0;
-    for (const DmReportRow& row : {both, no_pct, no_optimal, neither}) {
+    for (const DmReportRow& row : {timed, needs_none, no_result}) {
         const bool dash = c.cell(row) == report::kDash;
         if (dash) ++dashes;
         CHECK(c.number(row).has_value() == !dash);
     }
     // Both kinds of cell were seen, so the check above tested each side.
-    CHECK(dashes == 3);
+    CHECK(dashes == 2);
 }
 
 TEST_CASE("report numbers: a column has a number format exactly when it has a number") {

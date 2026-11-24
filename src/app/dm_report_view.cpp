@@ -1,6 +1,5 @@
 #include "app/dm_report_view.h"
 
-#include "app/display_format.h"  // format_percent
 #include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands, kCloneHeroSpCap
 #include "core/strutil.h"        // replace_all
@@ -44,10 +43,6 @@ Column<DmReportRow> figure_column(std::string id, std::string title, std::string
     return c;
 }
 
-// The row's percent of optimal, when the page had one: the payload carried
-// pct_h only beside an optimal score.
-bool has_percent(const DmReportRow& r) { return r.pct_h && r.optimal; }
-
 // A value the row may lack, as a spreadsheet number: its number, or nothing
 // where the cell writes a dash.
 template <class T>
@@ -60,12 +55,6 @@ std::optional<double> whole_percent_number(int percent) { return percent / 100.0
 
 // The Excel form of a "97%" cell, std::to_string's whole percent.
 constexpr const char* kWholePercentFormat = "0%";
-
-// The Excel form of format_percent's text at kPercentDecimals places.
-std::string percent_format() {
-    const int decimals = dm_report::kPercentDecimals;
-    return decimals > 0 ? "0." + std::string(static_cast<size_t>(decimals), '0') + "%" : "0%";
-}
 
 // The Excel form of the Points left text: a score under optimal reads as
 // group_thousands does, and one above it (a negative delta) as "+1,234 over".
@@ -132,28 +121,17 @@ std::vector<Column<DmReportRow>> dm_columns() {
         cols.push_back(std::move(c));
     }
     {
-        // Sorts on the whole hundredths (percent_steps) the cell's text,
-        // format_percent's, is written from.
+        // The path report's Hardest ms for the best path, written and
+        // exported the way that column is (report_view's ms helpers).
         Column<DmReportRow> c = figure_column(
-            "pct_h", "% of opt",
-            "Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% "
-            "speed.");
-        c.sort_key = [](const DmReportRow& r) {
-            return has_percent(r) ? optional_key(r.pct_h) : SortKey{};
-        };
-        c.cell = [](const DmReportRow& r) {
-            return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)
-                                  : std::string(kDash);
-        };
-        // pct_h counts steps of percent_steps; one whole is
-        // percent_steps(1, 1, ...) of them, so 9901 of 10000 is 0.9901, which
-        // Excel shows as 99.01%.
-        c.number = [](const DmReportRow& r) -> std::optional<double> {
-            if (!has_percent(r)) return std::nullopt;
-            return static_cast<double>(*r.pct_h) /
-                   static_cast<double>(percent_steps(1, 1, dm_report::kPercentDecimals));
-        };
-        c.number_format = percent_format();
+            "timing", "Timing required",
+            "The hardest squeeze or required early fill Hydra's optimal path needs, in ms: the "
+            "same figure as the path report's Hardest ms. A dash means it needs none, or Hydra "
+            "has no result.");
+        c.sort_key = [](const DmReportRow& r) { return optional_key(r.timing_required); };
+        c.cell = [](const DmReportRow& r) { return report_view::ms_cell(r.timing_required); };
+        c.number = [](const DmReportRow& r) { return report_view::ms_number(r.timing_required); };
+        c.number_format = report_view::kMsNumberFormat;
         cols.push_back(std::move(c));
     }
     {

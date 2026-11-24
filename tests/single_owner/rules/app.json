@@ -545,26 +545,6 @@
       "note": "A comparison status word typed in double quotes, an HTML attribute value included. Only single quotes stay out."
     },
     {
-      "question": "How many decimals does % of opt carry?",
-      "owner": "kPercentDecimals in src/app/dm_report.h",
-      "owner_file": "src/app/dm_report.h",
-      "owner_symbol": "kPercentDecimals",
-      "date": "2026-10-08",
-      "decision": "derive-once review of RW-T3, finding 5 (2026-10-08)",
-      "added_by": "RW-J1",
-      "pattern": "(percent_steps|format_percent)\\([^;]*,\\s*2\\)",
-      "anchor": "percent",
-      "must_match": [
-        "row.pct_h = percent_steps(s.score, opt, 2);",
-        "return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);"
-      ],
-      "must_not_match": [
-        "return total > 0 ? format_percent(part, total, 0) : \"0%\";",
-        "return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)"
-      ],
-      "note": "A comparison percent written with its decimals typed in. kPercentDecimals is the one count."
-    },
-    {
       "question": "How far into the song is this moment, as a share?",
       "owner": "song_fraction in src/app/preview_view.cpp",
       "owner_file": "src/app/preview_view.cpp",

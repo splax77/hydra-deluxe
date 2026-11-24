@@ -572,7 +572,6 @@ The tiles count only the rows that pass the filters:
 | `No current result` | The `No current result (in your library)` rows. |
 | `Not in your library` | The `Not in your library` rows. |
 | `Other speed` | The `Other speed` rows. |
-| `Avg % of optimal` | The average of the `% of opt` column, over the rows that have one. |
 | `Points left on table` | The points left on the `Under optimal` rows, added up. |
 
 `No paths (analyzed, none kept)` rows have no tile of their own, but `Scores shown` counts them.
@@ -585,7 +584,7 @@ The search box matches the song, artist and charter. The table starts sorted by 
 | `Actual` | The score the player posted. |
 | `Hydra opt` | The optimal score Hydra Deluxe found for the chart at SP cap 4, the Clone Hero rule. |
 | `Points left` | `Hydra opt` minus `Actual`. A score above optimal reads how far over it is, as `+N over`. |
-| `% of opt` | `Actual` as a percent of `Hydra opt`. Only for scores played at 100% speed. |
+| `Timing required` | The hardest squeeze or required early fill Hydra Deluxe's optimal path needs, in ms: the same figure as the path report's `Hardest ms` for that path. It shows at any speed. A dash means the path needs none, or Hydra Deluxe has no result for the chart. |
 | `FC` | A check mark for a full combo: every note hit. |
 | `Percent` | The percent of notes the player hit. |
 | `Speed` | The playback speed the score was set at. 100% is normal speed. |
