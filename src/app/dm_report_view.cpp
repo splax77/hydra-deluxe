@@ -48,6 +48,34 @@ Column<DmReportRow> figure_column(std::string id, std::string title, std::string
 // pct_h only beside an optimal score.
 bool has_percent(const DmReportRow& r) { return r.pct_h && r.optimal; }
 
+// A value the row may lack, as a spreadsheet number: its number, or nothing
+// where the cell writes a dash.
+template <class T>
+std::optional<double> optional_number(const std::optional<T>& v) {
+    return v ? std::optional<double>{static_cast<double>(*v)} : std::nullopt;
+}
+
+// A whole percent held as a share of one, as Excel percents are: 97 is 0.97.
+std::optional<double> whole_percent_number(int percent) { return percent / 100.0; }
+
+// The Excel form of a "97%" cell, std::to_string's whole percent.
+constexpr const char* kWholePercentFormat = "0%";
+
+// The Excel form of format_percent's text at kPercentDecimals places.
+std::string percent_format() {
+    const int decimals = dm_report::kPercentDecimals;
+    return decimals > 0 ? "0." + std::string(static_cast<size_t>(decimals), '0') + "%" : "0%";
+}
+
+// The Excel form of the Points left text: a score under optimal reads as
+// group_thousands does, and one above it (a negative delta) as "+1,234 over".
+// Excel's second section is for negatives and shows the number without its
+// minus sign.
+constexpr const char* kPointsLeftFormat = "#,##0;\"+\"#,##0\" over\"";
+
+// The Excel form of the Rank text, "#" and then the rank.
+constexpr const char* kRankFormat = "\"#\"0";
+
 }  // namespace
 
 std::vector<Column<DmReportRow>> dm_columns() {
@@ -64,6 +92,10 @@ std::vector<Column<DmReportRow>> dm_columns() {
         Column<DmReportRow> c = figure_column("actual", "Actual","The score the player posted.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.actual)}; };
         c.cell = [](const DmReportRow& r) { return group_thousands(r.actual); };
+        c.number = [](const DmReportRow& r) {
+            return std::optional<double>{static_cast<double>(r.actual)};
+        };
+        c.number_format = report_view::kGroupedNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -75,6 +107,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
         c.cell = [](const DmReportRow& r) {
             return r.optimal ? group_thousands(*r.optimal) : std::string(kDash);
         };
+        c.number = [](const DmReportRow& r) { return optional_number(r.optimal); };
+        c.number_format = report_view::kGroupedNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -89,6 +123,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
             if (r.above_optimal) return "+" + group_thousands(-*r.delta) + " over";
             return group_thousands(*r.delta);
         };
+        c.number = [](const DmReportRow& r) { return optional_number(r.delta); };
+        c.number_format = kPointsLeftFormat;
         c.tone = [](const DmReportRow& r) {
             if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;
             return r.status == dm_report::kStatusAboveOptimal ? Tone::Alert : Tone::Normal;
@@ -109,6 +145,15 @@ std::vector<Column<DmReportRow>> dm_columns() {
             return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)
                                   : std::string(kDash);
         };
+        // pct_h counts steps of percent_steps; one whole is
+        // percent_steps(1, 1, ...) of them, so 9901 of 10000 is 0.9901, which
+        // Excel shows as 99.01%.
+        c.number = [](const DmReportRow& r) -> std::optional<double> {
+            if (!has_percent(r)) return std::nullopt;
+            return static_cast<double>(*r.pct_h) /
+                   static_cast<double>(percent_steps(1, 1, dm_report::kPercentDecimals));
+        };
+        c.number_format = percent_format();
         cols.push_back(std::move(c));
     }
     {
@@ -124,6 +169,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
                                               "The percent of notes the player hit.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.percent)}; };
         c.cell = [](const DmReportRow& r) { return std::to_string(r.percent) + "%"; };
+        c.number = [](const DmReportRow& r) { return whole_percent_number(r.percent); };
+        c.number_format = kWholePercentFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -132,6 +179,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
             "The playback speed the score was set at. __BASE_SPEED__% is normal speed.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.speed)}; };
         c.cell = [](const DmReportRow& r) { return std::to_string(r.speed) + "%"; };
+        c.number = [](const DmReportRow& r) { return whole_percent_number(r.speed); };
+        c.number_format = kWholePercentFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -141,6 +190,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
         c.cell = [](const DmReportRow& r) {
             return r.rank ? "#" + std::to_string(*r.rank) : std::string(kDash);
         };
+        c.number = [](const DmReportRow& r) { return optional_number(r.rank); };
+        c.number_format = kRankFormat;
         cols.push_back(std::move(c));
     }
     {

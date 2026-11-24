@@ -37,8 +37,19 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
         const int64_t v = static_cast<int64_t>(r.*field);
         return grouped ? group_thousands(v) : std::to_string(v);
     };
+    c.number = [field](const ReportRow& r) {
+        return std::optional<double>{static_cast<double>(r.*field)};
+    };
+    c.number_format = grouped ? report_view::kGroupedNumberFormat : report_view::kWholeNumberFormat;
     return c;
 }
+
+// The Excel form of format_ms's text (core/model.h): one decimal, then " ms".
+constexpr const char* kMsNumberFormat = "0.0\" ms\"";
+
+// The Excel form of format_avg_mult's text (app/display_format.h): three
+// decimals.
+constexpr const char* kAvgMultNumberFormat = "0.000";
 
 }  // namespace
 
@@ -95,6 +106,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "means it needs none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.ms); };
+        c.number = [](const ReportRow& r) { return r.ms; };
+        c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -126,6 +139,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "must hit to summon the fill. Negative means slack. A dash means the path has none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.efill); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.efill); };
+        c.number = [](const ReportRow& r) { return r.efill; };
+        c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -139,6 +154,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "(every note at 1x).";
         c.sort_key = [](const ReportRow& r) { return SortKey{r.mult}; };
         c.cell = [](const ReportRow& r) { return format_avg_mult(r.mult); };
+        c.number = [](const ReportRow& r) { return std::optional<double>{r.mult}; };
+        c.number_format = kAvgMultNumberFormat;
         cols.push_back(std::move(c));
     }
     cols.push_back(count_column("sqin", "SqIn",
