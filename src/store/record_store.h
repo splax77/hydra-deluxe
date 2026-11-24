@@ -104,9 +104,9 @@ struct CapQuery {
 };
 
 // The rest of the settings a run happened under: the ms limit, the score
-// range, the fill rule, the early-fill window and the song speed. Two runs of the same chart
-// at the same cap under different lenses are two results, neither
-// overwriting the other.
+// range, the fill rule, the early-fill window and the song speed. Two runs of
+// the same chart at the same cap under different lenses are two results,
+// neither overwriting the other.
 //
 // Canonical form, so equal settings always compare equal: a disabled ms limit
 // stores value 0, because the engine ignores the number when the limit is off

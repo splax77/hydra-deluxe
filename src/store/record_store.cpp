@@ -671,9 +671,8 @@ namespace {
 
 // Throws std::invalid_argument when `profile` is not what `analysis` ran
 // under: its cap, its ms limit, its fill rule, its early-fill window or its
-// song speed. Each
-// mismatch would file the
-// analysis under settings it doesn't belong to. `who` starts the message.
+// song speed. Each mismatch would file the analysis under settings it doesn't
+// belong to. `who` starts the message.
 void check_profile_fits(const Profile& profile, const HydraRecord& record, const char* who) {
     const std::string w = std::string(who) + ": ";
     if (!record.sp_cap) throw std::invalid_argument(w + "record carries no sp_cap");
