@@ -99,9 +99,13 @@ TEST_CASE("report numbers: each path column's number is the row field its text i
     CHECK(number_of(find_column(cols, "sqin"), row) == static_cast<double>(row.sqin));
     CHECK(number_of(find_column(cols, "sqout"), row) == static_cast<double>(row.sqout));
     CHECK(number_of(find_column(cols, "notes"), row) == static_cast<double>(row.notes));
-    CHECK(number_of(find_column(cols, "ms"), row) == *row.ms);
+    // ms 12.25 is an exact binary half of the one decimal the window shows
+    // ("12.2 ms"; printf rounds it to even, Excel would show 12.3), so the
+    // number is the figure the window shows. Avg mult goes through the
+    // window's own rounding, py_round3.
+    CHECK(number_of(find_column(cols, "ms"), row) == 12.2);
     CHECK(number_of(find_column(cols, "efill"), row) == *row.efill);
-    CHECK(number_of(find_column(cols, "mult"), row) == row.mult);
+    CHECK(number_of(find_column(cols, "mult"), row) == py_round3(row.mult));
 
     // The whole-number columns' text is that same number, commas aside.
     for (const char* id : {"score", "acts", "skip", "sqin", "sqout", "notes"}) {

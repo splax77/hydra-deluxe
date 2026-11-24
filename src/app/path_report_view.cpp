@@ -1,6 +1,8 @@
 #include "app/path_report_view.h"
 
-#include "app/display_format.h"  // format_avg_mult, kAverageMultiplierLabel
+#include <cstdlib>
+
+#include "app/display_format.h"  // format_avg_mult, py_round3, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands, format_ms
 #include "core/squeeze_rating.h" // timing_tiers, beyond_tier, none_tier
@@ -19,6 +21,13 @@ namespace {
 // A timing cell: the app's own text (format_ms), or a dash with none.
 std::string ms_cell(const std::optional<double>& ms) {
     return ms ? format_ms(*ms) : std::string(kDash);
+}
+
+// A timing as a spreadsheet number: the figure ms_cell's text shows, so Excel
+// and the window round an exact half the same way (format_ms's, not Excel's).
+std::optional<double> ms_number(const std::optional<double>& ms) {
+    if (!ms) return std::nullopt;
+    return std::strtod(format_ms(*ms).c_str(), nullptr);
 }
 
 // A column of whole numbers read straight from the row, grouped in
@@ -106,7 +115,7 @@ std::vector<Column<ReportRow>> path_columns() {
             "means it needs none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.ms); };
-        c.number = [](const ReportRow& r) { return r.ms; };
+        c.number = [](const ReportRow& r) { return ms_number(r.ms); };
         c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
@@ -139,7 +148,7 @@ std::vector<Column<ReportRow>> path_columns() {
             "must hit to summon the fill. Negative means slack. A dash means the path has none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.efill); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.efill); };
-        c.number = [](const ReportRow& r) { return r.efill; };
+        c.number = [](const ReportRow& r) { return ms_number(r.efill); };
         c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
@@ -154,7 +163,7 @@ std::vector<Column<ReportRow>> path_columns() {
             "(every note at 1x).";
         c.sort_key = [](const ReportRow& r) { return SortKey{r.mult}; };
         c.cell = [](const ReportRow& r) { return format_avg_mult(r.mult); };
-        c.number = [](const ReportRow& r) { return std::optional<double>{r.mult}; };
+        c.number = [](const ReportRow& r) { return std::optional<double>{py_round3(r.mult)}; };
         c.number_format = kAvgMultNumberFormat;
         cols.push_back(std::move(c));
     }
