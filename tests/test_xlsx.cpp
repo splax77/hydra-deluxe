@@ -446,8 +446,8 @@ TEST_CASE("xlsx: a sheet over the row limit is refused, not written") {
         refused = e.kind() == ErrorKind::ReportWrite;
     }
     CHECK(refused);
-    // The default limit is Excel's sheet of 1,048,576 rows (decision 8 of
-    // the export plan, from Excel's specifications).
+    // The default limit is Excel's sheet of 1,048,576 rows, from Excel's
+    // specifications and limits (docs/adr/0033, kExcelMaxRows in xlsx.h).
     CHECK(xlsx::kExcelMaxRows == 1048576u);
 }
 

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "app/display_format.h"  // percent_steps
+#include "app/display_format.h"  // py_round3
 #include "app/dm_report.h"       // DmReportRow, kPercentDecimals, kStatus*
 #include "app/dm_report_view.h"
 #include "app/path_report_view.h"
@@ -149,10 +149,10 @@ TEST_CASE("report numbers: each comparison column's number is the row field its 
     // A whole percent as Excel holds a percent: a share of one.
     CHECK(number_of(find_column(cols, "percent"), row) == row.percent / 100.0);
     CHECK(number_of(find_column(cols, "speed"), row) == row.speed / 100.0);
-    // pct_h counts steps of a percent; a whole is percent_steps(1, 1, ...) of them.
-    CHECK(number_of(find_column(cols, "pct_h"), row) ==
-          static_cast<double>(*row.pct_h) /
-              static_cast<double>(percent_steps(1, 1, dm_report::kPercentDecimals)));
+    // under_optimal_row's pct_h is 9901 hundredths of a percent (198,010 of
+    // 200,000 at kPercentDecimals 2, the cell's "99.01%"), which Excel holds
+    // as the share 0.9901.
+    CHECK(number_of(find_column(cols, "pct_h"), row) == 0.9901);
 
     for (const char* id : {"actual", "optimal", "delta"}) {
         CAPTURE(id);

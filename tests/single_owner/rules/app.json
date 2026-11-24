@@ -733,6 +733,12 @@
       "pattern": "(volume|percent|pct)\\w*\\)*\\s*/\\s*100\\b",
       "anchor": "100",
       "calls_owner": "volume_gain\\(",
+      "exempt": [
+        {
+          "file": "src/app/dm_report_view.cpp",
+          "why": "the comparison's spreadsheet export plays no sound; it turns the Percent and Speed columns' shown whole percent into the share of one an Excel percent cell holds"
+        }
+      ],
       "must_match": [
         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
         "const float gain = percent / 100.0f;"

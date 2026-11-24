@@ -25,6 +25,7 @@
 #include "app/dm_report.h"
 #include "app/report.h"
 #include "app/report_view.h"
+#include "app/xlsx.h"  // Rgb
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
@@ -362,26 +363,18 @@ ImVec4 table_background();
 ImVec4 header_fill();
 ImVec4 header_text();
 
-// A colour as red, green and blue, each 0 to 255.
-struct Rgb {
-    uint8_t r = 0;
-    uint8_t g = 0;
-    uint8_t b = 0;
-    bool operator==(const Rgb& o) const { return r == o.r && g == o.g && b == o.b; }
-    bool operator!=(const Rgb& o) const { return !(*this == o); }
-};
-
-// `c` as red, green and blue, rounded by ImGui's own ColorConvertFloat4ToU32,
-// the way the window's drawing turns it into a pixel. Alpha is dropped.
-Rgb to_rgb(const ImVec4& c);
+// `c` as red, green and blue (app/xlsx.h's Rgb), rounded by ImGui's own
+// ColorConvertFloat4ToU32, the way the window's drawing turns it into a
+// pixel. Alpha is dropped.
+app::xlsx::Rgb to_rgb(const ImVec4& c);
 // `top`, at its own alpha, laid over the solid colour `under`, channel by
 // channel: what the screen shows where a see-through fill covers a surface.
 // `top` is rounded to 0-255, alpha included, as ImGui hands it to the screen.
-Rgb lay_over(const ImVec4& top, Rgb under);
+app::xlsx::Rgb lay_over(const ImVec4& top, app::xlsx::Rgb under);
 // The fill of the table row drawn at `place` (0 for the first row under the
 // header): ImGui's own alternation of TableRowBg and TableRowBgAlt
 // (ImGuiTableFlags_RowBg, set by table_flags), laid over table_background().
-Rgb row_fill(size_t place);
+app::xlsx::Rgb row_fill(size_t place);
 
 // ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
 

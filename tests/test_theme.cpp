@@ -18,6 +18,7 @@
 #include "app/path_report_view.h"  // path_columns
 #include "app/report.h"          // ChipToken, tier_token
 #include "app/report_view.h"     // Column, CellLook, Tone
+#include "app/xlsx.h"            // Rgb
 #include "core/squeeze_rating.h"
 #include "imgui.h"
 #include "ui/report_window.h"    // the table's colours
@@ -106,7 +107,22 @@ ImGuiStyle fresh_dark_style() {
     return style;
 }
 
-void check_same_rgb(const std::string& what, report_frame::Rgb got, report_frame::Rgb want) {
+using hydra::app::xlsx::Rgb;
+
+// Each tier chip beside the colour the fill page's dark scheme gives that
+// tier (html_page.h's kChipRgb*, written 0xRRGGBB).
+std::vector<std::pair<hydra::app::report::ChipToken, uint32_t>> tier_chip_page_colors() {
+    using hydra::app::report::ChipToken;
+    namespace html = hydra::app::html;
+    return {
+        {ChipToken::t0, html::kChipRgbT0}, {ChipToken::t1, html::kChipRgbT1},
+        {ChipToken::t2, html::kChipRgbT2}, {ChipToken::t3, html::kChipRgbT3},
+        {ChipToken::t4, html::kChipRgbT4}, {ChipToken::t5, html::kChipRgbT5},
+        {ChipToken::tn, html::kChipRgbTn},
+    };
+}
+
+void check_same_rgb(const std::string& what, Rgb got, Rgb want) {
     CAPTURE(what);
     CAPTURE(static_cast<int>(got.r));
     CAPTURE(static_cast<int>(got.g));
@@ -241,14 +257,7 @@ TEST_CASE("theme: report chip colours read on the window background") {
 // chip is the theme's dimmed text.
 TEST_CASE("theme: report chip colours are the pages' and the dimmed grey") {
     using hydra::app::report::ChipToken;
-    namespace html = hydra::app::html;
-    const std::pair<ChipToken, uint32_t> page_colors[] = {
-        {ChipToken::t0, html::kChipRgbT0}, {ChipToken::t1, html::kChipRgbT1},
-        {ChipToken::t2, html::kChipRgbT2}, {ChipToken::t3, html::kChipRgbT3},
-        {ChipToken::t4, html::kChipRgbT4}, {ChipToken::t5, html::kChipRgbT5},
-        {ChipToken::tn, html::kChipRgbTn},
-    };
-    for (const auto& [token, rgb] : page_colors) {
+    for (const auto& [token, rgb] : tier_chip_page_colors()) {
         CAPTURE(static_cast<int>(token));
         const ImVec4 chip = chip_color(token);
         CHECK(chip.x == ((rgb >> 16) & 0xffu) / 255.0f);
@@ -473,8 +482,8 @@ TEST_CASE("report table: the background, header and row fills are the window's")
     check_same_color("header fill", report_frame::header_fill(),
                      fresh.Colors[ImGuiCol_TableHeaderBg]);
 
-    const report_frame::Rgb background = report_frame::to_rgb(kWindowBgColor);
-    const report_frame::Rgb stripe =
+    const Rgb background = report_frame::to_rgb(kWindowBgColor);
+    const Rgb stripe =
         report_frame::lay_over(fresh.Colors[ImGuiCol_TableRowBgAlt], background);
     check_same_rgb("place 0", report_frame::row_fill(0), background);
     check_same_rgb("place 1", report_frame::row_fill(1), stripe);
@@ -486,7 +495,7 @@ TEST_CASE("report table: the background, header and row fills are the window's")
 // The mixing helper on colours made up here, none of them Hydra's. Fails if
 // it ignores the top colour's alpha, or rounds a share the wrong way.
 TEST_CASE("report table: lay_over mixes a see-through colour over a solid one") {
-    const report_frame::Rgb under{10, 20, 30};
+    const Rgb under{10, 20, 30};
     check_same_rgb("see-through", report_frame::lay_over(ImVec4(1.0f, 1.0f, 1.0f, 0.0f), under),
                    under);
     const ImVec4 solid(0.2f, 0.4f, 0.6f, 1.0f);
@@ -494,24 +503,16 @@ TEST_CASE("report table: lay_over mixes a see-through colour over a solid one") 
     // White at strength 51 of 255 over black is one fifth of the way up.
     check_same_rgb("one fifth",
                    report_frame::lay_over(ImVec4(1.0f, 1.0f, 1.0f, 51.0f / 255.0f),
-                                          report_frame::Rgb{0, 0, 0}),
-                   report_frame::Rgb{51, 51, 51});
+                                          Rgb{0, 0, 0}),
+                   Rgb{51, 51, 51});
 }
 
 // The converter gives each tier chip the bytes the page holds for it, so a
 // colour turned to 0-255 for a file is the one the window draws.
 TEST_CASE("report table: to_rgb gives the tier chips' own bytes") {
-    using hydra::app::report::ChipToken;
-    namespace html = hydra::app::html;
-    const std::pair<ChipToken, uint32_t> page_colors[] = {
-        {ChipToken::t0, html::kChipRgbT0}, {ChipToken::t1, html::kChipRgbT1},
-        {ChipToken::t2, html::kChipRgbT2}, {ChipToken::t3, html::kChipRgbT3},
-        {ChipToken::t4, html::kChipRgbT4}, {ChipToken::t5, html::kChipRgbT5},
-        {ChipToken::tn, html::kChipRgbTn},
-    };
-    for (const auto& [token, rgb] : page_colors) {
+    for (const auto& [token, rgb] : tier_chip_page_colors()) {
         CAPTURE(static_cast<int>(token));
-        const report_frame::Rgb want{static_cast<uint8_t>((rgb >> 16) & 0xffu),
+        const Rgb want{static_cast<uint8_t>((rgb >> 16) & 0xffu),
                                      static_cast<uint8_t>((rgb >> 8) & 0xffu),
                                      static_cast<uint8_t>(rgb & 0xffu)};
         check_same_rgb("tier chip", report_frame::to_rgb(chip_color(token)), want);
