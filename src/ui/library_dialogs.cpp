@@ -103,6 +103,7 @@ std::string change_phrase(const app::Settings& s, const app::SettingsText& value
     case AnalysisSetting::SpCap: return "SP cap " + values.cap;
     case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
     case AnalysisSetting::EarlyFillWindow: return std::string(kEarlyFillWindowName) + " " + values.early_fill;
+    case AnalysisSetting::SongSpeed: return "Song speed " + values.speed;
     case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
     case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
     }

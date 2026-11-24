@@ -916,13 +916,16 @@ DrumChartFlags midi_drum_chart_flags(const MidiTrack& track, const ChartDrumKeys
 
 class MidiParser {
 public:
-    MidiParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
+    // `speed_percent` is the chart reading's song speed (ChartReading).
+    MidiParser(const core::Rules& rules, FillDeadlineRule fills, int speed_percent)
+        : rules_(rules), fills_rule_(fills), speed_percent_(speed_percent) {}
     Song parse(const MidiFile& mid, bool pro, bool bass2x, Difficulty difficulty,
                const ChartDrumKeys& keys);
 
 private:
     const core::Rules& rules_;
     FillDeadlineRule fills_rule_;
+    int speed_percent_;
 
     MOp optype(const Message& msg, int64_t tick);
     void push_timestamp(int64_t tick);
@@ -1240,6 +1243,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         MOp op = optype(msg, elapsed);
         if (op.phase == MPhase::Time && op.runs()) run(op);
     }
+    // The speed goes in before the timing is built, which reads it.
+    song.set_speed_percent(speed_percent_);
     song.build_timing();
 
     // The coda tick, before the drum pass places fills, because the events
@@ -1562,13 +1567,16 @@ constexpr std::string_view kEventsSection = "Events";
 
 class ChartParser {
 public:
-    ChartParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
+    // `speed_percent` is the chart reading's song speed (ChartReading).
+    ChartParser(const core::Rules& rules, FillDeadlineRule fills, int speed_percent)
+        : rules_(rules), fills_rule_(fills), speed_percent_(speed_percent) {}
     Song parse(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                Difficulty difficulty, const ChartDrumKeys& keys);
 
 private:
     const core::Rules& rules_;
     FillDeadlineRule fills_rule_;
+    int speed_percent_;
 
     void load_sections(const std::vector<uint8_t>& data, char mix_digit,
                        std::string_view drum_section);
@@ -2078,6 +2086,8 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
             }
         }
     }
+    // The speed goes in before the timing is built, which reads it.
+    song.set_speed_percent(speed_percent_);
     song.build_timing();
 
     flag_solo_ = false;
@@ -2154,7 +2164,7 @@ void trim_parsed_song(Song& song) {
 
 Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                     Difficulty difficulty, const ChartDrumKeys& keys, const core::Rules& rules,
-                    FillDeadlineRule fills) {
+                    FillDeadlineRule fills, int speed_percent) {
     // Only the notes MidiParser reads are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
@@ -2164,7 +2174,7 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
         filter.note_off[pitch] = midi_note_is_read(pitch, false, base, kick2x);
     }
     const MidiFile mid = MidiFile::lean(data.data(), data.size(), filter);
-    return MidiParser(rules, fills).parse(mid, pro, bass2x, difficulty, keys);
+    return MidiParser(rules, fills, speed_percent).parse(mid, pro, bass2x, difficulty, keys);
 }
 
 // The Note Shuffle switch, applied once a parser has finished the song: the
@@ -2322,7 +2332,7 @@ Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartDrumKeys& k
                         FillDeadlineRule fills) {
     // The lean file is gone once parse_mid_lean returns.
     Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, keys,
-                               rules, fills);
+                               rules, fills, reading.speed_percent);
     finish_loaded_song(song, reading);
     return song;
 }
@@ -2331,7 +2341,7 @@ Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartDrumKeys&
                           const ChartReading& reading, const core::Rules& rules,
                           FillDeadlineRule fills) {
     // The parser and its sections are gone by the end of this statement.
-    Song song = ChartParser(rules, fills)
+    Song song = ChartParser(rules, fills, reading.speed_percent)
                     .parse(data, reading.prodrums, reading.bass2x, reading.difficulty, keys);
     finish_loaded_song(song, reading);
     return song;
