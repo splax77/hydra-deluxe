@@ -91,7 +91,21 @@ struct Column {
     CellLook look;
     // Empty when every row of the column reads in its look's colour.
     std::function<Tone(const Row&)> tone;
+    // The number this cell stands for in a spreadsheet: the same row field
+    // `cell` writes its text from. Nothing where the row has no value, so the
+    // spreadsheet cell is empty. The function is empty for a text column,
+    // whose spreadsheet cell is `cell`'s text.
+    std::function<std::optional<double>(const Row&)> number;
+    // The Excel number-format code `number` is shown in, so the spreadsheet
+    // reads the way `cell` does. Empty exactly when `number` is.
+    std::string number_format;
 };
+
+// The Excel number-format codes for a whole number, with its thousands
+// grouped as group_thousands (core/model.h) writes them, or plain as
+// std::to_string does.
+inline constexpr const char* kGroupedNumberFormat = "#,##0";
+inline constexpr const char* kWholeNumberFormat = "0";
 
 // A value the row may lack, as a sort key: its number, or an empty key when
 // unset. Every report view's optional columns sort through this.
