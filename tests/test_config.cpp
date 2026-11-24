@@ -457,7 +457,6 @@ TEST_CASE("safe_paths and the Path limit move separately") {
         CAPTURE(limit_on);
         Settings base;
         base.mslimit_enabled = limit_on;
-        base.mslimit_value = 25;
         // Turning Safe paths on leaves the limit's lens columns and the
         // search's limit as they were.
         Settings safe = base;
