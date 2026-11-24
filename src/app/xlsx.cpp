@@ -21,7 +21,7 @@ Cell Cell::empty(const CellStyle& style) {
 
 Cell Cell::of_text(std::string text, const CellStyle& style) {
     Cell c;
-    c.kind = Kind::Text;
+    c.holds = Holds::Text;
     c.text = std::move(text);
     c.style = style;
     return c;
@@ -29,7 +29,7 @@ Cell Cell::of_text(std::string text, const CellStyle& style) {
 
 Cell Cell::of_number(double number, std::string format, const CellStyle& style) {
     Cell c;
-    c.kind = Kind::Number;
+    c.holds = Holds::Number;
     c.number = number;
     c.format = std::move(format);
     c.style = style;
@@ -315,13 +315,13 @@ std::string sheet_xml(const Sheet& sheet, Styles& styles) {
         const std::vector<Cell>& row = sheet.rows[r];
         for (size_t c = 0; c < row.size(); ++c) {
             const Cell& cell = row[c];
-            const bool is_number = cell.kind == Cell::Kind::Number;
+            const bool is_number = cell.holds == Cell::Holds::Number;
             const size_t s = styles.index(cell.style, is_number ? cell.format : std::string());
             x += "<c r=\"" + column_name(c) + row_number + "\" s=\"" + std::to_string(s) + "\"";
-            switch (cell.kind) {
-                case Cell::Kind::Empty: x += "/>"; break;
-                case Cell::Kind::Number: x += "><v>" + number_text(cell.number) + "</v></c>"; break;
-                case Cell::Kind::Text:
+            switch (cell.holds) {
+                case Cell::Holds::Empty: x += "/>"; break;
+                case Cell::Holds::Number: x += "><v>" + number_text(cell.number) + "</v></c>"; break;
+                case Cell::Holds::Text:
                     // An inline string: the text sits in the cell and is
                     // marked as text, so Excel never evaluates it.
                     x += " t=\"inlineStr\"><is><t xml:space=\"preserve\">";
@@ -349,7 +349,7 @@ void check_fits(const Sheet& sheet, size_t max_rows) {
         if (row.size() > kExcelMaxColumns)
             refuse("a row of " + std::to_string(row.size()) + " cells, more columns than a sheet holds");
         for (const Cell& cell : row)
-            if (cell.kind == Cell::Kind::Number && !std::isfinite(cell.number))
+            if (cell.holds == Cell::Holds::Number && !std::isfinite(cell.number))
                 refuse("a number cell that is not a finite number");
     }
 }

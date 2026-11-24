@@ -59,7 +59,7 @@ xlsx::Sheet sheet_of(std::vector<std::vector<xlsx::Cell>> rows, std::vector<doub
 
 // ---- reading the zip back -----------------------------------------------------
 
-bool has_part(const std::string& bytes, const char* name) {
+bool zip_holds(const std::string& bytes, const char* name) {
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_mem(&zip, bytes.data(), bytes.size(), 0)) return false;
     const bool found = mz_zip_reader_locate_file(&zip, name, nullptr, 0) >= 0;
@@ -203,7 +203,7 @@ struct Resolved {
     std::string format_code;  // empty for a built-in format
 };
 
-Resolved resolve(const std::string& styles, const std::string& index) {
+Resolved style_of(const std::string& styles, const std::string& index) {
     REQUIRE_FALSE(index.empty());
     const std::vector<std::string> xfs = children(styles, "cellXfs", "xf");
     const size_t i = std::stoul(index);
@@ -236,7 +236,7 @@ TEST_CASE("xlsx: the zip holds every part a workbook needs") {
     for (const char* name : {"[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels",
                              "xl/worksheets/sheet1.xml", "xl/styles.xml"}) {
         CAPTURE(name);
-        REQUIRE(has_part(bytes, name));
+        REQUIRE(zip_holds(bytes, name));
         CHECK(well_formed(part(bytes, name)));
     }
     const std::string types = part(bytes, "[Content_Types].xml");
@@ -292,18 +292,18 @@ TEST_CASE("xlsx: a number cell is a number in its format") {
     const std::string a1 = cell_at(sheet, "A1");
     CHECK_FALSE(has_attr(a1, "t"));  // no type: a number
     CHECK(a1.find("<v>3208</v>") != std::string::npos);
-    CHECK(resolve(styles, attr(a1, "s")).format_code == "#,##0");
+    CHECK(style_of(styles, attr(a1, "s")).format_code == "#,##0");
 
     const std::string b1 = cell_at(sheet, "B1");
     const size_t v = b1.find("<v>");
     REQUIRE(v != std::string::npos);
     CHECK(std::stod(b1.substr(v + 3)) == 0.9901);
-    CHECK(resolve(styles, attr(b1, "s")).format_code == "0.00%");
+    CHECK(style_of(styles, attr(b1, "s")).format_code == "0.00%");
 }
 
 TEST_CASE("xlsx: a number cell keeps both its number format and its colours") {
     const std::string bytes = xlsx::write_xlsx(sheet_of({{xlsx::Cell::of_number(12, "#,##0", kPlainB)}}));
-    const Resolved r = resolve(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
+    const Resolved r = style_of(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
     CHECK(r.format_code == "#,##0");
     check_colours(r, kFillB, kFontB);
 }
@@ -315,7 +315,7 @@ TEST_CASE("xlsx: an empty cell is written with its style and no value") {
     CHECK(cell.find("<v>") == std::string::npos);
     CHECK(cell.find("<is>") == std::string::npos);
     CHECK_FALSE(has_attr(cell, "t"));
-    check_colours(resolve(part(bytes, "xl/styles.xml"), attr(cell, "s")), kFillB, kFontB);
+    check_colours(style_of(part(bytes, "xl/styles.xml"), attr(cell, "s")), kFillB, kFontB);
 }
 
 TEST_CASE("xlsx: cells are placed by column letter past Z") {
@@ -359,7 +359,7 @@ TEST_CASE("xlsx: each column width is the one given") {
 TEST_CASE("xlsx: a cell's fill, font colour and border colour come back in its style") {
     const std::string bytes = xlsx::write_xlsx(sheet_of({{xlsx::Cell::of_text("Timing", kBorderedA)}}));
     const Resolved r =
-        resolve(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
+        style_of(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
     check_colours(r, kFillA, kFontA);
     for (const char* side : {"left", "right", "top", "bottom"}) {
         CAPTURE(side);
@@ -371,7 +371,7 @@ TEST_CASE("xlsx: a cell's fill, font colour and border colour come back in its s
 TEST_CASE("xlsx: a cell given no border comes back with none") {
     const std::string bytes = xlsx::write_xlsx(sheet_of({{xlsx::Cell::of_text("Song", kPlainA)}}));
     const Resolved r =
-        resolve(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
+        style_of(part(bytes, "xl/styles.xml"), attr(cell_at(part(bytes, "xl/worksheets/sheet1.xml"), "A1"), "s"));
     check_colours(r, kFillA, kFontA);
     CHECK(r.border.find("style=") == std::string::npos);
     CHECK(r.border.find("<color") == std::string::npos);
@@ -389,7 +389,7 @@ TEST_CASE("xlsx: the sheet's default style covers every column to Excel's last")
         CAPTURE(col);
         CHECK(std::stoul(attr(col, "min")) == next);
         next = std::stoul(attr(col, "max")) + 1;
-        check_colours(resolve(styles, attr(col, "style")), kSheetFill, kSheetFont);
+        check_colours(style_of(styles, attr(col, "style")), kSheetFill, kSheetFont);
     }
     CHECK(next - 1 == 16384ul);
 }

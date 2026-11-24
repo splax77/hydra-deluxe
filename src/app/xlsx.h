@@ -47,9 +47,9 @@ struct CellStyle {
 // One cell: empty, text, or a number shown in an Excel number format. An
 // empty cell is still written with its style, so it keeps its row's fill.
 struct Cell {
-    enum class Kind { Empty, Text, Number };
-    Kind kind = Kind::Empty;
-    std::string text;    // Text: UTF-8, stored exactly as given
+    enum class Holds { Empty, Text, Number };
+    Holds holds = Holds::Empty;
+    std::string text;    // Text: UTF-8, stored as given less what XML cannot hold
     double number = 0;   // Number: the value Excel sorts and sums
     std::string format;  // Number: an Excel number format code; empty is General
     CellStyle style;
