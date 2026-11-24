@@ -36,12 +36,14 @@
 #include "app/html_page.h"  // kNothingMatches, path_report_search_hint
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
-#include "app/user_messages.h"  // the report windows' sentences
+#include "app/user_messages.h"  // the report windows' sentences, plain_error
+#include "app/xlsx.h"           // Sheet, Rgb
 #include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
 #include "parse/song.h"  // NoNotesError
 #include "store/record_store.h"  // failure_record
+#include "ui/app_state.h"     // kExportSavedPrefix
 #include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
 #include "ui/theme.h"  // chip_color
@@ -87,6 +89,9 @@ struct Fixture {
     int retries = 0;
     int compares = 0;
     int closes = 0;
+    // Every sheet "Export to Excel..." handed over, in click order. The
+    // recording callback stands in for the app's, so no save dialog opens.
+    std::vector<hydra::app::xlsx::Sheet> sheets;
     std::string text;  // what the windows drew last frame
     // report-window-chip-outline: when set, each frame draws one chip per
     // token (note_chips) and keeps what each drew.
@@ -107,6 +112,9 @@ hydra::ui::ReportCallbacks recording_callbacks(std::vector<size_t>& clicks) {
     cb.try_again = [] { ++fixture().retries; };
     cb.compare_another = [] { ++fixture().compares; };
     cb.close = [] { ++fixture().closes; };
+    cb.export_excel = [](const hydra::app::xlsx::Sheet& sheet) {
+        fixture().sheets.push_back(sheet);
+    };
     return cb;
 }
 
@@ -642,6 +650,181 @@ void test_both(ImGuiTestContext* ctx) {
     IM_CHECK(dm_window() != nullptr);
     IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
     IM_CHECK(shows(hydra::app::kComparisonBuilding));
+}
+
+// ---- Export to Excel ----------------------------------------------------------
+
+// The index of the column `id` among the path report's columns.
+std::optional<size_t> path_column(const std::string& id) {
+    const auto columns = hydra::app::path_report_view::path_columns();
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (columns[c].id == id) return c;
+    return std::nullopt;
+}
+
+// "Export to Excel..." shows only on a finished report with rows, beside
+// Refresh. The rows are the real report a batch of the corpus's first chart
+// built.
+void test_export_button(ImGuiTestContext* ctx) {
+    namespace frame = hydra::ui::report_frame;
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    ctx->SetRef(path_window());
+    IM_CHECK(ctx->ItemExists(frame::kExportButton));
+    IM_CHECK(ctx->ItemExists("Refresh"));
+    // Three frames after each change: the test engine still answers an item
+    // drawn up to two frames ago (ImGuiTestEngine_FindItemInfo), so after two
+    // the button the Ready frame drew would still be found.
+    for (const ReportBuild state :
+         {ReportBuild::Building, ReportBuild::Cancelled, ReportBuild::Failed}) {
+        f.path.state = state;
+        ctx->Yield(3);
+        IM_CHECK(!ctx->ItemExists(frame::kExportButton));
+    }
+    f.path.state = ReportBuild::Ready;
+    ctx->Yield(2);
+    IM_CHECK(ctx->ItemExists(frame::kExportButton));
+    // Ready with no rows: the same report with its rows taken out.
+    GeneratedReport no_rows = *f.path.result;
+    no_rows.paths.clear();
+    f.path.result = std::make_shared<GeneratedReport>(std::move(no_rows));
+    ctx->Yield(3);
+    IM_CHECK(ctx->ItemExists("Refresh"));
+    IM_CHECK(!ctx->ItemExists(frame::kExportButton));
+    IM_CHECK(f.sheets.empty());
+}
+
+// A click hands over the table as the window shows it: its rows are the
+// window's own, read back through their clicks, and each colour is the one
+// its owner gives the window. The rows are the real report a batch of the
+// whole corpus built, so the table has rows from more than one chart.
+void test_export_sheet(ImGuiTestContext* ctx) {
+    namespace frame = hydra::ui::report_frame;
+    using hydra::app::report::ReportRow;
+    using hydra::app::xlsx::Rgb;
+    using hydra::app::xlsx::Sheet;
+    using hydra::ui::chip_color;
+    using hydra::ui::kDefaultTextColor;
+    using hydra::ui::kDimTextColor;
+    using hydra::ui::kWindowBgColor;
+    if (!real_path_fixture(ctx, batch_whole_corpus)) return;
+    Fixture& f = fixture();
+    const std::vector<ReportRow>& rows = f.path.result->paths;
+    const auto columns = hydra::app::path_report_view::path_columns();
+    const std::optional<size_t> song = path_column("song");
+    const std::optional<size_t> artist = path_column("artist");
+    const std::optional<size_t> timing = path_column("tier");
+    IM_CHECK_RETV(song && artist && timing, );
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK_RETV(rows.size() >= 2, );
+
+    // Nothing selected yet.
+    ctx->ItemClick(frame::kExportButton);
+    IM_CHECK_RETV(f.sheets.size() == 1, );
+    const Sheet plain = f.sheets.back();
+    IM_CHECK_RETV(plain.rows.size() == rows.size() + 1, );  // the header, then every row
+    IM_CHECK(plain.name == "Path Index");  // the window's heading
+
+    // The first two rows as the window drew them, read back through their
+    // clicks, which also leaves the second one selected.
+    std::vector<ReportRow> drawn;
+    for (const char* label : {"**/1", "**/2"}) {
+        const size_t clicks = f.path_clicks.size();
+        ctx->ItemClick(label);
+        IM_CHECK_RETV(f.path_clicks.size() == clicks + 1, );
+        const ReportRow* r = last_clicked_row();
+        IM_CHECK_RETV(r != nullptr, );
+        drawn.push_back(*r);
+    }
+    for (size_t k = 0; k < drawn.size(); ++k)
+        for (size_t c = 0; c < columns.size(); ++c)
+            if (!columns[c].number) IM_CHECK(plain.rows[k + 1][c].text == columns[c].cell(drawn[k]));
+
+    // The sheet's surfaces and the header.
+    IM_CHECK(plain.default_style.fill == frame::to_rgb(kWindowBgColor));
+    IM_CHECK(plain.default_style.font == frame::to_rgb(kDefaultTextColor));
+    for (const hydra::app::xlsx::Cell& cell : plain.rows[0])
+        IM_CHECK(cell.style.fill == frame::to_rgb(frame::header_fill()));
+    // The stripes, by place: the first row on the background, the second on
+    // the window's fill for the second place.
+    IM_CHECK(plain.rows[1][*song].style.fill == frame::to_rgb(kWindowBgColor));
+    IM_CHECK(plain.rows[2][*song].style.fill == frame::row_fill(1));
+    // Song reads plain, Artist dim, neither boxed; Timing is its row's chip.
+    for (size_t k = 0; k < drawn.size(); ++k) {
+        const std::vector<hydra::app::xlsx::Cell>& cells = plain.rows[k + 1];
+        IM_CHECK(cells[*song].style.font == frame::to_rgb(kDefaultTextColor));
+        IM_CHECK(!cells[*song].style.border.has_value());
+        IM_CHECK(cells[*artist].style.font == frame::to_rgb(kDimTextColor));
+        const Rgb chip = frame::to_rgb(chip_color(hydra::app::report::tier_token(drawn[k].tok)));
+        IM_CHECK(cells[*timing].style.font == chip);
+        IM_CHECK(cells[*timing].style.border == std::optional<Rgb>(chip));
+    }
+
+    // With a row selected, every cell keeps the style it had with none.
+    ctx->ItemClick(frame::kExportButton);
+    IM_CHECK_RETV(f.sheets.size() == 2, );
+    const Sheet& selected = f.sheets.back();
+    IM_CHECK_RETV(selected.rows.size() == plain.rows.size(), );
+    for (size_t r = 0; r < plain.rows.size(); ++r)
+        for (size_t c = 0; c < plain.rows[r].size(); ++c)
+            IM_CHECK(selected.rows[r][c].style == plain.rows[r][c].style);
+
+    // After a search, the sheet holds the rows the search kept, as many as
+    // the count line says and first the row drawn first. The window's search
+    // takes plain words, not quoted phrases (report_view::search_words), so
+    // it gets one row's song as typed.
+    const std::string search = rows.front().song;
+    ctx->ItemInputValue("##search", search.c_str());
+    ctx->Yield(2);
+    ctx->ItemClick(frame::kExportButton);
+    IM_CHECK_RETV(f.sheets.size() == 3, );
+    const Sheet& searched = f.sheets.back();
+    const size_t shown = searched.rows.size() - 1;
+    IM_CHECK_GT(shown, size_t{0});
+    IM_CHECK_LT(shown, rows.size());
+    IM_CHECK(shows(fixture_path_count(shown)));
+    const size_t clicks = f.path_clicks.size();
+    ctx->ItemClick("**/1");
+    IM_CHECK_RETV(f.path_clicks.size() == clicks + 1, );
+    const ReportRow* first = last_clicked_row();
+    IM_CHECK_RETV(first != nullptr, );
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (!columns[c].number) IM_CHECK(searched.rows[1][c].text == columns[c].cell(*first));
+}
+
+// The export line under the subtitle shows the input's note as its exact
+// words, a failed save's as well, and nothing without one. The rows are the
+// real report a batch of the corpus's first chart built.
+void test_export_note(ImGuiTestContext* ctx) {
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(!shows(hydra::ui::kExportSavedPrefix));
+
+    const std::string saved =
+        std::string(hydra::ui::kExportSavedPrefix) + "C:\\Exports\\Path report 2026-11-23.xlsx";
+    f.path.note = saved;
+    ctx->Yield(2);
+    IM_CHECK(shows(saved));
+
+    const std::string failed =
+        hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::ReportWrite, ""));
+    f.path.note = failed;
+    f.path.note_problem = true;
+    ctx->Yield(2);
+    IM_CHECK(shows(failed));
+    IM_CHECK(!shows(saved));
+
+    f.path.note.clear();
+    f.path.note_problem = false;
+    ctx->Yield(2);
+    IM_CHECK(!shows(failed));
 }
 
 // ---- Column widths and the window's size (one column-width rule) ----------
@@ -1730,6 +1913,9 @@ void register_report_window_tests(Harness& h) {
         {"report-window-close-button", test_close_button},
         {"report-window-hidden-new-result", test_hidden_new_result},
         {"report-windows-both", test_both},
+        {"report-window-export-button", test_export_button},
+        {"report-window-export-sheet", test_export_sheet},
+        {"report-window-export-note", test_export_note},
         {"report-window-chip-label", test_chip_label},
         {"report-window-chip-outline", test_chip_outline},
         {"report-window-column-widths", test_column_widths},

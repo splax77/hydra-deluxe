@@ -1,6 +1,8 @@
 #include "app/path_report_view.h"
 
-#include "app/display_format.h"  // format_avg_mult, kAverageMultiplierLabel
+#include <cstdlib>
+
+#include "app/display_format.h"  // format_avg_mult, py_round3, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands, format_ms
 #include "core/squeeze_rating.h" // timing_tiers, beyond_tier, none_tier
@@ -21,6 +23,13 @@ std::string ms_cell(const std::optional<double>& ms) {
     return ms ? format_ms(*ms) : std::string(kDash);
 }
 
+// A timing as a spreadsheet number: the figure ms_cell's text shows, so Excel
+// and the window round an exact half the same way (format_ms's, not Excel's).
+std::optional<double> ms_number(const std::optional<double>& ms) {
+    if (!ms) return std::nullopt;
+    return std::strtod(format_ms(*ms).c_str(), nullptr);
+}
+
 // A column of whole numbers read straight from the row, grouped in
 // thousands where the page grouped them.
 template <class T>
@@ -37,8 +46,19 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
         const int64_t v = static_cast<int64_t>(r.*field);
         return grouped ? group_thousands(v) : std::to_string(v);
     };
+    c.number = [field](const ReportRow& r) {
+        return std::optional<double>{static_cast<double>(r.*field)};
+    };
+    c.number_format = grouped ? report_view::kGroupedNumberFormat : report_view::kWholeNumberFormat;
     return c;
 }
+
+// The Excel form of format_ms's text (core/model.h): one decimal, then " ms".
+constexpr const char* kMsNumberFormat = "0.0\" ms\"";
+
+// The Excel form of format_avg_mult's text (app/display_format.h): three
+// decimals.
+constexpr const char* kAvgMultNumberFormat = "0.000";
 
 }  // namespace
 
@@ -95,6 +115,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "means it needs none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.ms); };
+        c.number = [](const ReportRow& r) { return ms_number(r.ms); };
+        c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -127,6 +149,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "must hit to summon the fill. Negative means slack. A dash means the path has none.";
         c.sort_key = [](const ReportRow& r) { return optional_key(r.efill); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.efill); };
+        c.number = [](const ReportRow& r) { return ms_number(r.efill); };
+        c.number_format = kMsNumberFormat;
         cols.push_back(std::move(c));
     }
     {
@@ -140,6 +164,8 @@ std::vector<Column<ReportRow>> path_columns() {
             "(every note at 1x).";
         c.sort_key = [](const ReportRow& r) { return SortKey{r.mult}; };
         c.cell = [](const ReportRow& r) { return format_avg_mult(r.mult); };
+        c.number = [](const ReportRow& r) { return std::optional<double>{py_round3(r.mult)}; };
+        c.number_format = kAvgMultNumberFormat;
         cols.push_back(std::move(c));
     }
     cols.push_back(count_column("sqin", "SqIn",

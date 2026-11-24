@@ -384,6 +384,7 @@ add_library(hydra_app STATIC
     src/app/html_page.cpp
     src/app/dynamics_breakdown.cpp
     src/app/display_format.cpp
+    src/app/export_name.cpp
     src/app/library_query.cpp
     src/app/launch.cpp
     src/app/path_costs.cpp
@@ -398,10 +399,12 @@ add_library(hydra_app STATIC
     src/app/report_files.cpp
     src/app/saved_figure_fill.cpp
     src/app/user_messages.cpp
+    src/app/xlsx.cpp
     src/app/update_verify.cpp
     src/app/ini_errors.h
     src/app/job_base.h
     src/app/preview_clock.h
+    src/app/report_export.h
     src/app/time_left.h
     src/app/update_key.h
     src/app/work_pool.h

@@ -3,6 +3,7 @@
 // tiles (path_tiles) and its Timing and Optimal paths only controls.
 
 #include <algorithm>
+#include <ctime>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -12,6 +13,7 @@
 
 #include "app/analysis.h"        // kBatchPreparingText
 #include "app/display_format.h"  // kFactSeparator
+#include "app/export_name.h"     // local_date, path_report_export_name
 #include "app/html_page.h"       // path_report_search_hint
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
@@ -41,6 +43,9 @@ using app::report::GeneratedReport;
 using app::report::ReportRow;
 using app::report_view::TableView;
 namespace view_rules = app::path_report_view;
+
+// The heading's words after "Hydra", which also name the exported sheet.
+constexpr const char* kHeading = "Path Index";
 
 // The controls' choices, handed to the view.
 void apply_filters(PathWindow& w) {
@@ -169,13 +174,17 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         }
         return;
     }
-    report_frame::RowLook<ReportRow> look;
-    look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
-    report_frame::table("##pathtable", w.memory, view, w.widths, look, input.callbacks,
+    report_frame::table("##pathtable", w.memory, view, w.widths, path_row_look(), input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }
 
 }  // namespace
+
+report_frame::RowLook<ReportRow> path_row_look() {
+    report_frame::RowLook<ReportRow> look;
+    look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
+    return look;
+}
 
 void draw_path_report_window(bool* open, const PathReportInput& input, PathWindow& w) {
     if (!*open) {
@@ -191,7 +200,9 @@ void draw_path_report_window(bool* open, const PathReportInput& input, PathWindo
 
     report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
-    frame.heading = "Path Index";
+    frame.heading = kHeading;
+    frame.export_excel =
+        report_frame::export_action(w.view.get(), path_row_look(), kHeading, input.callbacks);
     frame.building_subtitle = app::kPathReportBuilding;
     if (input.batch) {
         // The batch the build waits on: the strip's words while it prepares,
@@ -255,6 +266,13 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.try_again = [&app] { app.request_path_report(); };
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
     in.callbacks.analyze = [&app] { app.start_path_report_batch(); };
+    // Called from the window's header, so the window being drawn is the
+    // report window, which the save dialog sits over.
+    in.callbacks.export_excel = [&app](const app::xlsx::Sheet& sheet) {
+        app.export_report(sheet, app::path_report_export_name(app::local_date(std::time(nullptr))),
+                          ImGui::GetWindowViewport()->PlatformHandleRaw,
+                          app.path_report.export_note);
+    };
     // The window clears window_open itself through its `open` flag; the
     // close then goes through its one owner, which ends a question the
     // window was asking.

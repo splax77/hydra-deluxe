@@ -24,7 +24,9 @@
 
 #include "app/dm_report.h"
 #include "app/report.h"
+#include "app/report_export.h"  // build_sheet, SheetLook
 #include "app/report_view.h"
+#include "app/xlsx.h"  // Rgb, Sheet
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
@@ -50,6 +52,9 @@ struct ReportCallbacks {
     // The comparison's "Compare another player..." (both its header and its
     // failed state).
     std::function<void()> compare_another;
+    // "Export to Excel...": the table as the window shows it, as a sheet
+    // (app/report_export.h), for the caller to save.
+    std::function<void(const app::xlsx::Sheet& sheet)> export_excel;
     // The window was closed: its title bar's X, its Close button, Esc or
     // Ctrl+W.
     std::function<void()> close;
@@ -98,6 +103,11 @@ struct ReportWindowInput {
     // The comparison's player, which the title names even while that
     // player's scores are still fetching. Unused by the path report.
     std::string player;
+    // The line under the subtitle about the last Excel export
+    // (ReportSlot::export_note, ui/app_state.h): its words, empty for no
+    // line, and whether they say the save failed.
+    std::string note;
+    bool note_problem = false;
     ReportCallbacks callbacks;
 };
 
@@ -138,6 +148,8 @@ ReportWindowInput<Result> input_from_slot(const Slot<Result>& slot, ReportBuild 
     in.batch_finished = slot.batch_finished;
     in.failure_message = slot.message;
     in.failure_error = slot.error;
+    in.note = slot.export_note.text;
+    in.note_problem = slot.export_note.problem;
     return in;
 }
 
@@ -184,6 +196,13 @@ struct Frame {
     std::string footer;
     // Whether the window offers "Compare another player...".
     bool compare_another = false;
+    // The click on "Export to Excel...", which the header offers beside
+    // Refresh only when this is set (export_action). A window sets it only
+    // while it holds a view of its rows.
+    std::function<void()> export_excel;
+    // The line under the subtitle, as the input gives it (empty: none).
+    std::string note;
+    bool note_problem = false;
     const ReportCallbacks* callbacks = nullptr;
 };
 
@@ -198,6 +217,8 @@ Frame frame_from(const ReportWindowInput<Result>& input) {
     f.batch_finished = input.batch_finished;
     f.failure_message = input.failure_message;
     f.failure_error = input.failure_error;
+    f.note = input.note;
+    f.note_problem = input.note_problem;
     f.callbacks = &input.callbacks;
     if (input.result) {
         f.subtitle = input.result->subtitle;
@@ -343,6 +364,38 @@ void cell(const std::string& text, const app::report_view::CellLook& look,
           app::report_view::Tone tone, FittedTextCache& fits, size_t row, size_t column);
 void chip(const std::string& text, app::report::ChipToken token);
 
+// ---- The colours the table is drawn in ---------------------------------------
+// The window draws from these, and a copy of the table outside the window
+// (the Excel export) asks the same ones. Each reads ImGui's live style, so
+// call them inside an ImGui context that apply_theme has set up.
+
+// The colour a plain (not chip) cell's words take, from its column's look and
+// its row's tone. cell() draws in it.
+ImVec4 cell_color(const app::report_view::CellLook& look, app::report_view::Tone tone);
+
+// The window's text colour (ImGuiCol_Text): a normal cell's words.
+ImVec4 window_text();
+// What the table sits on: the fill of the scrolling child its rows are
+// drawn in (ImGuiCol_ChildBg).
+ImVec4 table_background();
+// The header row's fill (ImGuiCol_TableHeaderBg) and its words' colour,
+// as draw_table_headers (ui/column_widths.h) draws them.
+ImVec4 header_fill();
+ImVec4 header_text();
+
+// `c` as red, green and blue (app/xlsx.h's Rgb), rounded by ImGui's own
+// ColorConvertFloat4ToU32, the way the window's drawing turns it into a
+// pixel. Alpha is dropped.
+app::xlsx::Rgb to_rgb(const ImVec4& c);
+// `top`, at its own alpha, laid over the solid colour `under`, channel by
+// channel: what the screen shows where a see-through fill covers a surface.
+// `top` is rounded to 0-255, alpha included, as ImGui hands it to the screen.
+app::xlsx::Rgb lay_over(const ImVec4& top, app::xlsx::Rgb under);
+// The fill of the table row drawn at `place` (0 for the first row under the
+// header): ImGui's own alternation of TableRowBg and TableRowBgAlt
+// (ImGuiTableFlags_RowBg, set by table_flags), laid over table_background().
+app::xlsx::Rgb row_fill(size_t place);
+
 // ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
 
 // The "#" column's text for the row drawn `k`th (from 0).
@@ -393,6 +446,75 @@ struct RowLook {
     const char* unclickable_hint = "";
 };
 
+// How one table cell is drawn: as a chip, or as plain text in its tone.
+struct CellPaint {
+    // Set: the cell is a chip in this token, drawn by chip(); its words and
+    // its outline are both `color`.
+    std::optional<app::report::ChipToken> chip;
+    // A plain cell's tone, which cell() draws it in. Normal for a chip.
+    app::report_view::Tone tone = app::report_view::Tone::Normal;
+    // The colour the cell's words take.
+    ImVec4 color;
+};
+
+// Whether `row`'s cell in `column` is a chip, and the colour it reads in. A
+// cell is a chip when its column is marked as one and the window gave a chip
+// rule (`look.chip`); otherwise it reads in cell_color of its column's look
+// and the row's tone. The table draws from this.
+template <class Row>
+CellPaint cell_paint(const app::report_view::Column<Row>& column, const Row& row,
+                     const RowLook<Row>& look) {
+    CellPaint paint;
+    if (column.look.chip && look.chip) {
+        paint.chip = look.chip(row);
+        paint.color = chip_color(*paint.chip);
+        return paint;
+    }
+    paint.tone = column.tone ? column.tone(row) : app::report_view::Tone::Normal;
+    paint.color = cell_color(column.look, paint.tone);
+    return paint;
+}
+
+// The colours the Excel export copies the table in: the window's own, asked
+// from the functions the table draws with, with `look` the window's row look.
+// A chip's outline becomes its cell's border. The answers read ImGui's live
+// style, so build the sheet inside the frame that asks.
+template <class Row>
+app::report_export::SheetLook<Row> sheet_look(const RowLook<Row>& look) {
+    app::report_export::SheetLook<Row> sheet;
+    sheet.background = to_rgb(table_background());
+    sheet.text = to_rgb(window_text());
+    sheet.header_fill = to_rgb(header_fill());
+    sheet.header_text = to_rgb(header_text());
+    sheet.row_fill = [](size_t place) { return row_fill(place); };
+    sheet.ink = [look](const app::report_view::Column<Row>& column, const Row& row) {
+        const CellPaint paint = cell_paint(column, row, look);
+        app::report_export::CellInk ink;
+        ink.font = to_rgb(paint.color);
+        if (paint.chip) ink.border = ink.font;
+        return ink;
+    };
+    return sheet;
+}
+
+// The header's "Export to Excel..." button.
+inline constexpr const char* kExportButton = "Export to Excel...";
+
+// A window's Frame::export_excel: at the click, `view` as it then stands
+// becomes a sheet named `sheet_name`, in sheet_look(look), handed to
+// callbacks.export_excel. Empty, so no button, when the window holds no view.
+template <class Row>
+std::function<void()> export_action(const app::report_view::TableView<Row>* view,
+                                    RowLook<Row> look, std::string sheet_name,
+                                    const ReportCallbacks& callbacks) {
+    if (!view) return {};
+    return [view, look = std::move(look), sheet_name = std::move(sheet_name), &callbacks] {
+        if (callbacks.export_excel)
+            callbacks.export_excel(
+                app::report_export::build_sheet(*view, sheet_look(look), sheet_name));
+    };
+}
+
 // The table: the "#" column, then the view's columns, its rows in the view's
 // order, each column as wide as the width rule (ui/column_widths.h) says.
 // `widths` is the view's measure, kept beside it by the window; it is taken
@@ -405,7 +527,6 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
     using app::report_view::Column;
     using app::report_view::SortDir;
     using app::report_view::SortSpec;
-    using app::report_view::Tone;
     const std::vector<Column<Row>>& columns = view.columns();
     const std::vector<Row>& rows = view.rows();
     const std::vector<size_t>& shown = view.visible();
@@ -533,11 +654,11 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
                 if (!ImGui::TableSetColumnIndex(static_cast<int>(c) + 1)) continue;
                 const Column<Row>& col = columns[c];
                 const std::string text = col.cell(row);
-                if (col.look.chip && look.chip)
-                    chip(text, look.chip(row));
+                const CellPaint paint = cell_paint(col, row, look);
+                if (paint.chip)
+                    chip(text, *paint.chip);
                 else
-                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, memory.fitted,
-                         index, c);
+                    cell(text, col.look, paint.tone, memory.fitted, index, c);
             }
             ImGui::PopID();
         }
@@ -546,6 +667,12 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
 }
 
 }  // namespace report_frame
+
+// Each window's row look: the one chip rule (and, for the comparison, which
+// rows can be clicked) that its table draws with and its Excel export copies.
+// Defined in path_report_window.cpp and dm_report_window.cpp.
+report_frame::RowLook<app::report::ReportRow> path_row_look();
+report_frame::RowLook<app::dm_report::DmReportRow> dm_row_look();
 
 }  // namespace hydra::ui
 

@@ -39,6 +39,10 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 
+namespace hydra::app::xlsx {
+struct Sheet;
+}
+
 namespace hydra::ui {
 
 class PreviewController;
@@ -199,6 +203,20 @@ struct ViewedSong {
     bool ready() const { return state == State::Ready && record.has_value(); }
 };
 
+// What a report window's line under its subtitle says about its last Excel
+// export: AppState::export_report and save_report_export set it. Empty text
+// draws no line.
+struct ExportNote {
+    std::string text;
+    bool problem = false;  // the save failed: drawn in the warning colour
+};
+
+// The export line's own words. A failed write reads plain_error's sentence
+// instead (app/user_messages.h).
+inline constexpr const char* kExportSavedPrefix = "Saved to ";
+inline constexpr const char* kExportDialogFailedText =
+    "The file dialog didn't open, so no file was saved.";
+
 // One report as the app holds it (D103): the last good result, kept in memory
 // so a window opens at once, when it was built, whether it is out of date,
 // whether its window is open, and how the latest build ended. A failed or
@@ -228,6 +246,9 @@ struct ReportSlot {
     // the user left; a result from Refresh or a batch starts them over. The
     // path report only; AppState::collect_path_report sets it.
     bool built_on_open = false;
+    // The window's line about its last Excel export. It stays until the next
+    // export, a new result (land_report) or the window closing.
+    ExportNote export_note;
 
     // A build stopped by Cancel. The outcome reads Cancelled, and an
     // out-of-date event that landed during the stopped build is dropped with
@@ -664,6 +685,20 @@ public:
     // The last player picked, whom the comparison window's title names even
     // while that player's scores still fetch.
     const std::string& dm_player_name() const { return dm_player_name_; }
+
+    // A report window's "Export to Excel...": the system's save dialog over
+    // `owner` (the report window's OS window, an HWND), its name box holding
+    // `file_name` and opening in the folder last saved to
+    // (Settings::export_folder), then save_report_export on the file picked.
+    // A cancel changes nothing; a dialog that never opened says so in `note`.
+    void export_report(const app::xlsx::Sheet& sheet, const std::string& file_name, void* owner,
+                       ExportNote& note);
+    // Saves `sheet` at `file` (UTF-8) through report_export::write_sheet and
+    // says what became of it in `note`: kExportSavedPrefix and the file,
+    // with the file's folder kept in Settings::export_folder, or plain_error's
+    // sentence marked as a problem.
+    void save_report_export(const app::xlsx::Sheet& sheet, const std::string& file,
+                            ExportNote& note);
 
     // The confirm's "Also re-analyze charts that already have a result" box.
     bool batch_redo = false;

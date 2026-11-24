@@ -207,6 +207,7 @@ const std::vector<Key>& keys() {
         number("speed_percent", &Settings::speed_percent, kMinSpeedPercent, kMaxSpeedPercent),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
+        free_text("export_folder", &Settings::export_folder),
         word("skipped_update_version", &Settings::skipped_update_version),
         word("last_run_version", &Settings::last_run_version),
         free_text_list("chartfolder", &Settings::chartfolders),

@@ -218,6 +218,10 @@ struct Settings {
     // "Compare dmleaderboards user" picker can pre-select it. Empty = none yet.
     std::string dm_last_user;
 
+    // The folder the last "Export to Excel..." saved into, where the next
+    // export's save dialog opens. Empty until the first export.
+    std::string export_folder;
+
     // The updater's two keys (D259 and D260 in
     // docs/audit/2026-10-03-fix-decisions.md). Neither is part of a result's
     // profile, so "Reset to defaults" leaves them alone.

@@ -11,6 +11,8 @@
 #include "app/config.h"
 #include "app/dm_report.h"  // settings_change_touches
 #include "app/report.h"     // settings_change_touches
+#include "app/report_export.h"  // write_sheet
+#include "app/xlsx.h"           // Sheet
 #include "app/rules_file.h"
 #include "app/update_key.h"
 #include "app/user_messages.h"
@@ -19,6 +21,7 @@
 #include "core/winstr.h"
 #include "parse/song.h"  // display_title
 #include "ui/preview_controller.h"
+#include "ui/win32_dialogs.h"  // browse_for_save_file
 
 namespace hydra::ui {
 
@@ -801,6 +804,35 @@ void AppState::start_dm_report(const std::string& discord_id, const std::string&
     launch_dm_report();
 }
 
+void AppState::export_report(const app::xlsx::Sheet& sheet, const std::string& file_name,
+                             void* owner, ExportNote& note) {
+    bool failed = false;
+    // Excel's own name for an .xlsx file.
+    const std::optional<std::string> file = browse_for_save_file(
+        static_cast<HWND>(owner), {FileTypeFilter{L"Excel Workbook", L"*.xlsx"}}, L"xlsx",
+        &failed, SaveDialogStart{file_name, settings.export_folder});
+    if (failed) {
+        note = {kExportDialogFailedText, true};
+        return;
+    }
+    if (!file) return;  // cancelled
+    save_report_export(sheet, *file, note);
+}
+
+void AppState::save_report_export(const app::xlsx::Sheet& sheet, const std::string& file,
+                                  ExportNote& note) {
+    const std::filesystem::path path = std::filesystem::u8path(file);
+    try {
+        app::report_export::write_sheet(path, sheet);
+    } catch (const std::exception& e) {
+        note = {app::plain_error(e), true};
+        return;
+    }
+    note = {kExportSavedPrefix + file, false};
+    settings.export_folder = path.parent_path().u8string();
+    commit_settings();
+}
+
 void AppState::request_dm_report() {
     if (!store || dm_player_id_.empty()) return;
     if (dm_report_job && !dm_report_job->finished()) return;
@@ -946,6 +978,7 @@ void AppState::close_path_report() {
     // item 7). The slot keeps its rows, its outcome and its out-of-date mark,
     // and a build or a batch wait still running carries on and lands.
     path_report.window_open = false;
+    path_report.export_note = {};
     // A question the window was asking ends as a "no" that runs nothing
     // (D276 item 6), so no popup takes it up in the main window, and a
     // reopen with nothing built asks again.
@@ -984,6 +1017,8 @@ ReportBuild land_report(ReportSlot<Result>& slot, const Job& job) {
             slot.last = ReportBuild::Ready;
             slot.message.clear();
             slot.error.clear();
+            // The line spoke of the rows just replaced.
+            slot.export_note = {};
             break;
         case JobOutcome::Cancelled:
             slot.mark_cancelled();
