@@ -464,10 +464,9 @@ TEST_CASE("song length: at 50% a stated length is twice its 100% length, pad inc
     CHECK(*at_50 == 2.0 * *at_100);
     // At 50% the pad is 2 s of chart time.
     CHECK(*at_50 - stated_chart_ms(meta, half) == 2.0 * kSongEndPadMs);
-    // At 100% the length is today's: the stated length, less the delay, plus
-    // the 1 s pad.
-    CHECK(*at_100 == stated_chart_ms(meta, normal) + kSongEndPadMs);
-    CHECK(stated_chart_ms(meta, normal) == 200000.0 - 250.0);
+    // At 100% the length is today's: the stated 200000 ms, less the 250 ms
+    // delay, plus the 1 s pad.
+    CHECK(*at_100 == 200000.0 - 250.0 + kSongEndPadMs);
 }
 
 TEST_CASE("song length: at 50% an end event or last note length is twice its 100% length") {
@@ -507,11 +506,15 @@ TEST_CASE("song length: at 200% the end event counts only two file beats past th
     CHECK_FALSE(counts_at(200, last + file_beat));
 
     // The length follows: at 200% an end event one file beat past the last
-    // note is ignored and the last note ends the song.
-    const hydra::Song fast = song_of_at_speed(drums_and(end_event_at(last + file_beat)), 200);
-    const std::optional<double> length = hydra::app::song_length_ms({}, fast);
-    REQUIRE(length.has_value());
-    CHECK(*length == last_note_ms(fast) + kSongEndPadMs / 2.0);
+    // note is ignored, so the song is as long as the same chart with no end
+    // event.
+    const std::optional<double> ignored = hydra::app::song_length_ms(
+        {}, song_of_at_speed(drums_and(end_event_at(last + file_beat)), 200));
+    const std::optional<double> no_event =
+        hydra::app::song_length_ms({}, song_of_at_speed(drums_and(""), 200));
+    REQUIRE(ignored.has_value());
+    REQUIRE(no_event.has_value());
+    CHECK(*ignored == *no_event);
 }
 
 TEST_CASE("song length: the end event's margin is the working resolution cut to a whole number") {
