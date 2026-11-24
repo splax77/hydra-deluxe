@@ -228,6 +228,7 @@ inline std::string settings_key(const hydra::SearchSettings& s) {
     else k << "none";
     k << '|';
     k << s.legacy_fills << '|' << s.early_fill_window_ms << '|' << s.rules.fingerprint() << '|';
+    k << s.safe_paths << '|';
     return k.str();
 }
 
