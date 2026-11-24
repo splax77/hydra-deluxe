@@ -1038,19 +1038,22 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest, longest});
     IM_CHECK_GE(l.badge_lines, 2);  // three don't fit on one line under the measure
 
-    // The drawn row: Burnout's row 1 with its own badges and their tags is as
-    // tall as the layout makes it, all in the mono font.
+    // The drawn row: Burnout's row 1, closed, with its own badges is as tall
+    // as the layout makes it with no tags (a closed row draws none,
+    // render_activation_row), all in the mono font.
     const ImGuiStyle& style = ImGui::GetStyle();
+    {
+        const std::vector<char>& open = h.app->details_ui.paths_tab.ui().act_open;
+        IM_CHECK(open.empty() || !open[0]);  // every row starts closed
+    }
     const ImRect row1_rect = ctx->ItemInfo("**/##act1").RectFull;
     const float row1_h = row1_rect.GetHeight();
-    check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]), tags(view.acts[0]));
+    check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
     // The drawn row is as tall as the layout's row; the Selectable's rect
     // reaches half the item spacing past its size on each side.
     IM_CHECK_EQ(row1_h, l.row_h + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
-        for (const std::optional<std::string>& t : tags(view.acts[0]))
-            if (t) pieces.push_back(*t);
         pieces.push_back(std::to_string(view.acts[0].number));
         pieces.push_back(view.acts[0].notation);
         pieces.push_back(view.acts[0].measure);
@@ -1275,6 +1278,46 @@ int check_row_tags(ImGuiTestContext* ctx, Harness& h, const hydra::app::Activati
     return checked;
 }
 
+// Closed activation row `a` of `view`, the view the tab drew, shows none of
+// its tags (render_activation_row draws them only on an open row): no tag
+// text is on screen, no pill in a tag's fill is inside the row, and the row
+// is as tall as the layout makes it with no tags. Returns how many of its
+// badges have a tag in the view, so a caller can see the check was not empty.
+int check_closed_row_untagged(ImGuiTestContext* ctx, Harness& h,
+                              const hydra::app::ActivationsView& view,
+                              const hydra::app::ActivationRowView& a) {
+    const std::string id = "**/##act" + std::to_string(a.number);
+    const ImRect rect = ctx->ItemInfo(id.c_str()).RectFull;
+    int tagged = 0;
+    for (const hydra::app::ActivationBadge& b : a.badges) {
+        if (!b.tag) continue;
+        ++tagged;
+        IM_CHECK_RETV(!on_screen(h, b.tag->text), tagged);
+        IM_CHECK_RETV(
+            drawn_pills(rect, "##pathdetails", hydra::ui::window_tag_pill(b.tag->is_short).fill)
+                .empty(),
+            tagged);
+    }
+    // The layout's inputs, measured as the Paths tab measures them.
+    float widest = 0.0f;
+    for (const hydra::app::ActivationRowView& r : view.acts)
+        widest = (std::max)(widest, figure_w(r.measure));
+    std::vector<float> badge_ws;
+    for (const hydra::app::ActivationBadge& b : a.badges) badge_ws.push_back(figure_w(b.text));
+    float line = 0.0f;
+    {
+        hydra::ui::ScopedFont font(hydra::ui::TextRole::Figure);
+        line = ImGui::GetTextLineHeight();
+    }
+    const hydra::ui::ActivationRowLayout plain = hydra::ui::activation_row_layout(
+        widest, figure_w(a.bars), badge_ws, figure_w(hydra::app::longest_activation_badge()),
+        rect.GetWidth(), line, hydra::ui::px(1.0f));
+    // The Selectable's rect reaches half the item spacing past its size on
+    // each side.
+    IM_CHECK_RETV(rect.GetHeight() == plain.row_h + ImGui::GetStyle().ItemSpacing.y, tagged);
+    return tagged;
+}
+
 // Whether an activation's opened row holds any Dynamic Hit Window row.
 bool has_window_row(const hydra::app::ActivationRowView& a) {
     if (a.early_fill_window) return true;
@@ -1299,17 +1342,19 @@ void check_early_fill_window(Harness& h, const hydra::app::WindowRowView& w) {
 // The Dynamic Hit Window row: on Burnout's squeeze out, on no activation
 // without a timing badge, and on Tapped Out's squeeze out and both its early
 // fills, each in a box, with each row's tag under its badge on the activation
-// row, open or closed. Every expected text is the row view the tab drew.
+// row while that row is open, and no tag on a closed row. Every expected text
+// is the row view the tab drew.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));  // every row starts closed
     {
-        // With every row closed, row 1's tag is already under its badge.
+        // With every row closed, row 1 has a tag in the view but draws none,
+        // and is as tall as a row with no tags.
         const hydra::app::ActivationsView& closed = shown_activations(*h.app);
         IM_CHECK(!closed.acts.empty());
         if (closed.acts.empty()) return;
-        IM_CHECK_GE(check_row_tags(ctx, h, closed.acts[0]), 1);
+        IM_CHECK_GE(check_closed_row_untagged(ctx, h, closed, closed.acts[0]), 1);
     }
 
     // Burnout's activation 1 has a squeeze with a window row.
@@ -1350,6 +1395,8 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), 1));
     IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));
+    // Closed again, row 1 drops its tag and its extra height.
+    IM_CHECK_GE(check_closed_row_untagged(ctx, h, burnout, burnout.acts[0]), 1);
 
     // Tapped Out's activation 4 has a squeeze with a window row and an early
     // fill with its own box and row; activation 3 has an early fill with its
