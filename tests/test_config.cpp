@@ -334,8 +334,8 @@ TEST_CASE("early_fill_window_ms reaches the search and the result's key together
 // The user's words: "speed setting, default 100". The limits are Clone
 // Hero's own (TM-34), held by the key table.
 TEST_CASE("speed_percent: defaults to 100 and loads at the game's limits") {
-    CHECK(Settings{}.speed_percent == hydra::kDefaultSpeedPercent);
-    CHECK(hydra::kDefaultSpeedPercent == 100);
+    CHECK(Settings{}.speed_percent == hydra::kNormalSpeedPercent);
+    CHECK(hydra::kNormalSpeedPercent == 100);
     CHECK(load_ini_text("speed_missing", "sp_cap=8\n").speed_percent == 100);
     CHECK(load_ini_text("speed_9", "speed_percent=9\n").speed_percent == hydra::kMinSpeedPercent);
     CHECK(load_ini_text("speed_10", "speed_percent=10\n").speed_percent == 10);
@@ -833,12 +833,12 @@ TEST_CASE("profile_at_clone_hero_cap holds the default speed at any speed settin
 
     Settings at100 = every_key_part_changed();
     at100.sp_cap = 8;
-    REQUIRE(at100.speed_percent == hydra::kDefaultSpeedPercent);
+    REQUIRE(at100.speed_percent == hydra::kNormalSpeedPercent);
     Settings at150 = at100;
     at150.speed_percent = 150;
 
     const store::Profile from150 = at150.profile_at_clone_hero_cap();
-    CHECK(from150.lens.speed_percent == hydra::kDefaultSpeedPercent);
+    CHECK(from150.lens.speed_percent == hydra::kNormalSpeedPercent);
     CHECK(from150.lens.speed_percent != at150.profile().lens.speed_percent);
     // Otherwise it is the profile the same settings give at the default speed.
     CHECK(from150 == at100.profile_at_clone_hero_cap());

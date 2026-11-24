@@ -15,10 +15,6 @@ namespace hydra {
 // reading reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };
 
-// The song speed setting's default: another name for kNormalSpeedPercent
-// (core/model.h), which owns the speed's default and limits.
-inline constexpr int kDefaultSpeedPercent = kNormalSpeedPercent;
-
 // The four choices that pick which notes a chart is read as (the difficulty,
 // Pro Drums, 2x Bass and Note Shuffle), and the song speed the chart is timed
 // at. Settings::reading() (app/config.h) is where they are read off the

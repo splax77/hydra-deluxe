@@ -454,7 +454,7 @@ store::Profile Settings::profile_at_clone_hero_cap() const {
     // The leaderboard report compares with the default-speed result at any
     // speed setting; a score at another speed has its own status
     // (net::is_base_speed).
-    at_cap.speed_percent = kDefaultSpeedPercent;
+    at_cap.speed_percent = kNormalSpeedPercent;
     return at_cap.profile();
 }
 

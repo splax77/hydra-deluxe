@@ -406,7 +406,7 @@ Song ch10_at_speed(const std::string& path, int percent) {
 const std::string& ch10_generated_chart() {
     static const std::string path = [] {
         for (const std::string& p : corpus::chart_paths()) {
-            const Song song = ch10_at_speed(p, kDefaultSpeedPercent);
+            const Song song = ch10_at_speed(p, kNormalSpeedPercent);
             if (song.generated_fills == FillDeadlineRule::Ch10 && song.last_note_end_tick.has_value())
                 return p;
         }
@@ -421,7 +421,7 @@ TEST_CASE("1.0 measure lines: the walk's last beat is the file's resolution time
     const std::string& path = ch10_generated_chart();
     REQUIRE_FALSE(path.empty());
     CAPTURE(path);
-    const Song normal = ch10_at_speed(path, kDefaultSpeedPercent);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
     const int64_t end = *normal.last_note_end_tick;
     // At 100% the beat is the file's own resolution.
     const int64_t normal_beat = ch10_last_line_tick(normal) - end;
@@ -435,7 +435,7 @@ TEST_CASE("1.0 measure lines: the walk's last beat is the file's resolution time
         REQUIRE(song.last_note_end_tick == normal.last_note_end_tick);
         const int64_t beat = ch10_last_line_tick(song) - end;
         // Half the file's beat at 50%, twice it at 200%.
-        CHECK(beat * kDefaultSpeedPercent == normal_beat * percent);
+        CHECK(beat * kNormalSpeedPercent == normal_beat * percent);
     }
 }
 
@@ -460,7 +460,7 @@ TEST_CASE("1.0 measure lines: the lines sit on the file's ticks at 50% and 200%,
     const std::string& path = ch10_generated_chart();
     REQUIRE_FALSE(path.empty());
     CAPTURE(path);
-    const Song normal = ch10_at_speed(path, kDefaultSpeedPercent);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
     for (int percent : {kHalfSpeed, kDoubleSpeed}) {
         CAPTURE(percent);
         const Song song = ch10_at_speed(path, percent);
@@ -485,7 +485,7 @@ TEST_CASE("1.0 Star Power: a bar lasts the same measures of file ticks at 50% an
     const std::string& path = ch10_generated_chart();
     REQUIRE_FALSE(path.empty());
     CAPTURE(path);
-    const Song normal = ch10_at_speed(path, kDefaultSpeedPercent);
+    const Song normal = ch10_at_speed(path, kNormalSpeedPercent);
     const int64_t one_bar = sp_bars_to_measures(1);
     for (int percent : {kHalfSpeed, kDoubleSpeed}) {
         CAPTURE(percent);

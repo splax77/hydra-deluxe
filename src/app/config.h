@@ -332,7 +332,7 @@ struct Settings {
     store::Profile profile() const;
 
     // profile() at Clone Hero's own SP cap (kCloneHeroSpCap) and the default
-    // song speed (kDefaultSpeedPercent), whatever cap and speed these
+    // song speed (kNormalSpeedPercent), whatever cap and speed these
     // settings hold: the profile the leaderboard comparison reads.
     store::Profile profile_at_clone_hero_cap() const;
 
