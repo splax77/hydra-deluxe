@@ -21,7 +21,7 @@
 
 #include "app/analysis.h"         // discover_charts, save_scan_as_library, ScanItem
 #include "app/config.h"           // Settings::batch_run
-#include "app/display_format.h"   // format_avg_mult, format_percent
+#include "app/display_format.h"   // format_avg_mult
 #include "app/dm_report.h"        // collect_dm_rows, kStatusWords
 #include "app/dm_report_view.h"
 #include "app/path_report_view.h"
@@ -632,7 +632,7 @@ TEST_CASE("dm comparison columns: one id each and the definitions' game numbers"
     CHECK(column_named(cols, "charter").look.dim);
     CHECK(column_named(cols, "posted").look.dim);
     CHECK(column_named(cols, "status").look.chip);
-    for (const char* id : {"actual", "optimal", "delta", "pct_h", "percent", "speed", "rank"}) {
+    for (const char* id : {"actual", "optimal", "delta", "timing", "percent", "speed", "rank"}) {
         INFO(id);
         CHECK(column_named(cols, id).numeric);
         CHECK(column_named(cols, id).look.kind == report_view::CellKind::Figure);
@@ -642,8 +642,6 @@ TEST_CASE("dm comparison columns: one id each and the definitions' game numbers"
     CHECK(holds(column_named(cols, "optimal").definition,
                 "SP cap " + std::to_string(kCloneHeroSpCap)));
     CHECK(holds(column_named(cols, "speed").definition,
-                std::to_string(net::kBaseSpeedPercent) + "%"));
-    CHECK(holds(column_named(cols, "pct_h").definition,
                 std::to_string(net::kBaseSpeedPercent) + "%"));
     const std::string status_definition = column_named(cols, "status").definition;
     for (const dm_report::StatusWords& w : dm_report::kStatusWords) {
@@ -693,15 +691,14 @@ TEST_CASE("dm comparison cells read as the page wrote them") {
         } else {
             CHECK(delta == group_thousands(*r.delta));
         }
-        // % of opt only for a score at base speed beside an optimal.
-        const bool compared = r.optimal.has_value() && net::is_base_speed(r.speed);
-        CHECK(cell_of(cols, "pct_h", r) ==
-              (compared ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals) : dash));
-        if (compared) {
-            REQUIRE(r.pct_h.has_value());
-            CHECK(std::get<double>(key("pct_h", r)) == static_cast<double>(*r.pct_h));
+        // Timing required is written as the path report writes a timing
+        // (report_view::ms_cell), at any speed, and only beside an optimal.
+        if (!r.optimal) CHECK_FALSE(r.timing_required.has_value());
+        CHECK(cell_of(cols, "timing", r) == report_view::ms_cell(r.timing_required));
+        if (r.timing_required) {
+            CHECK(std::get<double>(key("timing", r)) == *r.timing_required);
         } else {
-            CHECK(std::holds_alternative<std::monostate>(key("pct_h", r)));
+            CHECK(std::holds_alternative<std::monostate>(key("timing", r)));
         }
         CHECK((cell_of(cols, "fc", r) == dash) == !r.is_fc);
         CHECK(std::get<double>(key("fc", r)) == (r.is_fc ? 1.0 : 0.0));
@@ -757,7 +754,7 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     check_sorts(view, cols, {{"delta", SortDir::Ascending}});
     // The score off the library has no Points left and sinks.
     CHECK(view.visible().back() == kMissing);
-    check_sorts(view, cols, {{"pct_h", view.first_direction("pct_h")}});
+    check_sorts(view, cols, {{"timing", view.first_direction("timing")}});
     // An empty Posted date sinks in both directions (D103 item 17).
     check_sorts(view, cols, {{"posted", SortDir::Ascending}});
     CHECK(view.visible().back() == kAt);

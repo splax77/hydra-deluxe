@@ -24,8 +24,8 @@
 
 #include "app/analysis.h"
 #include "app/config.h"          // Settings
-#include "app/display_format.h"  // format_percent, percent_steps
 #include "app/library_query.h"   // parse_library_query
+#include "app/path_report_view.h"  // path_columns
 #include "core/model.h"          // counted, group_thousands, kCloneHeroSpCap
 #include "app/dm_report.h"
 #include "app/dm_report_view.h"  // dm_search_text
@@ -219,13 +219,24 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
         CHECK(rows[i].optimal == optimal);
         CHECK(rows[i].delta == optimal - scores[i].score);
     }
-    // The row's percent is percent_steps' whole hundredths, the number the
-    // cell's text is written from.
-    REQUIRE(rows[0].pct_h.has_value());
-    CHECK(*rows[0].pct_h == app::percent_steps(under, optimal, dmr::kPercentDecimals));
+    // Each joined row's Timing required is the figure the store saved for the
+    // record's rank-1 path, shown as the path report shows it (shown_timing),
+    // and its cell is the path report's ms text for that figure.
+    const store::RecordLookup found = store.lookup_one(kHash, testdm::profile());
+    REQUIRE(found.status == store::RecordStatus::Ready);
+    REQUIRE_FALSE(found.record.paths.empty());
+    const std::optional<double> rank1_ms = shown_timing(found.record.paths.front().hardest_ms);
+    for (size_t i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        CHECK(rows[i].timing_required == rank1_ms);
+        CHECK(dm_cell("timing", rows[i]) == app::report_view::ms_cell(rank1_ms));
+    }
 
+    // A score with no Hydra result has no timing, and its cell is the dash.
     CHECK_FALSE(rows[3].optimal.has_value());
     CHECK_FALSE(rows[3].delta.has_value());
+    CHECK_FALSE(rows[3].timing_required.has_value());
+    CHECK(dm_cell("timing", rows[3]) == app::report::kDash);
 
     // The leaderboard's own name wins over the library's when it has one.
     const store::ChartLibraryEntry listed = listed_names(store, kHash);
@@ -233,7 +244,7 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
     CHECK(rows[0].song == display_title(scores[0].song_name));
 }
 
-TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback") {
+TEST_CASE("collect_dm_rows: Hydra's numbers off 100% speed; store identity fallback") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
@@ -248,9 +259,12 @@ TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback")
         dmr::collect_dm_rows(store, {fast, unknown_meta}, testdm::profile());
     REQUIRE(rows.size() == 2);
 
-    // An off-speed score keeps Hydra's numbers but no percent of them.
+    // An off-speed score keeps Hydra's numbers, its Timing required with
+    // them: the store's own summary figure, as shown_timing shows it.
     CHECK(rows[0].optimal == optimal);
-    CHECK_FALSE(rows[0].pct_h.has_value());
+    const store::RecordLookup found = store.lookup_one(kHash, testdm::profile());
+    REQUIRE(found.status == store::RecordStatus::Ready);
+    CHECK(rows[0].timing_required == shown_timing(found.record.summary().hardest_ms));
     // An "unknown song" entry takes the library's name for its chart.
     const store::ChartLibraryEntry listed = listed_names(store, kHash);
     REQUIRE(display_title(listed.title) != display_title(unknown_meta.song_name));
@@ -537,8 +551,8 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
         CAPTURE(s);
         const std::vector<size_t>& shown = subsets[s];
         const std::vector<app::report::Tile> tiles = dmr::dm_tiles(rows, shown);
-        // Scores shown, the status tiles, the average and the points left.
-        REQUIRE(tiles.size() == status_tiles + 3);
+        // Scores shown, the status tiles and the points left.
+        REQUIRE(tiles.size() == status_tiles + 2);
 
         // The first tile counts every shown score (D103 item 27).
         CHECK(tiles[0].value == group_thousands(static_cast<int64_t>(shown.size())));
@@ -553,31 +567,13 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
             ++t;
         }
 
-        // The average is the mean of the shown rows' percents in the cells'
-        // own steps (percent_steps(1, 1, ...) is 100% in them), written as a
-        // cell is; with no percent shown it reads the dash. Only a score under
-        // optimal leaves points on the table: the sum of those deltas.
-        int64_t pct_sum = 0;
-        int64_t pct_rows = 0;
+        // Only a score under optimal leaves points on the table: the sum of
+        // those deltas.
         int64_t points_left = 0;
-        for (size_t i : shown) {
-            if (rows[i].pct_h) {
-                pct_sum += *rows[i].pct_h;
-                ++pct_rows;
-            }
+        for (size_t i : shown)
             if (rows[i].status == dmr::kStatusUnderOptimal) points_left += rows[i].delta.value();
-        }
-        const std::string average =
-            pct_rows == 0
-                ? std::string(app::report::kDash)
-                : app::format_percent(pct_sum,
-                                      pct_rows * app::percent_steps(1, 1, dmr::kPercentDecimals),
-                                      dmr::kPercentDecimals);
-        CHECK(tiles[t].value == average);
-        CHECK(tiles[t + 1].value == group_thousands(points_left));
-        // One shown row's average reads its own cell.
-        if (shown.size() == 1 && rows[shown[0]].pct_h)
-            CHECK(tiles[t].value == dm_cell("pct_h", rows[shown[0]]));
+        CHECK(tiles[t].label == "Points left on table");
+        CHECK(tiles[t].value == group_thousands(points_left));
     }
 }
 
@@ -607,12 +603,12 @@ TEST_CASE("status_token: each status's chip colour") {
     REQUIRE(rows.size() == 4);
     for (size_t i = 0; i < 3; ++i) {
         CAPTURE(i);
-        REQUIRE(rows[i].pct_h.has_value());
+        REQUIRE(rows[i].status != dmr::kStatusOtherSpeed);
         CHECK(status_token(rows[i].status) != ChipToken::muted);
     }
     CHECK(status_token(rows[0].status) == status_token(rows[1].status));
     CHECK(status_token(rows[2].status) != status_token(rows[0].status));
-    REQUIRE_FALSE(rows[3].pct_h.has_value());
+    REQUIRE(rows[3].status == dmr::kStatusOtherSpeed);
     CHECK(status_token(rows[3].status) == ChipToken::muted);
 }
 
@@ -687,70 +683,74 @@ TEST_CASE("collect_dm_rows: a leaderboard row with no charter shows the library'
     CHECK(rows[1].charter == kUnknownTitle);
 }
 
-// Scores at fractions of `optimal` in thousandths: at it, close under it,
-// at half and near zero, so the percents run from 100% down.
-std::vector<net::DmScore> scores_across(int64_t optimal) {
-    std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal));
-    scores.push_back(make_score(kHash, optimal - 1));
-    for (const int64_t thousandths : {999, 995, 990, 500, 1})
-        scores.push_back(make_score(kHash, optimal * thousandths / 1000));
-    return scores;
-}
-
-TEST_CASE("dm comparison: the average tile reads a percent the way the cells do") {
+// The comparison's Timing required is the path report's Hardest ms for the
+// same chart's best path: the user asked for "the timing required for the
+// optimal shown".
+TEST_CASE("dm comparison: Timing required reads the path report's rank-1 Hardest ms") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
-    const std::vector<DmReportRow> rows =
-        dmr::collect_dm_rows(store, scores_across(optimal), testdm::profile());
+    const int off_speed = net::kBaseSpeedPercent + 50;
+    REQUIRE_FALSE(net::is_base_speed(off_speed));
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(
+        store, {make_score(kHash, optimal - 5), make_score(kHash, optimal - 5, off_speed)},
+        testdm::profile());
+    REQUIRE(rows.size() == 2);
+    REQUIRE(rows[1].status == dmr::kStatusOtherSpeed);
 
-    // The status tiles sit between the scores-shown tile and the average
-    // (dm_tiles' order), so the average is the tile after them.
-    size_t status_tiles = 0;
-    for (const dmr::StatusWords& w : dmr::kStatusWords)
-        if (w.tile) ++status_tiles;
+    // The path report over the same store, at the profile the comparison
+    // lists, and its row for the chart's rank-1 path.
+    app::report::ReportOptions options;
+    options.run = testdm::settings().batch_run();
+    REQUIRE(options.run->profile == testdm::profile());
+    const std::vector<app::report::ReportRow> path_rows =
+        app::report::collect_rows(store, options).rows;
+    const auto best = std::find_if(path_rows.begin(), path_rows.end(),
+                                   [](const app::report::ReportRow& r) {
+                                       return r.hyhash == kHash && r.rank == 1;
+                                   });
+    REQUIRE(best != path_rows.end());
 
-    // The cell's text and the tile's input both come from the row's whole
-    // hundredths, so each score shown alone has an average tile that reads
-    // its own cell.
-    for (size_t i = 0; i < rows.size(); ++i) {
-        CAPTURE(i);
-        REQUIRE(rows[i].pct_h.has_value());
-        const std::vector<app::report::Tile> tiles = dmr::dm_tiles(rows, {i});
-        REQUIRE(tiles.size() == status_tiles + 3);
-        CHECK(tiles[status_tiles + 1].value == dm_cell("pct_h", rows[i]));
+    const std::vector<app::report_view::Column<app::report::ReportRow>> path_cols =
+        app::path_report_view::path_columns();
+    const auto hardest = std::find_if(
+        path_cols.begin(), path_cols.end(),
+        [](const app::report_view::Column<app::report::ReportRow>& c) { return c.id == "ms"; });
+    REQUIRE(hardest != path_cols.end());
+    const std::vector<app::report_view::Column<DmReportRow>> dm_cols =
+        app::dm_report_view::dm_columns();
+    const auto timing = std::find_if(
+        dm_cols.begin(), dm_cols.end(),
+        [](const app::report_view::Column<DmReportRow>& c) { return c.id == "timing"; });
+    REQUIRE(timing != dm_cols.end());
+    CHECK(timing->title == "Timing required");
+
+    // At base speed and off it, the cell, sort key, spreadsheet number and
+    // its format are the path report's for its rank-1 row.
+    for (const DmReportRow& r : rows) {
+        CAPTURE(r.speed);
+        CHECK(r.timing_required == best->ms);
+        CHECK(timing->cell(r) == hardest->cell(*best));
+        CHECK(timing->sort_key(r) == hardest->sort_key(*best));
+        CHECK(timing->number(r) == hardest->number(*best));
+        CHECK(timing->number_format == hardest->number_format);
     }
 }
 
-TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
-    const std::vector<DmReportRow> rows =
-        dmr::collect_dm_rows(store, scores_across(optimal), testdm::profile());
-
-    // The case the rule is for: the score at optimal and the one a point under
-    // it read the same text, and the score at half reads another.
-    REQUIRE(rows.size() > 2);
-    REQUIRE(rows[0].actual != rows[1].actual);
-    REQUIRE(dm_cell("pct_h", rows[0]) == dm_cell("pct_h", rows[1]));
-    REQUIRE(dm_cell("pct_h", rows[0]) != dm_cell("pct_h", rows.back()));
-
-    // Over every pair of rows: the same text sorts as a tie, and the row with
-    // fewer shown hundredths sorts below.
-    for (size_t i = 0; i < rows.size(); ++i) {
-        for (size_t j = 0; j < rows.size(); ++j) {
-            CAPTURE(i);
-            CAPTURE(j);
-            REQUIRE(rows[i].pct_h.has_value());
-            REQUIRE(rows[j].pct_h.has_value());
-            const double key_i = std::get<double>(dm_sort_key("pct_h", rows[i]));
-            const double key_j = std::get<double>(dm_sort_key("pct_h", rows[j]));
-            CHECK((dm_cell("pct_h", rows[i]) == dm_cell("pct_h", rows[j])) == (key_i == key_j));
-            CHECK((*rows[i].pct_h < *rows[j].pct_h) == (key_i < key_j));
-        }
-    }
+TEST_CASE("dm comparison: Timing required is a dash when the best path needs none") {
+    // A joined row whose best path needs no timing: Hydra's optimal is set and
+    // the timing is not (collect_dm_rows leaves it unset, shown_timing's none).
+    DmReportRow needs_none;
+    needs_none.actual = 100;
+    needs_none.optimal = 200;
+    needs_none.delta = 100;
+    needs_none.status = dmr::kStatusUnderOptimal;
+    REQUIRE_FALSE(needs_none.timing_required.has_value());
+    CHECK(dm_cell("timing", needs_none) == app::report::kDash);
+    CHECK(dm_cell("timing", needs_none) == app::report_view::ms_cell(std::nullopt));
+    CHECK(std::holds_alternative<std::monostate>(dm_sort_key("timing", needs_none)));
+    for (const auto& c : app::dm_report_view::dm_columns())
+        if (c.id == "timing") CHECK_FALSE(c.number(needs_none).has_value());
 }
 
 TEST_CASE("collect_dm_rows tells no current result from not in library") {
@@ -801,6 +801,9 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\"") {
     CHECK(rows[0].status == dmr::kStatusUnderOptimal);
     CHECK(rows[1].status == dmr::kStatusNoPaths);
     CHECK_FALSE(rows[1].optimal.has_value());
+    // No path, so no timing it needs: Timing required reads the dash.
+    CHECK_FALSE(rows[1].timing_required.has_value());
+    CHECK(dm_cell("timing", rows[1]) == app::report::kDash);
 
     const dmr::DmReportStats stats = dmr::tally_dm_rows(rows);
     CHECK(stats.no_paths == 1);

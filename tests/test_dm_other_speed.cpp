@@ -63,9 +63,11 @@ TEST_CASE("s2 offspeed: an off-speed score on a listed chart is 'other speed'; o
     // The numbers still show; only the comparison is withheld.
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[1].delta == optimal - scores[1].score);
-    CHECK_FALSE(rows[0].pct_h.has_value());
-    CHECK_FALSE(rows[1].pct_h.has_value());
-    REQUIRE(rows[3].pct_h.has_value());
+    // Timing required is the best path's, whatever speed the score was
+    // played at: each off-speed row carries the base-speed row's figure.
+    CHECK(rows[0].timing_required == rows[3].timing_required);
+    CHECK(rows[1].timing_required == rows[3].timing_required);
+    CHECK_FALSE(rows[2].timing_required.has_value());
 
     const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
     CHECK(stats.total == static_cast<int>(scores.size()));

@@ -151,7 +151,7 @@ DmReportRow dm_row(std::string song, int64_t actual, const char* status, int per
     r.actual = actual;
     r.optimal = 200000;
     r.delta = *r.optimal - actual;
-    r.pct_h = 9000;
+    r.timing_required = 12.5;
     r.percent = percent;
     r.rank = 3;
     r.posted = "2026-11-23T10:00:00Z";
@@ -168,7 +168,7 @@ TableView<DmReportRow> filtered_dm_view() {
         dm_row("Song East", 200000, dm_report::kStatusAtOptimal, 93),
         dm_row("Other Tune", 170000, dm_report::kStatusUnderOptimal, 94),
     };
-    rows[0].pct_h.reset();  // Song North shows a dash in % of opt: no number
+    rows[0].timing_required.reset();  // Song North shows a dash in Timing required: no number
     TableView<DmReportRow> view = dm_view(std::move(rows));
     view.set_search("song");
     view.set_keep(dm_report_view::dm_keep(std::string(dm_report::kStatusUnderOptimal)));
@@ -326,9 +326,9 @@ TEST_CASE("report export: a number column's missing value is an empty cell") {
 
     const TableView<DmReportRow> dm = filtered_dm_view();
     const xlsx::Sheet dm_sheet = report_export::build_sheet(dm, flat_look<DmReportRow>(), "dmleaderboards");
-    // Song North, second under the header, has no % of opt.
-    CHECK(dm_sheet.rows[2][column_index(dm, "pct_h")].holds == xlsx::Cell::Holds::Empty);
-    CHECK(dm_sheet.rows[1][column_index(dm, "pct_h")].holds == xlsx::Cell::Holds::Number);
+    // Song North, second under the header, has no Timing required.
+    CHECK(dm_sheet.rows[2][column_index(dm, "timing")].holds == xlsx::Cell::Holds::Empty);
+    CHECK(dm_sheet.rows[1][column_index(dm, "timing")].holds == xlsx::Cell::Holds::Number);
 }
 
 // ---- widths ------------------------------------------------------------------------
