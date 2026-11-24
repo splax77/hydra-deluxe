@@ -19,11 +19,27 @@ Repo: <the repo the run works in>
 | all | 1 |
 ```
 
-The spelling is exact. The section heading is `## Plan run`. Its two lines start `Slug:` and `Repo:`. `Slug:` is the short name used for the run's file and its branches. `Repo:` is the repo the run works in. The phase table has the columns `Phase` and `Builds`; each row holds one phase name and its build count, `0` or `1`.
+The spelling is exact, and the opener reads nothing else. These are its rules.
 
-The plan's task table carries three columns the run reads, headed `Branch`, `Phase` and `Owned files`. `Branch` is the task's own branch, the one its executor commits on. `Phase` is the name of the phase the task belongs to, as written in the `## Plan run` table. `Owned files` lists the files the task may change, which the run records.
+The `## Plan run` section:
 
-The opener fills nothing in. It refuses a plan with no `## Plan run` section, a task table without one of the three columns, a branch named twice, a phase with no build count, a build count other than 0 or 1, or a run already open for the slug. It also refuses a plan in which two tasks of the same phase own the same file, because those two tasks would then have to be merged by hand. Give the file to one task, or put the two tasks in different phases.
+- The heading is the line `## Plan run`. The section runs to the next line that starts with `# ` or `## `.
+- It holds only the `Slug:` line, the `Repo:` line (in that order, one space after the colon) and the phase table. Blank lines are fine. Any other line, such as a note or a second table, is refused.
+- `Slug:` is the short name used for the run's file and its branches. It is letters and digits, joined by single `.`, `_` or `-`. It does not end in `.lock` and is not a Windows device name (`con`, `nul`, `com1` and the like).
+- `Repo:` is the repo's top folder, written as a bare absolute path, with no backticks. It must hold a git checkout with a `main` branch.
+- The phase table has the columns `Phase` and `Builds`. Each row holds one phase name, written by the same rules as a slug and used once, and its build count, `0` or `1`. The first row is the first phase.
+
+The task table:
+
+- It is the one table outside the `## Plan run` section that has a column headed `Branch`, `Phase` or `Owned files`. A second such table, even one with only one of the three, is refused. So is a task table that lacks one of the three columns or repeats one.
+- Every line of it is a row that starts and ends with `|`, has the header's number of cells and has a `|---|` line under the header. It needs at least one task.
+- A `Branch` or `Phase` cell is one word: bare, or in backticks. `Branch` is the task's own branch, the one its executor commits on. It must be a name git accepts, used once, and it may not be `main` or start with `plan/`. `Phase` is a phase name from the `## Plan run` table.
+- An `Owned files` cell is one or more paths, each in backticks and separated by commas. It lists the files the task may change, which the run records. A path listed twice in one cell is refused.
+
+Fenced code (a block between ``` lines or ~~~ lines) is never read, so a plan may show the section's shape as an example. The plan's own path, which `--open` and `--join` take, is absolute.
+
+The opener fills nothing in. It refuses a plan that breaks any rule above, a plan with no `## Plan run` section or with two, a branch named twice, a phase with no build count or a build count other than 0 or 1, and a slug an earlier run already used: any run file that holds the slug, closed or abandoned too, and any run whose slug matches it ignoring case (the run files sit on a file system that does not tell `Demo` from `demo`). It also refuses a plan in which two tasks of the same phase own the same file, because those two tasks would then have to be merged by hand. Give the file to one task, or put the two tasks in different phases.
+
 
 ## The plan branch
 
@@ -41,7 +57,7 @@ Opening cuts the first phase's branch from `main` and records the commit it star
 
 A run belongs to the plan, not to a session. A plan that takes several sessions keeps one run. A later session joins it with `plan_run.py --join <plan path>`, naming the plan file's path exactly as the run recorded it. The run counts its builds from git and the build record, so a session that joins gets no fresh allowance. Unfinished tasks wait on their branches.
 
-When a phase has landed on `main`, `plan_run.py --phase <name>` cuts the next phase's branch from the new `main`. It refuses while the earlier phase has not landed. `plan_run.py --status` prints the open runs.
+When a phase has landed on `main`, `plan_run.py --phase <name>` cuts the next phase's branch from the new `main`. `<name>` must be the phase right after the open one; no other name is accepted. It refuses while the earlier phase has not landed. A phase has landed only when its plan branch has at least one commit since it was cut and `main` holds the branch's tip, so a branch that was cut and never committed on has not landed. `plan_run.py --status` prints the open runs.
 
 ## Files two runs share
 
