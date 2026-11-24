@@ -13,21 +13,34 @@ namespace hydra {
 // reading reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };
 
-// The four choices that pick which notes a chart is read as: the difficulty,
-// Pro Drums, 2x Bass and Note Shuffle. Settings::reading() (app/config.h) is
-// where they are read off the settings, and Settings::with_reading where they
-// are written back. What carries them takes this one value, so a fifth choice
-// is added here and in those two (concept audit M19).
-// The defaults read a chart as written, at Expert.
+// Clone Hero's song speed setting, a whole percent: its default and its two
+// limits (TM-34 on docs/clone-hero/03-timing.md). The settings file's key
+// table (app/config.cpp) holds the speed setting to these limits.
+inline constexpr int kDefaultSpeedPercent = 100;
+inline constexpr int kMinSpeedPercent = 10;
+inline constexpr int kMaxSpeedPercent = 5000;
+
+// The four choices that pick which notes a chart is read as (the difficulty,
+// Pro Drums, 2x Bass and Note Shuffle), and the song speed the chart is timed
+// at. Settings::reading() (app/config.h) is where they are read off the
+// settings, and Settings::with_reading where they are written back. What
+// carries them takes this one value, so another choice is added here and in
+// those two (concept audit M19).
+// The defaults read a chart as written, at Expert and at 100%.
 struct ChartReading {
     Difficulty difficulty = Difficulty::Expert;
     bool prodrums = true;
     bool bass2x = true;
     bool noteshuffle = false;
+    // The song speed in whole percent. The parsers hand it to
+    // Song::set_speed_percent before the song's timing is built, so every
+    // chart time is read at this speed. It is not part of the chart mode
+    // (app::chartmode_key); a stored result keys it in its lens instead.
+    int speed_percent = kDefaultSpeedPercent;
 
     bool operator==(const ChartReading& o) const {
         return difficulty == o.difficulty && prodrums == o.prodrums && bass2x == o.bass2x &&
-               noteshuffle == o.noteshuffle;
+               noteshuffle == o.noteshuffle && speed_percent == o.speed_percent;
     }
     bool operator!=(const ChartReading& o) const { return !(*this == o); }
 };

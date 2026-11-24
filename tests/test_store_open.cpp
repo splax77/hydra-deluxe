@@ -1119,6 +1119,90 @@ TEST_CASE("a file whose profiles table lacks the early-fill window opens and gai
     remove_db(path);
 }
 
+namespace {
+
+// How many profile rows in the file at `path` carry the default song speed.
+int64_t profiles_at_default_speed(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM profiles WHERE ") +
+                                    kSpeedColumn + " = " + std::to_string(Lens{}.speed_percent));
+}
+
+// The profiles table a build before results were saved per song speed wrote:
+// the same columns and key, the early-fill window included, without the
+// speed. The file at `path` keeps every row it held, id included.
+void drop_speed_column(const std::string& path) {
+    exec_on_file(path,
+                 "CREATE TABLE p6 (id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL,"
+                 " sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                 " ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                 " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,"
+                 " efill_window_ms INTEGER NOT NULL,"
+                 " hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,"
+                 " UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
+                 " legacy_fills, efill_window_ms, hyversion, rules_fp));"
+                 "INSERT INTO p6 SELECT id, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+                 " depth_value, legacy_fills, efill_window_ms, hyversion, rules_fp FROM profiles;"
+                 "DROP TABLE profiles;"
+                 "ALTER TABLE p6 RENAME TO profiles;");
+}
+
+}  // namespace
+
+TEST_CASE("a file whose profiles table lacks the song speed opens, gains it, and reads every old "
+          "row at 100") {
+    const std::string path = testtemp::temp_path("lacks_speed_column", ".db");
+    remove_db(path);
+    const int window = static_cast<int>(kDefaultEarlyFillWindowMs);
+    {
+        RecordStore seed(path);
+        seed.save(prepare_record("a", at4(), fixture_chart_at(4, window)));
+        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}},
+                                 fixture_chart_at(8, window)));
+    }
+    drop_speed_column(path);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksSpeedColumn);
+    const std::string before = older_profile_columns(path);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    {
+        RecordStore store(path);
+        // Both records read as they did, each under its own profile at 100.
+        CHECK(store.lookup_one("a", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("b", Profile{"mode", CapQuery::at(8), Lens{}}).status ==
+              RecordStatus::Ready);
+        // At another speed the chart has no result.
+        Profile at150 = at4();
+        at150.lens.speed_percent = 150;
+        CHECK(store.lookup_one("a", at150).status == RecordStatus::NotAnalyzed);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(older_profile_columns(path) == before);
+    CHECK(profiles_at_default_speed(path) == 2);
+    CHECK(profiles_at_default_window(path) == 2);
+    CHECK(records_under_profiles(path) == 2);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM sqlite_master WHERE name = '") +
+                                   kProfilesBeforeSpeedTable + "'") == 0);
+    remove_db(path);
+}
+
+TEST_CASE("a file older than both the early-fill window and the song speed reads every old row "
+          "at 100") {
+    const std::string path = testtemp::temp_path("lacks_both_columns", ".db");
+    seed_without_early_fill(path);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+    {
+        RecordStore store(path);
+        CHECK(store.lookup_one("a", at4()).status == RecordStatus::Ready);
+        Profile at150 = at4();
+        at150.lens.speed_percent = 150;
+        CHECK(store.lookup_one("a", at150).status == RecordStatus::NotAnalyzed);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(profiles_at_default_speed(path) == 2);
+    CHECK(records_under_profiles(path) == 2);
+    remove_db(path);
+}
+
 TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgrade and changes "
           "nothing") {
     // The old profiles table loses its unique key and gains a copy of one

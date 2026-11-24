@@ -203,6 +203,8 @@ const std::vector<Key>& keys() {
         number("sp_cap", &Settings::sp_cap, 1, kNoCeiling),
         on_off("legacy_fills", &Settings::legacy_fills),
         number("early_fill_window_ms", &Settings::early_fill_window_ms, 0, kMaxEarlyFillWindowMs),
+        // Clone Hero's own speed limits (TM-34).
+        number("speed_percent", &Settings::speed_percent, kMinSpeedPercent, kMaxSpeedPercent),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
         word("skipped_update_version", &Settings::skipped_update_version),
@@ -347,7 +349,8 @@ std::string chartmode_key(const ChartReading& reading) {
 ChartReading Settings::reading() const {
     // The difficulty comes from difficulty(), so an uncleaned view_difficulty
     // ("easy", "Legendary") still names a real difficulty (finding 134).
-    return ChartReading{difficulty(), view_prodrums, effective_bass2x(), view_noteshuffle};
+    return ChartReading{difficulty(), view_prodrums, effective_bass2x(), view_noteshuffle,
+                        speed_percent};
 }
 
 Settings Settings::with_reading(const ChartReading& r) const {
@@ -356,6 +359,7 @@ Settings Settings::with_reading(const ChartReading& r) const {
     out.view_prodrums = r.prodrums;
     out.view_bass2x = r.bass2x;
     out.view_noteshuffle = r.noteshuffle;
+    out.speed_percent = r.speed_percent;
     return out;
 }
 
@@ -387,8 +391,10 @@ std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) c
             for (bool bass2x : {true, false}) {
                 for (bool noteshuffle : {false, true}) {
                     // Spelled by app::chartmode_key, as every other reader
-                    // spells it, and written back through with_reading.
-                    const ChartReading r{d, prodrums, bass2x, noteshuffle};
+                    // spells it, and written back through with_reading. The
+                    // speed is no part of the chart mode, so it is this
+                    // reading's own, kept.
+                    const ChartReading r{d, prodrums, bass2x, noteshuffle, speed_percent};
                     if (app::chartmode_key(r) == chartmode) return with_reading(r);
                 }
             }
@@ -433,7 +439,7 @@ store::Lens Settings::lens() const {
         // The unit the search runs with (search_depth_mode), not the raw int,
         // so the lens stays canonical (concept audit M14).
         search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills,
-        early_fill_window_ms);
+        early_fill_window_ms, speed_percent);
 }
 
 store::Profile Settings::profile() const {
@@ -469,6 +475,7 @@ SettingsText describe_settings(const AnalysisSettings& settings) {
     text.cap = bars_text(settings.sp_cap);
     text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("off");
     text.early_fill = format_ms_whole(settings.early_fill_window_ms);
+    text.speed = std::to_string(settings.reading().speed_percent) + "%";
     return text;
 }
 
