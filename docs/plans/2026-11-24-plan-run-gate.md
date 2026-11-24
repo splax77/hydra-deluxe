@@ -32,7 +32,7 @@ Four parts of the starting design do not survive a read of the code. Each is rep
 
 1. **"One pass, given once every task is stamped" cannot know what gets built or whether it passed.** `hydra_build_pass` takes no argument and sends only the session id and its own process id (P6). The pass is asked for before the build, so no argument could bind it to a result either. The build itself knows more: `build_cpp.ps1` claims the pass with its own checkout folder as the owner, and it is the one place that sees the build end (P7). So the build script must write a build record, and both gates read that record. Without it, "after the one build passed" has no source. Decision: the pass request is judged from the run state, and no argument is added to the tool.
 2. **The run file should not store reviewer stamps or a build count.** The signatures already live in `reviews.jsonl`, and `review_rules.check` already answers "is every gated file on this commit signed, as it would land on main" (P10). A second copy in the run file would drift. The run file holds only what nothing else knows: the plan, its branches, its phases and the sessions that joined.
-3. **"Main moves once, as a fast-forward" forces the extra merges and builds the user objected to.** If `main` gained a commit after the build, a fast-forward is impossible until `main` is merged into the plan branch, and then the built tree is no longer the tree that lands. The gate instead lets `main` take either the built commit itself, or git's clean merge of old `main` and the built commit. `ref_judge.py` already has that exact test (P12). What happens when that merge conflicts is question 2.
+3. **"Main moves once, as a fast-forward" forces the extra merges and builds the user objected to.** If `main` gained a commit after the build, a fast-forward is impossible until `main` is merged into the plan branch, and then the built tree is no longer the tree that lands. The gate instead lets `main` take either the built commit itself, or git's clean merge of old `main` and the built commit. `ref_judge.py` already has that exact test (P12). When that merge conflicts, the session merges `main` into the plan branch and fixes the conflict by hand. That fix is a new commit that needs its own review, so the existing second-build rule below covers it, and no new rule is added. The run's record of each task's files makes such a conflict rarer (see "Files each run owns").
 4. **"A session with no run can't move main" would refuse every doc commit.** Session cards, plans, handoffs and rulings land on `main` many times a day and need no build. The review gate already knows the difference: it asks which gated code files a move gains, and a move that gains none needs no review (`_code_changes`, P10). The merge gate asks the same question and judges only a move that gains gated code. That is a read of an existing answer, so it is not a question for the user.
 
 ## How it works
@@ -45,7 +45,14 @@ A phase's own branch is `plan/<slug>/<phase>`, so a plan that ships in two phase
 
 Two new modules in the hooks repo share the work, and each answers a different question. `gates\plan_run.py` owns what a run is: it reads the plan's `## Plan run` section and task table, keeps one file per run, `gates\state\runs\<slug>.json`, written with `common.write_json_atomic` (P13), and lists the open runs. `gates\plan_run_judge.py` owns the two decisions about a run: may this session have a build pass, and may `main` take this commit. It reads the run through `plan_run.py` and asks existing owners for everything else (see the Owner map).
 
-Opening a run cuts the first phase's branch from `main` and records that starting commit. When a phase has landed, `--phase <name>` cuts the next phase's branch from the new `main`. How a run is opened, by the session or by a line the user types, is question 1.
+The session opens the run itself, with `plan_run.py --open <plan path>`, right after the user says yes to the plan (the user's answer, below). Opening a run cuts the first phase's branch from `main` and records that starting commit. When a phase has landed, `--phase <name>` cuts the next phase's branch from the new `main`.
+
+### Files each run owns
+
+The run file also holds each task's owned files, read from the task table's "Owned files" column. Two checks use them, both at `--open`:
+
+1. Inside one plan, `--open` refuses a plan in which two tasks of the same phase own the same file. Today that rule is only a reviewer's instruction, and three of the five hand-fixed merges on Hydra's `main` since 2026-11-01 came from two pieces of one plan changing the same file (`sp_compare.py` on 11-07, `front.py` on 11-06, `py_mutate.py` on 11-15; read with `git show --remerge-diff` on each merge).
+2. Across plans, `--open` prints every other open run that owns one of the same files, with its plan path and the sessions that joined it. It does not refuse. The two sessions then agree between them how their changes merge (the user's answer, below). The start-of-session list shows the same overlaps.
 
 ### The build gate
 
@@ -80,7 +87,7 @@ After the last phase lands, the run is finished. It shows as finished in the sta
 
 A new session joins by naming the plan file's path exactly. Its id is added to the run. Both gates count per run, from git and the build records, so nothing resets. Unfinished tasks wait on their branches.
 
-Only the user closes or abandons a run. The typed lines are `close plan run <slug>` and `abandon plan run <slug>` (and `start plan <slug>` if question 1 says so). `waiver.py` records each the way it records `allow library run` (P17), and `plan_run.py` accepts it only after `review_rules.human_prompt_text` shows the user typed it (O3). The run file itself is never edited by a typed line. Shipping part of a plan early works only when the plan named phases up front; each phase has its own branch, build and merge.
+Only the user closes or abandons a run. The typed lines are `close plan run <slug>` and `abandon plan run <slug>`. `waiver.py` records each the way it records `allow library run` (P17), and `plan_run.py` accepts it only after `review_rules.human_prompt_text` shows the user typed it (O3). The run file itself is never edited by a typed line. Shipping part of a plan early works only when the plan named phases up front; each phase has its own branch, build and merge.
 
 ### With no run
 
@@ -88,7 +95,7 @@ A session with no run gets no build pass, and cannot move `main` with a change t
 
 ### The start-of-session list
 
-A new start-of-session hook prints each open run: its plan, its phase, which task branches are merged into the plan branch, how many builds it has used, and which sessions joined. A forgotten run shows up every time until the user closes it.
+A new start-of-session hook prints each open run: its plan, its phase, which task branches are merged into the plan branch, how many builds it has used, which sessions joined, and any file it owns that another open run owns too. A forgotten run shows up every time until the user closes it.
 
 ## What you will notice
 
@@ -102,7 +109,9 @@ A new start-of-session hook prints each open run: its plan, its phase, which tas
 
 **Changed text.** Sessions stop saying "building branch X before review". They say which tasks are waiting on `plan/<slug>/<phase>` and that the build comes at the end.
 
-**New at session start.** One short block listing open runs.
+**New at session start.** One short block listing open runs, and any files two open runs both own.
+
+**New when a run opens.** A plan whose tasks in one phase share a file is refused: "plan run not opened: tasks `<A>` and `<B>` of phase `<phase>` both own `<file>`. Instead: give the file to one task, or put the two tasks in different phases." A file another open run owns is named, not refused: "`<file>` is also owned by open plan run `<slug>` (`<plan path>`), joined by `<sessions>`. Agree with that session how the two changes merge."
 
 **The cost.** Reviewers read code that has never been compiled, and a compile error shows up once, at the end, instead of after each task.
 
@@ -152,7 +161,7 @@ The test files named for the old tasks were wrong (P20): there is no `test_perca
 
 ### G4: the typed lines, and the one public question
 
-Add the exact-match phrase tests in `review_rules.py` beside `is_library_allow`: `allow build`, `allow merge`, `close plan run <slug>`, `abandon plan run <slug>` (and `start plan <slug>`, if question 1 says so). `waiver.py` records each the way it records the two existing allows. Add one public function to `review_rules.py`, `gains_gated_code(repo_dir, old, new)`, which makes the same call `explain_main_move` makes at `review_rules.py:536-538` (O10) and returns True when the move gains gated code; `explain_main_move` then calls it too, so the answer has one home.
+Add the exact-match phrase tests in `review_rules.py` beside `is_library_allow`: `allow build`, `allow merge`, `close plan run <slug>`, `abandon plan run <slug>`. `waiver.py` records each the way it records the two existing allows. Add one public function to `review_rules.py`, `gains_gated_code(repo_dir, old, new)`, which makes the same call `explain_main_move` makes at `review_rules.py:536-538` (O10) and returns True when the move gains gated code; `explain_main_move` then calls it too, so the answer has one home.
 
 The join of signed branches needs no new test: `test_signed_content.py` already has it (P16).
 
@@ -164,7 +173,8 @@ Write `plan_run.py`: the reader of a plan's `## Plan run` section and task table
 
 Acceptance, each a test in `test_plan_run.py`:
 
-- `--open` refuses, and writes no file, for each of: no `## Plan run` section, a missing branch or phase column, a branch named twice, a phase with no build count, a build count that is not 0 or 1, a run already open for the slug.
+- `--open` refuses, and writes no file, for each of: no `## Plan run` section, a missing branch, phase or owned-files column, a branch named twice, a phase with no build count, a build count that is not 0 or 1, a run already open for the slug, two tasks of one phase owning the same file.
+- `--open` stores each task's owned files, and names (without refusing) each file that another open run owns, with that run's plan path and sessions. `summary` names the same overlaps.
 - `--join` refuses a path that is not exactly the open run's plan path, and a second session that joins gets the same counts as the first.
 - `--phase` refuses while the earlier phase has not landed in `main`, and cuts the next phase's branch from `main` once it has.
 - A run file that is missing a field, or is not JSON, makes every reader raise an error that names the file. Nothing is defaulted.
@@ -196,7 +206,7 @@ Acceptance: in a fixture repo with no marker, every existing `test_ref_judge.py`
 
 Write `plan_runs_start.py`, which prints `plan_run.summary()` as context, and register it in `settings.fragment.json` in the first SessionStart block, the one whose matcher is `startup|resume` (it now holds `cleanup_sweep.ps1`, `session_cards_start.ps1` and Hydra's `check_pointers.py --session-start`; the new entry takes the exe form the README names: `python.exe`, args `-I -S <script>`). It only informs, so it runs in "loud" mode (`common.run(body, "loud")`).
 
-Acceptance: with no open run it prints nothing; with one it names the plan, phase, unmerged branches, builds used and sessions; a crash prints a `systemMessage` and blocks nothing. `test_settings_fragment.py` gains a test that the registration exists in the fragment. Its existing test that the live `settings.json` carries the fragment fails until `sync_settings.py` has run, so the main session runs that test after the sync, not before (see "Order of going live").
+Acceptance: with no open run it prints nothing; with one it names the plan, phase, unmerged branches, builds used and sessions; with two runs that own a common file it names that file under both; a crash prints a `systemMessage` and blocks nothing. `test_settings_fragment.py` gains a test that the registration exists in the fragment. Its existing test that the live `settings.json` carries the fragment fails until `sync_settings.py` has run, so the main session runs that test after the sync, not before (see "Order of going live").
 
 ### G6: the instruction text
 
@@ -258,13 +268,15 @@ The user types `allow build`. The main session asks for a pass and builds one sm
 
 Calls: `mcp__hydra__hydra_build_pass` (a refusal is seen in LS1; a pass handed out is never tried), `build_cpp.ps1 -Target hydra_precheck` (never tried)
 
-## Questions for the user
+## The user's answers
 
-1. **Who opens a run?** Either the session opens it after your yes to a plan, or it opens only when you type a line such as `start plan <slug>`. The first costs you nothing but trusts the session to open the right plan. The second means one more typed line per plan, and no session can open a run you did not ask for. G4 and G1 wait for this answer.
-2. **What if main moved after the build and git cannot merge cleanly?** A clean merge lands with no new build. A conflict needs a hand fix, and the fixed tree is not the tree that was built. Options: stop and ask you each time, or allow one more build after the fix is reviewed. A session's note records you saying, on 2026-11-23, not to re-test the combination each time main moves; no session card holds those words yet, so this plan does not cite them (P23). G1b and G3 wait for this answer.
-3. **Small edits you ask for directly.** Today "when the user asks for one specific edit, the request is the approval". With the gate, such an edit to code, with no plan run open, would need `allow merge` from you, and `allow build` if it needs compiling. Is that acceptable, or should a small edit have another route?
+The user answered the plan's three questions in session 974771b7-864b-4140-b29d-828363c85d7f on 2026-11-24. None is a filed ruling.
 
-Two questions the first draft asked are answered by the code and are not put to you. Whether commits that change no code stay free is read from the review gate's own answer about gated code (O10). Whether the hooks repo is gated too is a scope line below.
+1. **Who opens a run?** The user chose "Session, after my yes". The session runs `--open` itself after the user's yes to the plan; no typed line opens a run.
+2. **What if main moved after the build and git cannot merge cleanly?** The user asked why such merges fail, and then said: "so if the new gate already keeps a record, then that covers it. if theres ever a situation where two sessions are working on the same files at the same time, they can coordinate how to merge their changes." So the run records each task's files ("Files each run owns"), overlaps inside a plan are refused, overlaps across plans are named so the sessions coordinate, and a hand-fixed merge goes through the existing reviewed second build. No other rule is added.
+3. **Small edits you ask for directly.** The user chose "Yes, I'll type allow". With no plan run open, a code edit needs the user's typed `allow merge`, and `allow build` if it needs compiling.
+
+Two questions the first draft asked are answered by the code and were not put to the user. Whether commits that change no code stay free is read from the review gate's own answer about gated code (O10). Whether the hooks repo is gated too is a scope line below.
 
 ## Out of scope, for the user to approve
 
@@ -292,6 +304,7 @@ Two questions the first draft asked are answered by the code and are not put to 
 | A next phase starts only after the earlier one landed | "The plan run" | G1 | `--phase` refuses before landing |
 | A repo with no marker behaves as today | G3 | G3 | existing `test_ref_judge.py` cases unchanged |
 | A broken or missing `plan_run_judge.py`, or a bad run file, refuses | G1, G1b, G3 | G1, G1b, G3 | bad-file tests; missing-module test |
+| Two tasks of one phase never own the same file; a file another open run owns is named, not refused | "Files each run owns" | G1, G5 | `test_plan_run.py` overlap cases; `test_plan_runs_start.py` two-run case |
 | A second session gets no fresh allowance | "Several sessions" | G1 | join test: same counts |
 | Only the user closes or abandons a run | "Several sessions" | G4, G1 | the phrase tests; a close line `human_prompt_text` does not confirm changes nothing |
 | The build writes started, passed or failed, dirty and its preset | "The build record" | H1 | `tools/test_build_record.ps1`; LS2 |
@@ -325,7 +338,8 @@ Two questions the first draft asked are answered by the code and are not put to 
 | P20: the tests are `test_ref_judge.py` for `ref_judge.py`; `test_percall_key.py` (lines 196 and 211) for the pass tool; the `Waiver` class in `test_review_dispatch.py` and `test_review_rules.py:1280-1307` for `waiver.py` and the typed phrases; there is no `test_percall.py` or `test_waiver.py` | code | `C:\Users\Patrick\.claude\gates\tests` listed and searched | checked 2026-11-24 |
 | P21: the memory note "plan gates before dispatch" asks for one real-app check for the src/ui branches and counting builds before dispatch; the note "one build per wave" already says review first, then one build | code | `C:\Users\Patrick\.claude\projects\C--Users-Patrick-Downloads-Hydra-hydra-test\memory\plan-gates-before-dispatch.md:11` and `one-build-per-wave.md:11-17`, and `C:\Users\Patrick\.claude\gates\tests\test_review_rules.py:774` (a record on a joined branch covers another branch with the same UI files) | checked 2026-11-24 |
 | P22: a real build under Claude Code reaches the new record lines | unchecked | `build_cpp.ps1`, where the lines do not exist yet | LS2; blocks nothing |
-| P23: the user said not to re-test or rebuild when main moves | unchecked | the memory note `one-build-per-wave.md:17` quotes the words ("you dont need to test the new combination every time main moves"); a search of `docs/sessions` and `docs/agents/rulings` finds no card or ruling with them, and a memory note is never cited as the user's ruling | question 2; blocks G1b and G3 |
+| P23: a conflict after the build is handled by the run's file record, coordination between sessions and the existing reviewed second build | user's words | session 974771b7-864b-4140-b29d-828363c85d7f, 2026-11-24, quoted under "The user's answers"; not a filed ruling | answered; blocks nothing |
+| P33: three of the five hand-fixed merges on `main` since 2026-11-01 were two pieces of one plan changing the same file | code | `git show --remerge-diff` of 882e915ba, 8ced4ed26, e2c54cb4e (overlap inside one plan), 4427e76fc and faf63254c (across sessions, or a week-long branch) | checked 2026-11-24 |
 | P24: outside Claude Code nothing gates a build | code | `tools/build_slot.ps1:5-8` and `tools/build_slot.ps1:90` | checked 2026-11-24 |
 | P25: the user's limit is three builds at once, main session only | ruling | `docs/agents/rulings/agents-and-workflow.md`, the 2026-11-07 line under Confirmed | checked 2026-11-24 |
 | P26: an integrator already joins task branches onto one wave branch | code | `docs/agents/integrate.md:27` and `docs/agents/integrate.md:41` | checked 2026-11-24 |
