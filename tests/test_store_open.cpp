@@ -252,6 +252,13 @@ TEST_CASE("classify_library_file names each generation of library file") {
         file_of((std::string("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, ") +
                  kEarlyFillWindowColumn + " INTEGER, " + kSpeedColumn + " INTEGER)")
                     .c_str());
+        // With the speed column but not the Safe paths column, it is the
+        // generation after, which still lacks Safe paths.
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksSafePathsColumn);
+        file_of((std::string("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, ") +
+                 kEarlyFillWindowColumn + " INTEGER, " + kSpeedColumn + " INTEGER, " +
+                 kSafePathsColumn + " INTEGER)")
+                    .c_str());
         CHECK(classify_library_file(path) == LibraryFileKind::Current);
         // The older generations are named first: they gain the column too.
         file_of("CREATE TABLE charts (md5 TEXT);"
@@ -1206,6 +1213,154 @@ TEST_CASE("a file older than both the early-fill window and the song speed reads
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     CHECK(profiles_at_default_speed(path) == 2);
     CHECK(records_under_profiles(path) == 2);
+    remove_db(path);
+}
+
+namespace {
+
+// How many profile rows in the file at `path` carry Safe paths off, the value
+// every row from before the column is filed under (Lens::safe_paths).
+int64_t profiles_with_safe_paths_off(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM profiles WHERE ") +
+                                    kSafePathsColumn + " = " + std::to_string(Lens{}.safe_paths));
+}
+
+// Whether the file at `path` still holds the table the Safe paths rebuild
+// renames the old profiles table to.
+bool safe_paths_rebuild_table_left(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM sqlite_master WHERE name = '") +
+                                    kProfilesBeforeSafePathsTable + "'") != 0;
+}
+
+// The profiles table a build before Safe paths wrote: the same columns and
+// key, the song speed included, without Safe paths. The file at `path` keeps
+// every row it held, id included. With `keep_key` false the table has no
+// unique key, so it can hold two rows a real file never could.
+void drop_safe_paths_column(const std::string& path, bool keep_key = true) {
+    const std::string key = keep_key ? ", UNIQUE (chartmode, sp_cap, ms_enabled, ms_value,"
+                                       " depth_mode, depth_value, legacy_fills, efill_window_ms,"
+                                       " speed_percent, hyversion, rules_fp)"
+                                     : "";
+    const std::string sql =
+        std::string("CREATE TABLE p7 (id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL,"
+                    " sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                    " ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                    " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,"
+                    " efill_window_ms INTEGER NOT NULL, speed_percent INTEGER NOT NULL,"
+                    " hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL") +
+        key +
+        ");"
+        "INSERT INTO p7 SELECT id, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+        " depth_value, legacy_fills, efill_window_ms, speed_percent, hyversion, rules_fp"
+        " FROM profiles;"
+        "DROP TABLE profiles;"
+        "ALTER TABLE p7 RENAME TO profiles;";
+    exec_on_file(path, sql.c_str());
+}
+
+// A file at `path` this build wrote, with two real records under two
+// profiles (4 and 8 bars, both with Safe paths off), its profiles table then
+// put back to the layout before Safe paths.
+void seed_without_safe_paths(const std::string& path, bool keep_key = true) {
+    remove_db(path);
+    const int window = static_cast<int>(kDefaultEarlyFillWindowMs);
+    {
+        RecordStore seed(path);
+        seed.save(prepare_record("a", at4(), fixture_chart_at(4, window)));
+        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}},
+                                 fixture_chart_at(8, window)));
+    }
+    drop_safe_paths_column(path, keep_key);
+}
+
+}  // namespace
+
+TEST_CASE("a file whose profiles table lacks Safe paths opens, gains it, and files every old row "
+          "under off") {
+    const std::string path = testtemp::temp_path("lacks_safe_paths_column", ".db");
+    seed_without_safe_paths(path);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksSafePathsColumn);
+    const std::string before = older_profile_columns(path);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    {
+        RecordStore store(path);
+        // With the option off, a lookup finds both old records, each under
+        // its own profile.
+        CHECK(store.lookup_one("a", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("b", Profile{"mode", CapQuery::at(8), Lens{}}).status ==
+              RecordStatus::Ready);
+        // With it on, a lookup finds neither.
+        Profile a_safe = at4();
+        a_safe.lens.safe_paths = 1;
+        CHECK(store.lookup_one("a", a_safe).status == RecordStatus::NotAnalyzed);
+        Profile b_safe{"mode", CapQuery::at(8), Lens{}};
+        b_safe.lens.safe_paths = 1;
+        CHECK(store.lookup_one("b", b_safe).status == RecordStatus::NotAnalyzed);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(older_profile_columns(path) == before);
+    CHECK(profiles_with_safe_paths_off(path) == 2);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 2);
+    CHECK(profiles_at_default_speed(path) == 2);
+    CHECK(records_under_profiles(path) == 2);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    CHECK_FALSE(safe_paths_rebuild_table_left(path));
+    remove_db(path);
+}
+
+TEST_CASE("a file older than the early-fill window files every old row under Safe paths off") {
+    const std::string path = testtemp::temp_path("lacks_efill_and_safe_paths", ".db");
+    seed_without_early_fill(path);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+    {
+        RecordStore store(path);
+        CHECK(store.lookup_one("a", at4()).status == RecordStatus::Ready);
+        Profile a_safe = at4();
+        a_safe.lens.safe_paths = 1;
+        CHECK(store.lookup_one("a", a_safe).status == RecordStatus::NotAnalyzed);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(profiles_with_safe_paths_off(path) == 2);
+    CHECK(records_under_profiles(path) == 2);
+    remove_db(path);
+}
+
+TEST_CASE("an open that cannot add the Safe paths column fails as DatabaseUpgrade and changes "
+          "nothing") {
+    // The same block as the early-fill rebuild's test: the old profiles table
+    // loses its unique key and gains a copy of one row under a new id, so
+    // copying the rows into the new table, whose key the two copies share,
+    // fails partway through the rebuild.
+    const std::string path = testtemp::temp_path("safe_paths_rebuild_blocked", ".db");
+    seed_without_safe_paths(path, false);
+    exec_on_file(path, "INSERT INTO profiles SELECT (SELECT MAX(id) + 1 FROM profiles), chartmode,"
+                       " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
+                       " efill_window_ms, speed_percent, hyversion, rules_fp FROM profiles"
+                       " WHERE id = (SELECT MIN(id) FROM profiles)");
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksSafePathsColumn);
+    const std::string profiles_before = older_profile_columns(path);
+    const std::string profiles_sql_before =
+        text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'");
+    const int64_t profile_rows_before = scalar_on_file(path, "SELECT COUNT(*) FROM profiles");
+    const int64_t records_before = record_rows_in(path);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    try {
+        RecordStore store(path);
+        FAIL("the open copied two rows that share the new table's key");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
+    }
+    // The renamed old table is gone and no new table took its place: the old
+    // table, every row and every record, as they were.
+    CHECK_FALSE(safe_paths_rebuild_table_left(path));
+    CHECK(classify_library_file(path) == LibraryFileKind::LacksSafePathsColumn);
+    CHECK(text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'") ==
+          profiles_sql_before);
+    CHECK(older_profile_columns(path) == profiles_before);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == profile_rows_before);
+    CHECK(record_rows_in(path) == records_before);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    CHECK(records_under_profiles(path) == records_before);
     remove_db(path);
 }
 

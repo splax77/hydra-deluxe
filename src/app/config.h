@@ -139,7 +139,8 @@ enum class AnalysisSetting {
     EarlyFillWindow,
     SongSpeed,
     ScoreRange,
-    PathLimit
+    PathLimit,
+    SafePaths
 };
 
 // The part of a stored result's key an analysis field is filed under:
@@ -170,6 +171,13 @@ struct Settings {
 
     bool mslimit_enabled = true;
     int mslimit_value = 10;
+
+    // The "Safe paths" option. It rides SearchSettings::safe_paths into the
+    // main search, which says which paths it drops. Its own switch: it reads
+    // nothing of the Path limit above, and the Path limit reads nothing of
+    // it. Off by default. Part of a result's key through lens(). INI line:
+    // safe_paths=0.
+    bool safe_paths = false;
 
     // The backend tables' display window: when enabled, only backend rows
     // within +/- this many ms are shown (squeezed-out rows always show).
@@ -326,8 +334,8 @@ struct Settings {
     store::CapQuery cap_query() const;
 
     // The rest of the settings a stored result is keyed by: the ms limit, the
-    // score range, the fill rule, the early-fill window and the song speed, in
-    // the store's canonical form.
+    // score range, the fill rule, the early-fill window, the song speed and
+    // Safe paths, in the store's canonical form.
     store::Lens lens() const;
 
     // The profile a chart is analyzed and filed under with these settings:
@@ -379,7 +387,7 @@ struct AnalysisField {
 // tests/test_config.cpp walks it, so a new analysis setting is a new row here
 // (concept audit M13). The second half of that test catches a keyed setting
 // left out of it.
-inline const std::array<AnalysisField, 12> kAnalysisFields{{
+inline const std::array<AnalysisField, 13> kAnalysisFields{{
     {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
     {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},
     {&Settings::view_bass2x, AnalysisSetting::Bass2x, KeyPart::ChartMode},
@@ -392,6 +400,7 @@ inline const std::array<AnalysisField, 12> kAnalysisFields{{
     {&Settings::depth_mode, AnalysisSetting::ScoreRange, KeyPart::Lens},
     {&Settings::mslimit_enabled, AnalysisSetting::PathLimit, KeyPart::Lens},
     {&Settings::mslimit_value, AnalysisSetting::PathLimit, KeyPart::Lens},
+    {&Settings::safe_paths, AnalysisSetting::SafePaths, KeyPart::Lens},
 }};
 
 // A count of Star Power bars in words, "4 bars" or "1 bar": the SP cap and
@@ -411,6 +420,7 @@ struct SettingsText {
     std::string timing;  // the path limit: "10 ms", or "off"
     std::string early_fill;  // the early-fill window: "60 ms"
     std::string speed;       // the song speed: "100%"
+    std::string safe_paths;  // Safe paths: "on" or "off"
 };
 SettingsText describe_settings(const AnalysisSettings& settings);
 

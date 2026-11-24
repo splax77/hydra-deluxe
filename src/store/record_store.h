@@ -104,7 +104,8 @@ struct CapQuery {
 };
 
 // The rest of the settings a run happened under: the ms limit, the score
-// range, the fill rule, the early-fill window and the song speed. Two runs of
+// range, the fill rule, the early-fill window, the song speed and Safe paths.
+// Two runs of
 // the same chart at the same cap under different lenses are two results,
 // neither overwriting the other.
 //
@@ -132,14 +133,20 @@ struct Lens {
     // two speeds sit side by side. A row saved before the store kept it is
     // filed under the default (add_speed_column).
     int speed_percent = kNormalSpeedPercent;
+    // 1 = the search ran with Safe paths on, 0 = off
+    // (HydraRecord::safe_paths). Part of the key, so a chart's results with
+    // the option on and off sit side by side. A row saved before the store
+    // kept it is filed under off, the search it really ran
+    // (add_safe_paths_column).
+    int safe_paths = 0;
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
-    // `efill_window_ms` is the early-fill setting and `speed_percent` the
-    // song speed setting.
+    // `efill_window_ms` is the early-fill setting, `speed_percent` the song
+    // speed setting and `safe_paths` the Safe paths setting.
     static Lens from(std::optional<int> ms, int depth_mode, int depth_value,
                      bool legacy_fills = false,
                      int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs),
-                     int speed_percent = kNormalSpeedPercent) {
+                     int speed_percent = kNormalSpeedPercent, bool safe_paths = false) {
         Lens lens;
         lens.ms_enabled = ms ? 1 : 0;
         lens.ms_value = ms ? *ms : 0;
@@ -148,6 +155,7 @@ struct Lens {
         lens.legacy_fills = legacy_fills ? 1 : 0;
         lens.efill_window_ms = efill_window_ms;
         lens.speed_percent = speed_percent;
+        lens.safe_paths = safe_paths ? 1 : 0;
         return lens;
     }
 
@@ -156,7 +164,7 @@ struct Lens {
         return ms_enabled == other.ms_enabled && ms_value == other.ms_value &&
                depth_mode == other.depth_mode && depth_value == other.depth_value &&
                legacy_fills == other.legacy_fills && efill_window_ms == other.efill_window_ms &&
-               speed_percent == other.speed_percent;
+               speed_percent == other.speed_percent && safe_paths == other.safe_paths;
     }
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
@@ -427,6 +435,8 @@ inline constexpr int kJournalSizeLimitBytes = 4194304;
 inline constexpr const char* kProfilesBeforeEarlyFillTable = "profiles_before_efill";
 // The same for RecordStore::add_speed_column.
 inline constexpr const char* kProfilesBeforeSpeedTable = "profiles_before_speed";
+// The same for RecordStore::add_safe_paths_column.
+inline constexpr const char* kProfilesBeforeSafePathsTable = "profiles_before_safe_paths";
 
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
@@ -991,8 +1001,9 @@ private:
     // collide. SQLite cannot add a column to a key in place, so the table is
     // rebuilt: renamed to kProfilesBeforeEarlyFillTable, made again from the
     // same SQL a new file uses, every row copied across with its id kept and
-    // the default window (Lens::efill_window_ms) and the default speed
-    // (Lens::speed_percent), and the old table dropped (rebuild_profiles).
+    // the default window (Lens::efill_window_ms), the default speed
+    // (Lens::speed_percent) and Safe paths off (Lens::safe_paths), and the
+    // old table dropped (rebuild_profiles).
     // records and record_paths name a profile by id, so they are untouched.
     // One transaction; a failure throws KindedError(DatabaseUpgrade) with the
     // file as it was.
@@ -1000,11 +1011,19 @@ private:
     // Gives the profiles table its song speed column when it lacks one
     // (profiles_table_lacks_speed), the same way add_early_fill_column gives
     // it the window: rebuilt under kProfilesBeforeSpeedTable, every row copied
-    // with the default speed (Lens::speed_percent). It runs after
-    // add_early_fill_column, whose rebuild already makes the column, so a file
-    // older than both columns is rebuilt once.
+    // with the default speed (Lens::speed_percent) and Safe paths off
+    // (Lens::safe_paths). It runs after add_early_fill_column, whose rebuild
+    // already makes the column, so a file older than both columns is rebuilt
+    // once.
     void add_speed_column();
-    // The rebuild both of those run, inside their transaction: renames
+    // Gives the profiles table its Safe paths column when it lacks one
+    // (profiles_table_lacks_safe_paths), the same way add_speed_column gives
+    // it the speed: rebuilt under kProfilesBeforeSafePathsTable, every row
+    // copied with Safe paths off (Lens::safe_paths), the search those rows
+    // really ran. It runs after add_speed_column, whose rebuild already makes
+    // the column.
+    void add_safe_paths_column();
+    // The rebuild all three of those run, inside their transaction: renames
     // profiles to `old_table`, makes it again from the SQL a new file uses
     // (create_result_tables), copies every row's id, chart mode, cap, the
     // lens columns in `kept_lens`, stamp and rules fingerprint across, gives
