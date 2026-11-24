@@ -25,7 +25,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 | SP cap | Always 4 bars | A setting; 4 is the default |
 | Note Shuffle | Not available | A setting; off by default |
 | Ghost and accent kicks | Scored as normal kicks | Scored double, like the pads |
-| Hit window | 70 ms | 85 ms |
+| Timing step | 70 ms | 85 ms |
 | Squeeze-in/out search window | 140 ms | 500 ms |
 | Early fill window | 70 ms | A setting, 60 ms by default, from 0 to 85 ms, the same on both sides: up to that many ms early to summon a fill, and less than that to spare still shows `E` |
 | Rules you can change | None | `hydra_rules.ini` |
@@ -86,7 +86,7 @@ The two versions can give different optimal scores for the same chart. There are
 
 This version's parser started as a port of public Hydra 1.x, checked chart by chart. Public Hydra's disco and 2x kick rules were checked only in its 1.2.0 source, which still reads charts the old way. Whether a newer public version changed that was not checked. The biggest effect is on Hard, Medium and Easy with Pro Drums, where about 640 charts each score differently, mostly higher. One Clone Hero rule is deliberately not copied: `drums0dnoflip` turns disco flip off here, as the marker says.
 
-The hit window is a fixed 85 ms per side, which is Clone Hero's Pro Drums window. It is not a setting. It sets the `Rating` word on each backend row in the Paths tab, the squeeze budget in the tooltip of a backend row that shows an `eff.` figure, and the path report's timing tiers. None of those steers the path search. The hit window is also the most the `Early fill window` setting allows.
+The timing step is a fixed 85 ms per side. It is not a setting, and it is not Clone Hero's hit window, which the game works out per note. It sets the `Rating` word on each backend row in the Paths tab, the squeeze budget in the tooltip of a backend row that shows an `eff.` figure, and the path report's timing tiers. None of those steers the path search. The timing step is also the most the `Early fill window` setting allows.
 
 The early fill window is the `Early fill window` setting in `Analysis settings`. It starts at 60 ms and goes from 0 to 85 ms. One number sets both of its sides. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to the window. The search keeps every activation that needs the window or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than the window to spare, the activation still shows `E` and an `early fill` badge with a figure below 0. Nothing on it needs timing. At 0 ms no activation is an early fill.
 
@@ -119,7 +119,7 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | Version | What it added |
 |---|---|
 | 1.4.1 | The C++ port, a SQLite database, batch analysis and the path report |
-| 1.5.0 | The installer, the 85 ms hit window, timing-scale warnings on squeezes |
+| 1.5.0 | The installer, the 85 ms timing step, timing-scale warnings on squeezes |
 | 1.6.0 | The Preview, and the SP cap as a setting |
 | 1.7.0 | One saved result per settings combination, and the Preview follows the chosen path |
 | 1.7.3 | Backends for a last activation that runs past the end of the chart |
