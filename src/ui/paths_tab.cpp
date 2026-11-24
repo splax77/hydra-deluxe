@@ -278,8 +278,9 @@ void render_timeline(const app::ActivationsView& view) {
 
 // One activation's line: a full-width Selectable (##act<number>) with the fold
 // arrow, the number in a circle, the notation, the measure, the bars and the
-// badges, each with its Dynamic Hit Window tag when it has one, laid over it.
-// The tags are drawn whether the row is open or closed. A click opens it alone, or
+// badges laid over it. While the row is open (PathsTabUi::act_open), a badge
+// with a Dynamic Hit Window tag has it drawn under it; a closed row is laid
+// out and drawn with no tags. A click opens it alone, or
 // closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
@@ -295,15 +296,17 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     const float width = ImGui::GetContentRegionAvail().x;
     std::optional<ScopedFont> font(std::in_place, TextRole::Figure);
     const float line = ImGui::GetTextLineHeight();
-    // The layout comes first: it says how tall the row is.
+    // The layout comes first: it says how tall the row is. A closed row gives
+    // it no tag widths, so it is as tall as a row with no tags.
     std::vector<float> badge_ws;
     std::vector<std::optional<float>> tag_ws;
     badge_ws.reserve(a.badges.size());
     tag_ws.reserve(a.badges.size());
     for (const app::ActivationBadge& b : a.badges) {
         badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
-        tag_ws.push_back(b.tag ? std::optional<float>(ImGui::CalcTextSize(b.tag->text.c_str()).x)
-                               : std::nullopt);
+        tag_ws.push_back(open && b.tag
+                             ? std::optional<float>(ImGui::CalcTextSize(b.tag->text.c_str()).x)
+                             : std::nullopt);
     }
     const ActivationRowLayout l =
         activation_row_layout(widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws,
@@ -331,7 +334,8 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), TextRole::Figure);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str(), TextRole::Figure);
     // Each badge drawn by its owner (badge_pill.h), in its own colour, and its
-    // Dynamic Hit Window tag under it where the layout put one, in the tag's
+    // Dynamic Hit Window tag under it where the layout put one (only on an
+    // open row, above), in the tag's
     // own colours (window_tag_pill).
     for (size_t k = 0; k < a.badges.size(); ++k) {
         const app::ActivationBadge& b = a.badges[k];

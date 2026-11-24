@@ -696,7 +696,7 @@ The two halves are summed and fed to the window formula, whose linear term is
 (`kFormulaOffsetMs`). The Paths tab's Dynamic Hit Window row shows that
 window beside the 85 for each timing badge: the frontend note's window and
 chord, then the backend note's. A tag that reads safe or short sits under
-the timing badge on the activation's line, open or closed. On a
+the timing badge on the activation's line while its row is open. On a
 squeeze row, frontend and backend are the two sides of a **Frontend squeeze**
 and a **Backend squeeze**: the frontend note is the anchor (the activation
 note, or the note the cap clamped on) and the backend note is the squeezed
