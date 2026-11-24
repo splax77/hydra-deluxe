@@ -64,7 +64,7 @@ inline size_t text_length(std::string_view text) {
 // one character more, so the longest text has room beside its neighbour,
 // held to Excel's widest.
 inline double column_width(size_t longest_text) {
-    return std::min(static_cast<double>(longest_text + 1), xlsx::kExcelMaxColumnWidth);
+    return (std::min)(static_cast<double>(longest_text + 1), xlsx::kExcelMaxColumnWidth);
 }
 
 // `view`'s table as a sheet named `sheet_name`: a header row of the columns'
