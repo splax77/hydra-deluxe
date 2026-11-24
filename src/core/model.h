@@ -105,12 +105,13 @@ inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
 // The backend leeway edge is a user rule: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
 
-// The per-side hit window (the registrable Clone Hero Pro Drums window). One
-// fixed number for the search and the display alike: the squeeze budgets,
-// the Rating words and the report's timing tiers read it, and no setting
-// changes it (D270 call 8). It is also the widest early-fill window the
-// setting allows.
-constexpr double kHitWindowMs = 85.0;
+// The timing step, in ms. It is the step the report's timing tiers are cut in
+// (timing_tiers in core/squeeze_rating.cpp), the per-side unit of the squeeze
+// budget (squeeze_budget_ms), and the cap of the Early fill window setting.
+// The Rating words band on those tiers. It is one fixed number for the search
+// and the display alike, and no setting changes it (D270 call 8). It is not
+// the game's hit window: that is worked out per note in core/note_window.h.
+constexpr double kTimingStepMs = 85.0;
 
 // The early-fill window's default, in ms: the user's own number, "default
 // 60ms, supports 0ms to 85ms" (docs/agents/rulings/code-and-engine.md,
@@ -118,8 +119,8 @@ constexpr double kHitWindowMs = 85.0;
 // search graph, Activation, HydraRecord) is this one constant.
 constexpr double kDefaultEarlyFillWindowMs = 60.0;
 
-// The most the Early fill window setting allows, in whole ms: the hit window.
-constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kHitWindowMs);
+// The most the Early fill window setting allows, in whole ms: the timing step.
+constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kTimingStepMs);
 
 // The squeeze horizon in ms. The search graph only looks this far from the SP
 // end for a reachable squeeze, and backends within it of the deactivation are

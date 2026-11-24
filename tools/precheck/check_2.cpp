@@ -43,7 +43,7 @@ bool spelling_matches(const Spelling& s, const std::string& code) {
 }
 
 const std::regex& hit_window_context() {
-    static const std::regex rx("hit.?window", std::regex::icase);
+    static const std::regex rx("hit.?window|timing.?step", std::regex::icase);
     return rx;
 }
 
@@ -54,7 +54,7 @@ const std::vector<Spelling>& cpp_spellings() {
         // is the two-hit budget at the identity scale?" gives the budget to
         // nominal_budget_ms and catches its product shapes in src/ and tools/.
         // It does not read tests/ and does not match a bare 2.0. This entry
-        // covers that: a typed 2.0 near the words "hit window" in a test.
+        // covers that: a typed 2.0 near the words "hit window" or "timing step" in a test.
         // When the row widens to tests/, this entry goes.
         v.push_back({std::regex("2\\.0*(?![\\w.'])"), "w.'", &hit_window_context(),
                      "a typed 2.0 beside a hit-window check",

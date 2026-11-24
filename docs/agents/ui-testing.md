@@ -232,16 +232,17 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 ### The real-app record
 
-A window session leaves a record that says which commit was checked in the real app. It exists so a gate on merges that change `src/ui/` can tell a real-app check that happened from one that did not. The field names below are that gate's contract, so a change to them is a change to the gate too. Headless sessions write no record.
+A window session leaves a record that says which files were checked in the real app: it names the commit and that commit's git tree. It exists so a gate on merges that change `src/ui/` can tell a real-app check that happened from one that did not. The field names below are that gate's contract, so a change to them is a change to the gate too. Headless sessions write no record.
 
 The helper appends one JSON line per window session to a file named realapp.jsonl in the repo's git common dir. That is the `.git` folder of the main checkout (what `git rev-parse --git-common-dir` prints), so every worktree of the repo writes to the same file and git never tracks it. The record names the session's tree: the checkout the helper's own code sits in, or the worktree `hydra_start` named. That is always the tree whose `build-cpp\Release` exes the session ran.
 
-A line has seven fields:
+A line has eight fields:
 
 | Field | What it holds |
 |---|---|
 | `kind` | always `"realapp"` |
 | `commit` | the full hash of that tree's HEAD when the session ended |
+| `tree` | the id of that HEAD's git tree (`git rev-parse HEAD^{tree}`), git's own fingerprint of every file in it |
 | `dirty` | `true` when `git status --porcelain` in that tree printed anything, untracked files included, so the build may hold changes the commit does not |
 | `commands` | how many command lines Hydra answered in the session, screenshots and the `timeout` lines of a one-call timeout included |
 | `shots` | how many of those answers were a saved screenshot |
@@ -250,7 +251,9 @@ A line has seven fields:
 
 Four endings write the record: `hydra_stop` when Hydra exits with code 0, `hydra_stop(keep_window=True)`, the stop a new `hydra_start` makes first, and the user closing the window (Hydra exits with code 0 and the next tool call notices). The helper's own exit writes one too, for a window session still open then (or one that already exited with code 0). A crash, a nonzero exit, a silent Hydra the helper killed, or a window that would not quit writes nothing, because a session that died is not a check. The reply says "no real-app record written" in those cases, and also when git cannot say what HEAD is. `realapp_record` in `tools/hydra_ui_mcp.py` writes the line; `REALAPP_FILE` there names the file.
 
-The record has three limits. `Hydra.exe` carries no commit of its own, so the record names the tree's HEAD, not the build: a stale exe is recorded under the current commit. The record shows that a window was opened and used on that commit, not what anyone looked at. And when the user checks a copy of the exe by hand, no helper session runs, so no record is written.
+The gate reads a record by its `tree`, not its commit. A clean, used record covers any merge whose `src/ui/` files land the same as in that tree, apart from changes to comments only, whatever branch or worktree it was taken on, so one window check on a joined branch covers every branch whose UI files land unchanged. `realapp_checked` in `C:\Users\Patrick\.claude\gates\review_rules.py` owns that test, and `UI_CODE` in the same file owns which files count as UI code; the helper names no UI path.
+
+The record has three limits. `Hydra.exe` carries no commit of its own, so the record names the tree's HEAD, not the build: a stale exe is recorded under the current commit. The record shows that a window was opened and used on those files, not what anyone looked at. And when the user checks a copy of the exe by hand, no helper session runs, so no record is written.
 
 ### A branch's check from the main checkout
 

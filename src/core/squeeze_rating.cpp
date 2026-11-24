@@ -130,7 +130,7 @@ double effective_backend_ms(double offset_ms, double transfer_r) {
 }
 
 double squeeze_budget_ms(double transfer_r) {
-    return budget_for_window(transfer_r, kHitWindowMs);
+    return budget_for_window(transfer_r, kTimingStepMs);
 }
 
 double nominal_budget_ms() {
@@ -239,7 +239,7 @@ ActivationRating rate_activation(const Activation& act, double backend_leeway_ms
 }
 
 std::vector<TimingTier> timing_tiers() {
-    const double w = kHitWindowMs;
+    const double w = kTimingStepMs;
     // Normal's edge is the difficult floor past_difficult_floor tests, and
     // it is inclusive: a timing exactly on it (2.0 ms) is Normal (D48 Q3).
     return {

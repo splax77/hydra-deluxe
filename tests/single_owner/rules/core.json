@@ -420,18 +420,18 @@
       "date": "2026-10-15",
       "decision": "D250; D270 call 8; the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md (the early-fill window is one adjustable setting)",
       "added_by": "EF85; efill-t5",
-      "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b|\\be_offset\\s*[<>]=?\\s*-",
+      "pattern": "[-+]\\s*(hydra::)?kTimingStepMs\\b|\\be_offset\\s*[<>]=?\\s*-",
       "must_match": [
-        "if (e_offset < -kHitWindowMs) return false;",
-        "return d - hydra::kHitWindowMs;",
-        "return ready_ms <= deadline_ms + kHitWindowMs;",
+        "if (e_offset < -kTimingStepMs) return false;",
+        "return d - hydra::kTimingStepMs;",
+        "return ready_ms <= deadline_ms + kTimingStepMs;",
         "if (a.e_offset < -85.0) continue;",
         "return e_offset <= -window_ms;"
       ],
       "must_not_match": [
         "if (fill_refuses(e_offset, window_ms)) return false;",
-        "return budget_for_window(transfer_r, kHitWindowMs);",
-        "const double w = kHitWindowMs;",
+        "return budget_for_window(transfer_r, kTimingStepMs);",
+        "const double w = kTimingStepMs;",
         "return e_offset < window_ms && skips == 0;"
       ],
       "owner_lines": [
@@ -441,7 +441,7 @@
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "The reach is the early-fill window fill_refuses is given (the Early fill window setting), never the hit window. The row flags an offset compared with a negated number anywhere but the owner, and kHitWindowMs added to or taken from a deadline or an offset, which would be a fixed reach again. The squeeze budgets and the report read kHitWindowMs as it is, so a bare read is not flagged."
+      "note": "The reach is the early-fill window fill_refuses is given (the Early fill window setting), never the timing step. The row flags an offset compared with a negated number anywhere but the owner, and kTimingStepMs added to or taken from a deadline or an offset, which would be a fixed reach again. The squeeze budgets and the report read kTimingStepMs as it is, so a bare read is not flagged."
     },
     {
       "question": "Who compares an offset with the early-fill window on its white side (how little time to spare still marks an activation E-critical)?",
@@ -451,18 +451,18 @@
       "date": "2026-11-15",
       "decision": "D344; the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md (the early-fill window is one adjustable setting)",
       "added_by": "early-fill-hit-window; efill-t5",
-      "pattern": "[<>]=?\\s*(hydra::)?kHitWindowMs\\b|\\be_offset\\s*[<>]=?\\s*[A-Za-z0-9_(]",
+      "pattern": "[<>]=?\\s*(hydra::)?kTimingStepMs\\b|\\be_offset\\s*[<>]=?\\s*[A-Za-z0-9_(]",
       "must_match": [
-        "if (e_offset < kHitWindowMs) ok = true;",
-        "return d >= hydra::kHitWindowMs;",
+        "if (e_offset < kTimingStepMs) ok = true;",
+        "return d >= hydra::kTimingStepMs;",
         "if (e_offset < window_ms) ok = true;",
         "return a.e_offset <= 60.0;"
       ],
       "must_not_match": [
         "if (is_e0(e_offset, 0, window_ms)) ok = true;",
-        "if (e_offset < -kHitWindowMs) return false;",
+        "if (e_offset < -kTimingStepMs) return false;",
         "if (e_offset >= -window_ms) return true;",
-        "const double w = kHitWindowMs;"
+        "const double w = kTimingStepMs;"
       ],
       "owner_lines": [
         {
@@ -471,7 +471,7 @@
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "The window is one number on both sides of the deadline: the early-fill window fill_refuses and is_e0 are given, never the hit window. The row above flags the reach side; this row flags an offset compared straight with a number (the white side) anywhere but the owner, and any compare with kHitWindowMs, which would be a fixed window again. Neither flags a bare read of the hit window, which the squeeze budgets and the report make."
+      "note": "The window is one number on both sides of the deadline: the early-fill window fill_refuses and is_e0 are given, never the timing step. The row above flags the reach side; this row flags an offset compared straight with a number (the white side) anywhere but the owner, and any compare with kTimingStepMs, which would be a fixed window again. Neither flags a bare read of the timing step, which the squeeze budgets and the report make."
     },
     {
       "question": "What is the early-fill window's default?",
@@ -1053,20 +1053,21 @@
       "owner_file": "src/core/squeeze_rating.cpp",
       "owner_symbol": "nominal_budget_ms",
       "date": "2026-10-04",
-      "decision": "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one window, kHitWindowMs)",
+      "decision": "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one fixed timing step, kTimingStepMs)",
       "added_by": "M_C fix prod",
-      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kHitWindowMs)\\b|\\b(w|hit_window\\w*|kHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*\\)|budget_for_window\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,\\s*(hydra::)?kHitWindowMs\\b|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
+      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|timing_step\\w*|kTimingStepMs)\\b|\\b(w|hit_window\\w*|timing_step\\w*|kTimingStepMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*\\)|budget_for_window\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,\\s*(hydra::)?kTimingStepMs\\b|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
       "must_match": [
         "{\"Insane+\", \"t4\", 2 * w},",
         "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0)},",
-        "{\"Insane+\", \"t4\", budget_for_window(kIdentityScale, kHitWindowMs)},",
+        "{\"Insane+\", \"t4\", budget_for_window(kIdentityScale, kTimingStepMs)},",
         "const double budget = hit_window * 2;",
-        "const double budget = kHitWindowMs * 2;",
+        "const double budget = timing_step * 2;",
+        "const double budget = kTimingStepMs * 2;",
         "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"
       ],
       "must_not_match": [
         "{\"Insane+\", \"t4\", nominal_budget_ms()},",
-        "return budget_for_window(transfer_r, kHitWindowMs);",
+        "return budget_for_window(transfer_r, kTimingStepMs);",
         "return std::abs(offset_ms) * budget_for_window(kIdentityScale, kUnitWindow) /"
       ],
       "owner_lines": [
@@ -1884,23 +1885,23 @@
       "note": "---- report pages ---- Clone Hero's SP cap written as text, where the leaderboard page names it."
     },
     {
-      "question": "What is the hit window?",
-      "owner": "kHitWindowMs in src/core/model.h",
+      "question": "What is the timing step?",
+      "owner": "kTimingStepMs in src/core/model.h",
       "owner_file": "src/core/model.h",
-      "owner_symbol": "kHitWindowMs",
+      "owner_symbol": "kTimingStepMs",
       "date": "2026-10-05",
       "decision": "audit finding 140; D51 call 15 (phase 7 task LB1); D270 call 8 (one fixed window)",
       "added_by": "LB1",
-      "pattern": "static_cast<int>\\(\\s*(hydra::)?kHitWindowMs\\s*\\)",
-      "anchor": "kHitWindowMs",
+      "pattern": "static_cast<int>\\(\\s*(hydra::)?kTimingStepMs\\s*\\)",
+      "anchor": "kTimingStepMs",
       "must_match": [
-        "int window = static_cast<int>(kHitWindowMs);",
-        "const int w = static_cast<int>(kHitWindowMs));",
-        "CHECK(w == static_cast<int>(hydra::kHitWindowMs));"
+        "int window = static_cast<int>(kTimingStepMs);",
+        "const int w = static_cast<int>(kTimingStepMs));",
+        "CHECK(w == static_cast<int>(hydra::kTimingStepMs));"
       ],
       "must_not_match": [
-        "double window = kHitWindowMs;",
-        "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }"
+        "double window = kTimingStepMs;",
+        "std::string timing_step_text() { return whole_ms_text(kTimingStepMs); }"
       ],
       "scope": [
         "src",
@@ -1909,11 +1910,11 @@
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kHitWindowMs);",
-          "why": "kMaxEarlyFillWindowMs, the most the Early fill window setting allows in whole ms: the one whole-ms cut of the hit window for the setting's range (the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md)"
+          "line_text": "constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kTimingStepMs);",
+          "why": "kMaxEarlyFillWindowMs, the most the Early fill window setting allows in whole ms: the one whole-ms cut of the timing step for the setting's range (the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md)"
         }
       ],
-      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, the Early fill window setting's top edge is kMaxEarlyFillWindowMs, and everything else reads kHitWindowMs as it is."
+      "note": "The timing step cut to a whole number by hand. The reports print it through report::timing_step_text, the Early fill window setting's top edge is kMaxEarlyFillWindowMs, and everything else reads kTimingStepMs as it is."
     },
     {
       "question": "What does squeezing out a row cost?",

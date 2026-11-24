@@ -103,7 +103,7 @@ constexpr double kIdentityScale = 1.0;
 // assume (nominal_budget_ms). With frontend timing scaling by r at the SP
 // end, the real combined squeeze budget is squeeze_budget_ms(r) instead,
 // so a raw |offset| is rescaled by nominal_budget_ms over squeeze_budget_ms
-// at r. The window (kHitWindowMs) cancels in that ratio.
+// at r. The timing step (kTimingStepMs) cancels in that ratio.
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r);
 // The two-hit budget at the identity scale: squeeze_budget_ms at
@@ -228,7 +228,7 @@ ActivationRating rate_activation(
 
 // The report's timing tiers: raw squeeze ms banded against the two-hit
 // budget (nominal_budget_ms), quarters of it after the kDifficultMs
-// "Normal" floor. kHitWindowMs sets those quarters. In payload order.
+// "Normal" floor. kTimingStepMs sets those quarters. In payload order.
 // `cutoff` is the band's upper edge, and a timing exactly on it belongs to
 // this band, not the next (D48 Q3): 2.0 ms is Normal, and a timing exactly
 // on the two-hit budget is Insane+. It is unset for the open "Beyond" band

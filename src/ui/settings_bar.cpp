@@ -4,7 +4,7 @@
 // SP cap mid-run would hide the result it had just made.
 
 #include "app/config.h"  // Settings::clamp, the one range each box asks
-#include "app/report.h"  // hit_window_text
+#include "app/report.h"  // timing_step_text
 #include "core/model.h"
 #include "imgui.h"
 #include "imgui_internal.h"  // IsPopupOpen by id, SetKeyOwner
@@ -38,7 +38,7 @@ std::string early_fill_window_help_text() {
            "fill by hitting early; later than that, the fill never spawns. Ready less than this "
            "many ms before the deadline, the activation is marked E. At 0 no activation is an "
            "early fill. " +
-           app::report::hit_window_text() + " ms, the hit window, is the most it allows.";
+           app::report::timing_step_text() + " ms is the most it allows.";
 }
 
 namespace {

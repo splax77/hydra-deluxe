@@ -97,5 +97,6 @@ python -m pytest tools/ch_probe/tests -q
 
 ## Why bother
 
-Hydra's model uses a flat 85 ms hit window. The point of this work is to
-decide whether that should become the per-note curve the game really uses.
+Hydra's ratings use a flat 85 ms step (`kTimingStepMs`), not the game's
+per-note window. The point of this work is to decide whether that should
+become the per-note curve the game really uses.

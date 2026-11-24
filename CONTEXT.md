@@ -451,7 +451,7 @@ skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
 `kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
 `is_retired_key` asks. A live key of the same name wins. A retired settings
 key is left out at the next save (D270 call 7). `hit_window_ms` is one of
-them, because the hit window is a fixed number, not a setting (Hit window).
+them, because the timing step is a fixed number, not a setting (Timing step).
 A refused hydra_settings.ini throws `SettingsFileError` (kind `SettingsFile`,
 whose app sentence is `kSettingsOffSentence`). In the app, Hydra opens on a
 default `Settings`, analysis is off as for the rules file, no scan starts and
@@ -559,7 +559,7 @@ every press's timing. The hit window the player uses is the game's own
 per-note window, which the chords either side set
 (docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51); the tool reads it
 from src/core/note_window.h, as the Paths tab's Dynamic Hit Window row does.
-Hydra's own judging keeps the fixed Hit window. The player in tools/ch_probe
+Hydra's own ratings keep the fixed Timing step. The player in tools/ch_probe
 is to only send the presses, read the end and pick the written fallback
 (docs/adr/0030; the player tasks of
 docs/superpowers/plans/2026-11-08-replay-press-schedule.md build that).
@@ -612,7 +612,7 @@ src/core/stars.cpp; D48, Q33).
 An activation timing (the `E` notation) near a fill's spawn deadline. The
 window is one number on both sides of the deadline: the `Early fill window`
 setting, 60 ms<!-- default: kDefaultEarlyFillWindowMs --> by default, from 0
-to the hit window.
+to the timing step.
 On the orange side, Star Power comes ready after the deadline, so you must
 hit early to summon the fill. Later than the window (`fill_refuses`), the
 fill never spawns, and the search drops the activation.
@@ -671,25 +671,26 @@ database holds both rules' records, and no label on the whole file names a
 rule. The conversion deletes the retired `engine_mode` row
 (`kRetiredFillLabelKey` in src/store/record_store.cpp).
 
-**Hit window**:
-The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
-window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
-src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
-squeeze budgets (`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words
-and the report's timing tiers all read it. It is also the most the
-`Early fill window` setting allows (Early fill (E)). The old `hit_window_ms` key is retired and skipped
-(Settings files). The report's timing tiers are Normal up to 2 ms
-(`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
-Insane up to one and a half, Insane+ up to two, and Beyond past two windows;
-each edge belongs to the band below it (`timing_tiers` and `tier_for` in
-src/core/squeeze_rating.cpp; D48, Q3 and Q33). The report's footer and its
-Timing column's tooltip call it "the 85 ms hit window", printed by
-`hit_window_text` (src/app/report.h; D278 item 4).
+**Timing step**:
+Hydra's fixed ms step for sizing timings: 85 ms<!-- default: kTimingStepMs -->
+(`kTimingStepMs` in src/core/model.h). It is one fixed number, not a setting
+(D270 call 8). The report's timing tiers are cut in steps of it, it is the
+per-side unit of the squeeze budget (`squeeze_budget_ms`, `nominal_budget_ms`),
+and the Rating words band on those tiers. It is also the most the
+`Early fill window` setting allows (Early fill (E)). It is not Clone Hero's
+hit window: the game sizes each note's window itself, as the next paragraph
+says. The old `hit_window_ms` key is retired and skipped (Settings files).
+The report's timing tiers are Normal up to 2 ms (`kDifficultMs`), then Hard
+up to half a step, Extreme up to one step, Insane up to one and a half,
+Insane+ up to two, and Beyond past two steps; each edge belongs to the band
+below it (`timing_tiers` and `tier_for` in src/core/squeeze_rating.cpp; D48,
+Q3 and Q33). The report's footer and its Timing column's tooltip print it as
+"steps of 85 ms", through `timing_step_text` (src/app/report.h; D278 item 4).
 
 The game itself gives each note its own window, sized by the gaps to the
 chords either side (docs/clone-hero/03-timing.md, TM-17 to TM-22 and TM-51).
 Each half-gap is held between the front clamp, 37.5 ms (`kWindowFrontMs`), and
-the back clamp, 85 ms (`kWindowBackMs`, a separate number from `kHitWindowMs`).
+the back clamp, 85 ms (`kWindowBackMs`, a separate number from `kTimingStepMs`).
 The two halves are summed and fed to the window formula, whose linear term is
 0.0110924369747899 (`kFormulaLinear`), whose square term is 2.628539e-05
 (`kFormulaSquare`), and whose scale is 170.0 (`kFormulaScale`), less 20 ms

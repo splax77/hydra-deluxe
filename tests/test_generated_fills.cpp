@@ -569,7 +569,7 @@ TEST_CASE("1.0 generator: a mid-measure meter change puts the midpoint before th
     CHECK(fills_of(song) == Fills{{960, 1152}});
 }
 
-TEST_CASE("1.0 generator: the longest tick at a corpus fill's start, beside the hit window") {
+TEST_CASE("1.0 generator: the longest tick at a corpus fill's start, beside the timing step") {
     // A log line, no check: a 1.0 fill's start is a midpoint second rounded
     // to a tick, so it can sit up to half this far from the exact second.
     double longest_tick_ms = 0.0;
@@ -585,7 +585,7 @@ TEST_CASE("1.0 generator: the longest tick at a corpus fill's start, beside the 
         }
     }
     MESSAGE("longest tick at a 1.0 generated fill's start: " << longest_tick_ms
-                                                             << " ms; kHitWindowMs " << kHitWindowMs);
+                                                             << " ms; kTimingStepMs " << kTimingStepMs);
 }
 
 // ---- the corpus -----------------------------------------------------------

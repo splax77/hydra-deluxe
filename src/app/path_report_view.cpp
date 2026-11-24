@@ -126,8 +126,9 @@ std::vector<Column<ReportRow>> path_columns() {
         Column<ReportRow> c;
         c.id = "tier";
         c.title = "Timing";
-        c.definition = "How hard Hardest ms is, in bands of the " + report::hit_window_text() +
-                       " ms hit window. Beyond means more than twice the hit window.";
+        c.definition = "How hard Hardest ms is, in bands measured in steps of " +
+                       report::timing_step_text() +
+                       " ms. Beyond means more than two of those steps.";
         c.sort_key = [tiers = timing_tiers()](const ReportRow& r) {
             for (size_t i = 0; i < tiers.size(); ++i)
                 if (tiers[i].name == r.tier) return SortKey{static_cast<double>(i)};

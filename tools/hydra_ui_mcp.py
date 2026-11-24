@@ -213,12 +213,15 @@ def realapp_record(session, repo):
     OSError when git cannot say or the file cannot be written.
 
     The record names the tree's HEAD, not the build: Hydra.exe carries no
-    commit. `dirty` is true when git status lists anything, untracked files
-    included."""
+    commit. `tree` is the id of HEAD's tree, git's snapshot of every file the
+    commit holds, so a reader can compare files without needing this commit.
+    Which files count is the reader's rule, never this helper's. `dirty` is
+    true when git status lists anything, untracked files included."""
     common = git_common_dir(repo)
     commit = _git(repo, "rev-parse", "HEAD").strip()
+    tree = _git(repo, "rev-parse", "HEAD^{tree}").strip()
     dirty = _git(repo, "status", "--porcelain") != ""
-    record = {"kind": "realapp", "commit": commit, "dirty": dirty,
+    record = {"kind": "realapp", "commit": commit, "tree": tree, "dirty": dirty,
               "commands": session.commands, "shots": session.shots,
               "started": session.started, "stopped": now_stamp()}
     path = common / REALAPP_FILE
