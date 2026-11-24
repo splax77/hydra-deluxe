@@ -670,7 +670,8 @@ RecordRow record_of(std::string song_id, const HydraRecord& analysis) {
 namespace {
 
 // Throws std::invalid_argument when `profile` is not what `analysis` ran
-// under: its cap, its ms limit, its fill rule or its early-fill window. Each
+// under: its cap, its ms limit, its fill rule, its early-fill window or its
+// song speed. Each
 // mismatch would file the
 // analysis under settings it doesn't belong to. `who` starts the message.
 void check_profile_fits(const Profile& profile, const HydraRecord& record, const char* who) {
@@ -709,6 +710,13 @@ void check_profile_fits(const Profile& profile, const HydraRecord& record, const
                                     std::to_string(profile.lens.efill_window_ms) +
                                     " ms but the record was analyzed at " +
                                     std::to_string(record.early_fill_window_ms) + " ms");
+    // Both sides are the same whole percent (the speed setting), so an exact
+    // comparison is the right one.
+    if (profile.lens.speed_percent != record.speed_percent)
+        throw std::invalid_argument(w + "key asks for a song speed of " +
+                                    std::to_string(profile.lens.speed_percent) +
+                                    "% but the record was analyzed at " +
+                                    std::to_string(record.speed_percent) + "%");
 }
 
 }  // namespace

@@ -202,11 +202,11 @@ struct Settings {
     int early_fill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
 
     // The song speed in whole percent, as Clone Hero's speed setting holds it
-    // (kDefaultSpeedPercent in parse/chart_reading.h; its range is the key
-    // table's in config.cpp). It rides the chart reading (reading()) into the
-    // parsers, and is part of a result's key through lens(). INI line:
+    // (kNormalSpeedPercent and its limits in core/model.h; the key table in
+    // config.cpp holds it to them). It rides the chart reading (reading()) into
+    // the parsers, and is part of a result's key through lens(). INI line:
     // speed_percent=100.
-    int speed_percent = kDefaultSpeedPercent;
+    int speed_percent = kNormalSpeedPercent;
 
     // Open the batch's path report window as soon as Hydra builds it. It
     // covers only the path report, not the leaderboard comparison (D103 item

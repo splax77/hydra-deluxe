@@ -742,6 +742,20 @@ TEST_CASE("song speed: a speed set after the timing is built, or of 0, is refuse
     CHECK(fresh.speed_percent() == hydra::kNormalSpeedPercent);
 }
 
+TEST_CASE("song speed: a chart read through the analysis settings at 150% is timed at "
+          "a ratio of 1.5, in both parsers") {
+    hydra::app::Settings at150;
+    at150.speed_percent = 150;
+    const hydra::app::AnalysisSettings analysis = at150.to_analysis_settings();
+    for (const char* suffix : {".chart", ".mid"}) {
+        INFO(suffix);
+        const hydra::Song& song = corpus::song(corpus::first_chart_with_suffix(suffix),
+                                               analysis.reading(), analysis.rules);
+        CHECK(song.speed_percent() == 150);
+        CHECK(song.timing().speed_ratio() == 1.5);
+    }
+}
+
 // "Who writes a meter or a signature into Song's maps?" and "Does the Preview
 // type its own 4/4 meter?" are rows in tests/single_owner/rules/parse.json,
 // read by the one scan of the source tree.

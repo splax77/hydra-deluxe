@@ -714,6 +714,26 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
           kMaxEarlyFillWindowMs);
 }
 
+TEST_CASE("store: prepare_record refuses a profile at another song speed") {
+    // The fixture's chart read at 150%: the record takes the speed from the
+    // song the engine searched (analyze_chart).
+    app::AnalysisSettings settings_150 = store_fixture_settings();
+    settings_150.reading().speed_percent = 150;
+    const HydraRecord& searched_at_150 = corpus::analyzed(fixture_chart(), settings_150);
+    REQUIRE(searched_at_150.speed_percent == 150);
+    // Filed under the profile at 100, it throws.
+    REQUIRE(at4().lens.speed_percent == kNormalSpeedPercent);
+    CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_150), std::invalid_argument);
+    // And the other way: the record at 100 under a profile at 150.
+    const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.speed_percent == kNormalSpeedPercent);
+    Profile at150 = at4();
+    at150.lens.speed_percent = 150;
+    CHECK_THROWS_AS(prepare_record("h1", at150, analysis), std::invalid_argument);
+    // The matching pair files.
+    CHECK(prepare_record("h1", at150, searched_at_150).profile.lens.speed_percent == 150);
+}
+
 TEST_CASE("store: one chart's results at two early-fill windows are two results") {
     // Two profiles that differ only in the window. Each save keeps the other's
     // record, and each lookup gets its own back. The two records are two

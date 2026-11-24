@@ -45,7 +45,6 @@
 #include "store/library_file.h"
 #include "core/rules.h"
 #include "core/timing.h"
-#include "parse/chart_reading.h"  // kDefaultSpeedPercent
 
 struct sqlite3;
 struct sqlite3_stmt;
@@ -129,10 +128,10 @@ struct Lens {
     // kept it is filed under the default (add_early_fill_column).
     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
     // The song speed the chart was read at, in whole percent
-    // (ChartReading::speed_percent). Part of the key, so a chart's results at
+    // (HydraRecord::speed_percent). Part of the key, so a chart's results at
     // two speeds sit side by side. A row saved before the store kept it is
     // filed under the default (add_speed_column).
-    int speed_percent = kDefaultSpeedPercent;
+    int speed_percent = kNormalSpeedPercent;
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
     // `efill_window_ms` is the early-fill setting and `speed_percent` the
@@ -140,7 +139,7 @@ struct Lens {
     static Lens from(std::optional<int> ms, int depth_mode, int depth_value,
                      bool legacy_fills = false,
                      int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs),
-                     int speed_percent = kDefaultSpeedPercent) {
+                     int speed_percent = kNormalSpeedPercent) {
         Lens lens;
         lens.ms_enabled = ms ? 1 : 0;
         lens.ms_value = ms ? *ms : 0;
