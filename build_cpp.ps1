@@ -79,6 +79,16 @@ $defaultTargets = @($all, "hydra_bench", "hydra_replay")
 # tools/build_record.ps1 owns the build record. A line that cannot be written
 # is reported, and never changes or hides the build's own result.
 $buildId = [guid]::NewGuid().ToString('N')
+# A line says what HEAD was when it was written, so a build whose HEAD moved
+# while it ran is recorded as failed, never as passed.
+function Get-BuildHead {
+    $exitBefore = $global:LASTEXITCODE
+    try {
+        $h = & git -C $root rev-parse HEAD 2>$null
+        if ($LASTEXITCODE -eq 0) { "$h".Trim() } else { $null }
+    } catch { $null } finally { $global:LASTEXITCODE = $exitBefore }
+}
+$startHead = Get-BuildHead
 function Write-BuildRecord([string]$BuildEvent) {
     $exitBefore = $global:LASTEXITCODE
     try {
@@ -161,6 +171,9 @@ try {
     $built = $true
 } finally {
     Pop-Location
-    if ($claimed) { Write-BuildRecord $(if ($built) { "passed" } else { "failed" }) }
+    if ($claimed) {
+        $moved = $built -and ((Get-BuildHead) -ne $startHead)
+        Write-BuildRecord $(if ($built -and -not $moved) { "passed" } else { "failed" })
+    }
     if ($pass.Lock) { & (Join-Path $root "tools\build_slot.ps1") -Release $pass.Lock }
 }
