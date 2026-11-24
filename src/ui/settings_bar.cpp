@@ -223,7 +223,7 @@ void render_paths_group(AppState& app, bool locked) {
 void render_reset_button(AppState& app, bool locked) {
     const bool off = locked || settings_at_defaults(app.settings);
     begin_disabled_button(off);
-    if (ImGui::Button("Reset to defaults")) {
+    if (ImGui::Button(app::kResetToDefaultsLabel)) {
         app.settings = app.settings.with_analysis_defaults();
         app.commit_settings();
     }

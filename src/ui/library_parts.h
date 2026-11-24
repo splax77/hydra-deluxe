@@ -48,6 +48,9 @@ std::string legacy_fills_help_text();
 // The early-fill window's name, as the panel row, the settings button's
 // phrase and the batch confirm's line all print it.
 inline constexpr const char* kEarlyFillWindowName = "Early fill window";
+// The song speed's name, as the settings button's phrase and the batch
+// confirm's line both print it.
+inline constexpr const char* kSongSpeedName = "Song speed";
 // The three chart-mode switches' names, as the settings button's phrase and
 // the batch confirm's difficulty line both print them.
 inline constexpr const char* kProDrumsName = "Pro Drums";
@@ -84,6 +87,7 @@ struct BatchSettingsSummary {
     std::string sp_cap;       // "4 bars (Clone Hero's rule)"
     std::string fills;        // "Clone Hero 1.1" or "Clone Hero 1.0"
     std::string early_fill;   // "60 ms"
+    std::string speed;        // "100%"
     std::string score_range;  // "2 scores" or "2,000 points"
     std::string path_limit;   // "10 ms" or "off"
 };

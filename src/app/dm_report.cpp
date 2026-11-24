@@ -244,19 +244,20 @@ GeneratedDmReport generate_dm_report(store::StoreReads& store,
     // pass them (D103 item 27).
     const std::string scores_count = hydra::counted(out.stats.total, "score", "scores");
     std::string subtitle = username + " — " + scores_count + " — " + clone_hero_cap_phrase();
-    // The comparison reads only results at Clone Hero's cap, while analysis runs
-    // at the player's own cap setting, so the last sentence says to set it
-    // first (D281). "SP cap" there is the settings bar's label for that
-    // setting; render_rules_group in src/ui/settings_bar.cpp owns it, and this
-    // layer cannot read the UI's text.
+    // The comparison reads only results at the profile
+    // Settings::profile_at_clone_hero_cap pins, while analysis runs at the
+    // player's own settings, so the last sentence sends the player to the
+    // panel's reset button first: a player knows the defaults are comparable
+    // without remembering which settings are. kResetToDefaultsLabel is that
+    // button's label, read by the button too.
     const std::string cap = std::to_string(kCloneHeroSpCap);
     std::string footer =
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "
         "backends, and older Clone Hero versions allowed fills that are impossible now. "
         "Charts with " + status_words(kStatusNoCurrentResult).count_one +
-        " are in your library without a result for this mode at SP cap " + cap +
-        ": set SP cap to " + cap + ", analyze them, then compare again.";
+        " are in your library without a result for this mode at SP cap " + cap + ": " +
+        kResetToDefaultsLabel + ", analyze them, then compare again.";
     out.subtitle = std::move(subtitle);
     out.footer = std::move(footer);
     out.rows = std::move(rows);

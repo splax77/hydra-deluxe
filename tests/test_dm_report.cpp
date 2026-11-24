@@ -486,8 +486,9 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(ends_with(one.subtitle, dmr::clone_hero_cap_phrase()));
 
     // The footer names the mode it compared, and its last sentence, in the
-    // "no current result" words (D114 item 1), tells the player to set the
-    // cap the comparison reads (D281), read from kCloneHeroSpCap.
+    // "no current result" words (D114 item 1), names the cap the comparison
+    // reads, from kCloneHeroSpCap, and sends the player to the settings
+    // panel's reset button by its own label before analyzing again.
     const std::string cap = std::to_string(kCloneHeroSpCap);
     CHECK(result.footer.find(std::string(kMode) + ".") != std::string::npos);
     const size_t last = result.footer.find(
@@ -495,7 +496,9 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     REQUIRE(last != std::string::npos);
     const std::string last_sentence = result.footer.substr(last);
     CHECK(last_sentence.find("at SP cap " + cap) != std::string::npos);
-    CHECK(last_sentence.find("set SP cap to " + cap) != std::string::npos);
+    CHECK(last_sentence.find(std::string(": ") + app::kResetToDefaultsLabel +
+                             ", analyze them, then compare again.") != std::string::npos);
+    CHECK(last_sentence.find("set SP cap to") == std::string::npos);
 
     // No scores: the player is still named, and nothing else is.
     const dmr::GeneratedDmReport none =

@@ -223,12 +223,14 @@ analysis setting is one new row there (concept audit M13).
 _Avoid_: view options
 
 **Chart reading**:
-The four choices that pick which notes a chart is read as: the difficulty, Pro
-Drums, 2x Bass and Note Shuffle. `ChartReading` in src/parse/chart_reading.h
-holds them, and `Settings::reading` reads them off the settings, 2x Bass through
-`effective_bass2x`; `Settings::with_reading` writes one back. Its stored
-spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
-`chartmode_key` and read back by `Settings::with_chartmode`.
+The four choices that pick which notes a chart is read as (the difficulty, Pro
+Drums, 2x Bass and Note Shuffle), plus the song speed the chart is timed at.
+`ChartReading` in src/parse/chart_reading.h holds them, and `Settings::reading`
+reads them off the settings, 2x Bass through `effective_bass2x`;
+`Settings::with_reading` writes one back. Its stored spelling is the chart mode,
+such as "Expert Pro Drums, 2x Bass", written by `chartmode_key` and read back by
+`Settings::with_chartmode`. The chart mode spells only the four choices; the
+speed is stored in the results' own key (`store::Lens`).
 `AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath` and
 `load_songbytes_*` loaders take one, and so do the Preview's song key and load
 jobs, `resolve_preview_source`, `resolve_preview_song`,

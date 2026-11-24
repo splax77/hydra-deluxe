@@ -189,6 +189,19 @@ TEST_CASE("batch text: the confirm's Early fill window line reads the window in 
           hydra::format_ms_whole(hydra::kMaxEarlyFillWindowMs));
 }
 
+// The confirm's Song speed line is describe_settings' words for the speed,
+// at the default and at a speed set away from it.
+TEST_CASE("batch text: the confirm's Song speed line reads describe_settings") {
+    Settings s;
+    CHECK(batch_settings_summary(s).speed ==
+          hydra::app::describe_settings(s.to_analysis_settings()).speed);
+    s.speed_percent = 150;
+    CHECK(batch_settings_summary(s).speed ==
+          hydra::app::describe_settings(s.to_analysis_settings()).speed);
+    CHECK(batch_settings_summary(s).speed !=
+          batch_settings_summary(Settings{}).speed);
+}
+
 // The panel row's tooltip: one check per sentence, each beside the rule in
 // core/model.h that makes it true.
 TEST_CASE("batch text: the Early fill window help text") {
