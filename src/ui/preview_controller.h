@@ -54,7 +54,8 @@ struct PreviewSceneBase;
 // another song and loads its own notes (D48, Q22; D104 item 1). On a chart
 // whose first load finished, only the notes reload: the audio and the
 // playhead stay, unless the reading's song speed changed, which the audio is
-// stretched to (see PreviewController::open).
+// stretched to. Then the whole song loads again and keeps its place (see
+// PreviewController::open).
 struct PreviewSongKey {
     // Every part is named: a key built without its fill rule does not compile.
     PreviewSongKey() = default;
@@ -92,9 +93,13 @@ public:
     // only the notes reload, on a PreviewNotesJob. The audio keeps playing
     // (or stays paused), the playhead stays put, and the old highway stays
     // up until poll() swaps the new notes in. If the new mode has no notes,
-    // the Preview pauses where it is and shows the error. Another chart, or
-    // the same chart while its first load runs or after it failed: a fresh
-    // load from the start. `fills` is the fill rule the notes are read under
+    // the Preview pauses where it is and shows the error. Same chart at
+    // another song speed: a fresh load, which keeps the place in the song
+    // (PreviewTransport::file_ms) and whether it was playing, and poll()
+    // puts both back once the load lands. A reload replaced before it lands
+    // hands its kept place on to the next one. Another chart, or the same
+    // chart while its first load runs or after it failed: a fresh load from
+    // the start. `fills` is the fill rule the notes are read under
     // (search/graph.h's fill_rule_for turns the setting into it).
     void open(const store::ChartLibraryEntry& entry, const ChartReading& reading,
               FillDeadlineRule fills, const Path* path, const std::string& path_key, int sp_cap,
@@ -213,6 +218,11 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
+    // The playhead's place in the audio file and where chart time 0 sits in
+    // the loaded audio (PreviewTransport::file_ms, audio_offset_ms). Tests
+    // read them to check a reload at another speed kept the place.
+    double file_position_ms() const { return transport_.file_ms(); }
+    double audio_offset_ms() const { return transport_.audio_offset_ms(); }
     // Where the Preview ends: the song's length (PreviewTransport::length_ms;
     // D255, the user's answer 5), or 0 when the song has none and the clock
     // runs free. Play, the clock, jumps, the time box, the scrubber and its
@@ -432,7 +442,16 @@ private:
     // The first load landed and loaded the transport: a mode change can keep
     // it and reload only the notes. Cleared by close().
     bool first_load_done_ = false;
-    std::string job_path_key_;    // key the in-flight load or notes job was started with
+    // The place a reload of the same chart goes back to (see open()): the
+    // place in the audio file (PreviewTransport::file_ms) and whether it was
+    // playing. Set by open() beside the load it starts, used and dropped by
+    // poll() when that load lands or fails, and cleared by close().
+    struct CarriedPlace {
+        double file_ms = 0.0;
+        bool playing = false;
+    };
+    std::optional<CarriedPlace> carried_place_;
+    std::string job_path_key_;   // key the in-flight load or notes job was started with
     std::string scene_path_key_;  // key scene_'s overlay was built from
 
     int volume_pct_;  // starts at app::Settings' preview_volume default

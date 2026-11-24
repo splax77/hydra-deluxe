@@ -389,6 +389,36 @@ TEST_CASE("at 100% the transport seeks the plain playhead to the sync rule's fil
           doctest::Approx(hydra::app::audio_ms_of_chart_ms(250.0, kDelayMs, 1.0)));
 }
 
+// A reload at another song speed keeps the place in the song, which is the
+// place in the file, not the clock time (PreviewController::open). file_ms
+// reads it through the sync rule at the loaded speed, and seek_file_ms puts
+// it back at the next load's speed: the same file place, at that speed's own
+// clock time, clamped to the new end like any seek.
+TEST_CASE("the place in the file survives a reload at another speed") {
+    constexpr double kDelayMs = 500.0;
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(make_playhead(20000.0), kDelayMs, 1.0);
+    transport.seek_ms(8000.0);
+    const double place = transport.file_ms();
+    CHECK(place == doctest::Approx(hydra::app::audio_ms_of_chart_ms(8000.0, kDelayMs, 1.0)));
+
+    // The next load at 200% starts at chart time 0; seek_file_ms goes back.
+    transport.load(make_playhead(10000.0), kDelayMs, 2.0);
+    transport.set_song_length_ms(9000.0);
+    REQUIRE(transport.now_ms() == doctest::Approx(0.0));
+    transport.seek_file_ms(place);
+    CHECK(transport.now_ms() ==
+          doctest::Approx(hydra::app::chart_ms_of_audio_ms(place, kDelayMs, 2.0)));
+    CHECK(transport.file_ms() == doctest::Approx(place));
+    CHECK_FALSE(transport.playing());  // a seek never starts playback
+
+    // A place past the new end lands on the end, as seek_ms clamps.
+    transport.set_song_length_ms(1000.0);
+    transport.seek_ms(0.0);
+    transport.seek_file_ms(place);
+    CHECK(transport.now_ms() == doctest::Approx(transport.length_ms()));
+}
+
 // A song length past the audio's end: playback runs on to it in silence, so
 // a drag to the scrubber's right end lands there and the thumb stays at the
 // edge.

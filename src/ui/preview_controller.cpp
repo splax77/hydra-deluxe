@@ -94,13 +94,24 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
     // audio and the playhead, and reload only the notes. Another song speed
     // is not another mode: the audio was stretched to the old speed, so the
     // whole load runs again.
-    if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5 &&
+    const bool same_chart = active_ && open_key_.md5 == key.md5;
+    if (same_chart && first_load_done_ && !job_ &&
         open_key_.reading.speed_percent == key.reading.speed_percent) {
         record_request(path, path_key, sp_cap);
         start_notes_job(entry, key);
         return;
     }
+    // The same chart loading again keeps its place in the song: the loaded
+    // transport's place in the file, or the place a reload still running was
+    // already carrying when it was replaced. poll() seeks there once the new
+    // load lands.
+    std::optional<CarriedPlace> carry;
+    if (same_chart && first_load_done_)
+        carry = CarriedPlace{transport_.file_ms(), transport_.playing()};
+    else if (same_chart)
+        carry = carried_place_;
     close();
+    carried_place_ = carry;
 
     open_key_ = key;
     active_ = true;
@@ -231,6 +242,7 @@ void PreviewController::close() {
     base_job_.reset();
     base_started_ = false;
     first_load_done_ = false;
+    carried_place_.reset();
     retired_scene_jobs_.clear();
     retired_base_jobs_.clear();
     retired_notes_jobs_.clear();
@@ -337,6 +349,12 @@ void PreviewController::poll() {
                 audio_warning_ = hydra::app::plain_error_line(e);
             }
         }
+        // A reload of the same chart goes back to the place open() carried,
+        // in the new load's clock time, once the new length can clamp it.
+        if (carried_place_) {
+            transport_.seek_file_ms(carried_place_->file_ms);
+            if (carried_place_->playing) transport_.play();
+        }
     } else {
         // The job worked out the plain sentence while it still had the
         // exception; the raw text ("StreamMix: ...") is the details line.
@@ -345,6 +363,7 @@ void PreviewController::poll() {
     }
     job_.reset();
     job_path_key_.clear();
+    carried_place_.reset();
 
     // The Paths tab can change the selection while the load runs, and the job
     // built its scene from the path it was started with.

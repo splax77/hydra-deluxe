@@ -109,6 +109,14 @@ double PreviewTransport::tick() {
 
 double PreviewTransport::now_ms() const { return clock_.now_ms(); }
 
+double PreviewTransport::file_ms() const {
+    return audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_, speed_ratio_);
+}
+
+void PreviewTransport::seek_file_ms(double file_ms) {
+    seek_ms(chart_ms_of_audio_ms(file_ms, audio_offset_ms_, speed_ratio_));
+}
+
 // Remembered as given; audio::Playhead::set_gain owns the floor at 0.
 void PreviewTransport::set_gain(float gain) {
     gain_ = gain;

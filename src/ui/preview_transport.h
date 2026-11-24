@@ -80,6 +80,17 @@ public:
     double tick();
     double now_ms() const;  // read-only, no end handling
 
+    // The clock's place in the audio file: now_ms() through the chart sync
+    // rule (audio_ms_of_chart_ms) at the loaded offset and speed. Unlike
+    // now_ms(), it does not change with the song speed, so it is what a
+    // reload at another speed carries across (PreviewController::open).
+    double file_ms() const;
+    // Seek to the clock time that file place `file_ms` plays at under the
+    // loaded offset and speed (chart_ms_of_audio_ms); seek_ms clamps it.
+    void seek_file_ms(double file_ms);
+    // Where chart time 0 sits in the loaded audio, as load() got it.
+    double audio_offset_ms() const { return audio_offset_ms_; }
+
     // Applied to the playhead if any (audio::Playhead::set_gain owns the
     // floor at 0), and remembered as given for the next load.
     void set_gain(float gain);
