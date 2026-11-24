@@ -15,7 +15,7 @@ For each path it tells you how to play it. Each activation says where it is, whi
 
 The **Preview** plays the chart as a 3D note highway with the song's audio. It draws the path on the highway, with a running score, a Star Power meter, the stars you've earned so far and the next activation in path notation. The **Dynamics** tab counts ghost and accent notes. The **Stars** tab shows the score each star needs.
 
-One `Analysis settings` button holds every setting an analysis runs under: difficulty, Pro Drums, 2x Bass, Clone Hero 1.1's Note Shuffle modifier, the SP cap and more. Each result is saved with its settings, so switching back brings the old results straight back. The search box takes filters such as `artist:`, `charter:`, `stars:7` and `squeeze<=20`. A few of Hydra Deluxe's own judgment calls, such as how much a squeeze-out costs, can be changed in `hydra_rules.ini`.
+One `Analysis settings` button holds every setting an analysis runs under: difficulty, Pro Drums, 2x Bass, Clone Hero 1.1's Note Shuffle modifier, the SP cap, the song speed and more. Each result is saved with its settings, so switching back brings the old results straight back. The search box takes filters such as `artist:`, `charter:`, `stars:7` and `squeeze<=20`. A few of Hydra Deluxe's own judgment calls, such as how much a squeeze-out costs, can be changed in `hydra_rules.ini`.
 
 Hydra Deluxe can analyze your whole library in the background. It then builds a path report of every song's paths, which opens in its own window, where you can sort and search it. It can also compare a player's [dmleaderboards](https://dmleaderboards.com) scores with your optimals.
 
