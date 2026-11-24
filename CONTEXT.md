@@ -451,7 +451,7 @@ skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
 `kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
 `is_retired_key` asks. A live key of the same name wins. A retired settings
 key is left out at the next save (D270 call 7). `hit_window_ms` is one of
-them, because the hit window is a fixed number, not a setting (Hit window).
+them, because the timing step is a fixed number, not a setting (Timing step).
 A refused hydra_settings.ini throws `SettingsFileError` (kind `SettingsFile`,
 whose app sentence is `kSettingsOffSentence`). In the app, Hydra opens on a
 default `Settings`, analysis is off as for the rules file, no scan starts and
@@ -559,7 +559,7 @@ every press's timing. The hit window the player uses is the game's own
 per-note window, which the chords either side set
 (docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51); the tool reads it
 from src/core/note_window.h, as the Paths tab's Dynamic Hit Window row does.
-Hydra's own judging keeps the fixed Hit window. The player in tools/ch_probe
+Hydra's own ratings keep the fixed Timing step. The player in tools/ch_probe
 is to only send the presses, read the end and pick the written fallback
 (docs/adr/0030; the player tasks of
 docs/superpowers/plans/2026-11-08-replay-press-schedule.md build that).
@@ -612,7 +612,7 @@ src/core/stars.cpp; D48, Q33).
 An activation timing (the `E` notation) near a fill's spawn deadline. The
 window is one number on both sides of the deadline: the `Early fill window`
 setting, 60 ms<!-- default: kDefaultEarlyFillWindowMs --> by default, from 0
-to the hit window.
+to the timing step.
 On the orange side, Star Power comes ready after the deadline, so you must
 hit early to summon the fill. Later than the window (`fill_refuses`), the
 fill never spawns, and the search drops the activation.

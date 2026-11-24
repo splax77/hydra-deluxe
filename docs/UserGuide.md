@@ -283,7 +283,7 @@ The row shows on every one of these badges, also on a squeeze whose badge figure
 
 A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, `Timing` is how far each note sits from the SP end, in ms. A negative figure is before the end, and the note at `0.0 ms` is exactly where SP ends. `Points` is the Star Power score the note adds on this path, and 0 for a note the path doesn't count. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
 
-The `Rating` beside each note says how much timing that note needs from you, in the same bands as the path report's timing tiers. The bands are steps of the 85 ms hit window, Clone Hero's Pro Drums window, which is fixed and not a setting. A note needing up to 2.0 ms reads `Normal`, up to 42.5 ms `Hard`, up to 85 ms `Extreme`, up to 127.5 ms `Insane`, up to 170 ms `Insane+`, and past that `Beyond`. Each edge belongs to the band below it, so exactly 85 ms is `Extreme`.
+The `Rating` beside each note says how much timing that note needs from you, in the same bands as the path report's timing tiers. The bands are steps of 85 ms, a fixed number that is not a setting. A note needing up to 2.0 ms reads `Normal`, up to 42.5 ms `Hard`, up to 85 ms `Extreme`, up to 127.5 ms `Insane`, up to 170 ms `Insane+`, and past that `Beyond`. Each edge belongs to the band below it, so exactly 85 ms is `Extreme`.
 
 Which timing a note needs depends on the row. A note the path counts without a squeeze needs nothing, so it reads `Normal`. A note too late to count needs you to hit it early by its `Timing`, and is tagged `(uncounted)`, like `Hard (uncounted)`. The note the path squeezes out is rated on how far it sits from the SP end, on either side. Inside Star Power, it needs the late hit its badge shows. Past the SP end, it reads like any other note that far past the end: nothing within the backend leeway, otherwise the early hit by its `Timing` that would pull it back into Star Power. It also gets `(uncounted)` once it is past the backend leeway (below), so a squeezed-out note 50 ms past the end reads `Extreme (uncounted) <-- squeezed out`. When a row shows an `eff.` figure, the rating follows that figure, because it is the timing you need after the frontend timing scale (below). A note that needs nothing still reads `Normal` whatever its scale.
 
@@ -490,12 +490,12 @@ The five tiles sum up the paths that pass the filters:
 
 The controls are a search box, a timing dropdown and `Optimal paths only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
 
-The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of the 85 ms hit window:
+The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of 85 ms:
 
 | Entry | Paths it shows |
 | --- | --- |
 | `Normal`, `Hard`, `Extreme`, `Insane`, `Insane+` | Paths whose hardest timing falls in that band, from easiest to hardest. `Normal` takes timings up to 2.0 ms. |
-| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. N is 170. |
+| `Beyond N ms` | Paths whose hardest timing is past N ms, more than two of those steps. N is 170. |
 | `No timing needed` | Paths that need no squeeze and no required early fill. |
 
 `Optimal paths only` starts checked. It keeps just the optimal paths among each chart's 5 paths shown. When paths tie for the top score, it keeps every one of them, because each is optimal. `Clear filters` leaves it as it is.
