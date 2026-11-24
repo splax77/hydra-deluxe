@@ -369,14 +369,55 @@ TextRole cell_role(app::report_view::CellKind kind) {
 #pragma warning(pop)
 #endif
 
-void cell(const std::string& text, const app::report_view::CellLook& look, Tone tone,
-          FittedTextCache& fits, size_t row, size_t column) {
+ImVec4 cell_color(const app::report_view::CellLook& look, Tone tone) {
     const bool dim = tone == Tone::Dim || (tone == Tone::Normal && look.dim);
     // An alert reads in the third tier's red, as the pages' .neg did.
-    const ImVec4 color = tone == Tone::Alert ? chip_color(ChipToken::t3)
-                         : dim               ? kDimTextColor
-                                             : ImGui::GetStyleColorVec4(ImGuiCol_Text);
-    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    return tone == Tone::Alert ? chip_color(ChipToken::t3) : dim ? kDimTextColor : window_text();
+}
+
+ImVec4 window_text() { return ImGui::GetStyleColorVec4(ImGuiCol_Text); }
+ImVec4 table_background() { return ImGui::GetStyleColorVec4(ImGuiCol_ChildBg); }
+ImVec4 header_fill() { return ImGui::GetStyleColorVec4(ImGuiCol_TableHeaderBg); }
+ImVec4 header_text() { return window_text(); }
+
+namespace {
+
+// One 0-255 channel of a colour ImGui packed (ColorConvertFloat4ToU32), at
+// that channel's IM_COL32_*_SHIFT.
+int packed_channel(ImU32 packed, int shift) { return static_cast<int>((packed >> shift) & 0xFFu); }
+
+// One channel of `top` at strength `alpha` (of 255) laid over `under`, to
+// the nearest whole value.
+uint8_t channel_over(int top, int under, int alpha) {
+    return static_cast<uint8_t>((top * alpha + under * (255 - alpha) + 127) / 255);
+}
+
+}  // namespace
+
+Rgb to_rgb(const ImVec4& c) {
+    const ImU32 packed = ImGui::ColorConvertFloat4ToU32(c);
+    return {static_cast<uint8_t>(packed_channel(packed, IM_COL32_R_SHIFT)),
+            static_cast<uint8_t>(packed_channel(packed, IM_COL32_G_SHIFT)),
+            static_cast<uint8_t>(packed_channel(packed, IM_COL32_B_SHIFT))};
+}
+
+Rgb lay_over(const ImVec4& top, Rgb under) {
+    const Rgb t = to_rgb(top);
+    const int alpha = packed_channel(ImGui::ColorConvertFloat4ToU32(top), IM_COL32_A_SHIFT);
+    return {channel_over(t.r, under.r, alpha), channel_over(t.g, under.g, alpha),
+            channel_over(t.b, under.b, alpha)};
+}
+
+Rgb row_fill(size_t place) {
+    // ImGui counts the rows under the header from 0 and gives an odd one the
+    // alternate fill; the list clipper keeps that count on the drawn row.
+    const ImGuiCol slot = place % 2 == 1 ? ImGuiCol_TableRowBgAlt : ImGuiCol_TableRowBg;
+    return lay_over(ImGui::GetStyleColorVec4(slot), to_rgb(table_background()));
+}
+
+void cell(const std::string& text, const app::report_view::CellLook& look, Tone tone,
+          FittedTextCache& fits, size_t row, size_t column) {
+    ImGui::PushStyleColor(ImGuiCol_Text, cell_color(look, tone));
     {
         ScopedBaselineFont font(cell_role(look.kind));
         fitted_text(text, fits, row, column);

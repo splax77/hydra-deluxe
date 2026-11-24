@@ -343,6 +343,46 @@ void cell(const std::string& text, const app::report_view::CellLook& look,
           app::report_view::Tone tone, FittedTextCache& fits, size_t row, size_t column);
 void chip(const std::string& text, app::report::ChipToken token);
 
+// ---- The colours the table is drawn in ---------------------------------------
+// The window draws from these, and a copy of the table outside the window
+// (the Excel export) asks the same ones. Each reads ImGui's live style, so
+// call them inside an ImGui context that apply_theme has set up.
+
+// The colour a plain (not chip) cell's words take, from its column's look and
+// its row's tone. cell() draws in it.
+ImVec4 cell_color(const app::report_view::CellLook& look, app::report_view::Tone tone);
+
+// The window's text colour (ImGuiCol_Text): a normal cell's words.
+ImVec4 window_text();
+// What the table sits on: the fill of the scrolling child its rows are
+// drawn in (ImGuiCol_ChildBg).
+ImVec4 table_background();
+// The header row's fill (ImGuiCol_TableHeaderBg) and its words' colour,
+// as draw_table_headers (ui/column_widths.h) draws them.
+ImVec4 header_fill();
+ImVec4 header_text();
+
+// A colour as red, green and blue, each 0 to 255.
+struct Rgb {
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    bool operator==(const Rgb& o) const { return r == o.r && g == o.g && b == o.b; }
+    bool operator!=(const Rgb& o) const { return !(*this == o); }
+};
+
+// `c` as red, green and blue, rounded by ImGui's own ColorConvertFloat4ToU32,
+// the way the window's drawing turns it into a pixel. Alpha is dropped.
+Rgb to_rgb(const ImVec4& c);
+// `top`, at its own alpha, laid over the solid colour `under`, channel by
+// channel: what the screen shows where a see-through fill covers a surface.
+// `top` is rounded to 0-255, alpha included, as ImGui hands it to the screen.
+Rgb lay_over(const ImVec4& top, Rgb under);
+// The fill of the table row drawn at `place` (0 for the first row under the
+// header): ImGui's own alternation of TableRowBg and TableRowBgAlt
+// (ImGuiTableFlags_RowBg, set by table_flags), laid over table_background().
+Rgb row_fill(size_t place);
+
 // ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
 
 // The "#" column's text for the row drawn `k`th (from 0).
@@ -393,6 +433,35 @@ struct RowLook {
     const char* unclickable_hint = "";
 };
 
+// How one table cell is drawn: as a chip, or as plain text in its tone.
+struct CellPaint {
+    // Set: the cell is a chip in this token, drawn by chip(); its words and
+    // its outline are both `color`.
+    std::optional<app::report::ChipToken> chip;
+    // A plain cell's tone, which cell() draws it in. Normal for a chip.
+    app::report_view::Tone tone = app::report_view::Tone::Normal;
+    // The colour the cell's words take.
+    ImVec4 color;
+};
+
+// Whether `row`'s cell in `column` is a chip, and the colour it reads in. A
+// cell is a chip when its column is marked as one and the window gave a chip
+// rule (`look.chip`); otherwise it reads in cell_color of its column's look
+// and the row's tone. The table draws from this.
+template <class Row>
+CellPaint cell_paint(const app::report_view::Column<Row>& column, const Row& row,
+                     const RowLook<Row>& look) {
+    CellPaint paint;
+    if (column.look.chip && look.chip) {
+        paint.chip = look.chip(row);
+        paint.color = chip_color(*paint.chip);
+        return paint;
+    }
+    paint.tone = column.tone ? column.tone(row) : app::report_view::Tone::Normal;
+    paint.color = cell_color(column.look, paint.tone);
+    return paint;
+}
+
 // The table: the "#" column, then the view's columns, its rows in the view's
 // order, each column as wide as the width rule (ui/column_widths.h) says.
 // `widths` is the view's measure, kept beside it by the window; it is taken
@@ -405,7 +474,6 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
     using app::report_view::Column;
     using app::report_view::SortDir;
     using app::report_view::SortSpec;
-    using app::report_view::Tone;
     const std::vector<Column<Row>>& columns = view.columns();
     const std::vector<Row>& rows = view.rows();
     const std::vector<size_t>& shown = view.visible();
@@ -533,11 +601,11 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
                 if (!ImGui::TableSetColumnIndex(static_cast<int>(c) + 1)) continue;
                 const Column<Row>& col = columns[c];
                 const std::string text = col.cell(row);
-                if (col.look.chip && look.chip)
-                    chip(text, look.chip(row));
+                const CellPaint paint = cell_paint(col, row, look);
+                if (paint.chip)
+                    chip(text, *paint.chip);
                 else
-                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, memory.fitted,
-                         index, c);
+                    cell(text, col.look, paint.tone, memory.fitted, index, c);
             }
             ImGui::PopID();
         }
