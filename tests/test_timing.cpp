@@ -612,36 +612,12 @@ TEST_CASE("song speed: the 1.1 fill deadline falls on the same tick at every spe
     }
 }
 
-namespace {
-
-// The Epidermis shape of tests/record_fixtures.h (make_late_sqin_song), timed
-// at `percent`: a note every beat at 240 BPM and 480 ticks a beat, phrases
-// ending at 480, 1920 and 13920, and a fill at 5760. Built here because the
-// speed has to be set before build_timing.
-hydra::Song late_sqin_song_at(int percent) {
-    hydra::Song song(480);
-    song.bpm_changes[0] = 240.0;
-    song.set_speed_percent(percent);
-    song.build_timing();
-    const std::vector<int64_t> phrases{480, 1920, 13920};
-    for (int64_t t = 0; t <= 21120; t += 480) {
-        hydra::SongTimestamp ts;
-        ts.timecode = song.timecode(t);
-        ts.chord.add_note(hydra::NoteColor::Red);
-        if (std::find(phrases.begin(), phrases.end(), t) != phrases.end())
-            hydra::test::mark_phrase_end(ts, t, song.tick_resolution());
-        if (t == 5760) ts.activation_length = 960;
-        song.sequence.push_back(std::move(ts));
-    }
-    return song;
-}
-
-}  // namespace
-
+// The Epidermis shape (make_late_sqin_song in tests/record_fixtures.h), timed
+// at the normal speed and at twice it.
 TEST_CASE("song speed: at 200% a squeeze needs half the ms, and the timing step, budgets "
           "and tiers do not move") {
-    const hydra::Song song100 = late_sqin_song_at(hydra::kNormalSpeedPercent);
-    const hydra::Song song200 = late_sqin_song_at(kDoubleSpeed);
+    const hydra::Song song100 = hydra::test::make_late_sqin_song();
+    const hydra::Song song200 = hydra::test::make_late_sqin_song(kDoubleSpeed);
     const hydra::ScoreGraph graph100(song100, 4);
     const hydra::ScoreGraph graph200(song200, 4);
     const std::vector<hydra::Path> paths100 = hydra::run_search(graph100, hydra::EngineOptions{});

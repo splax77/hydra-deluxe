@@ -34,7 +34,7 @@ Rule: A hit raises the score by its points times the current multiplier, and add
 Label: Proven in the game's code
 Evidence: Lines 13 and 14 compare the player kind at +0x190 with 1 and skip the whole adder. Lines 36 to 41 add points to +0xC0 and points times +0x48 to the score at +0x94. ghidra_decompile_all.txt lines 53749 to 53751 read the same. A speed term applied to the points before the adder is not ruled out; a half-speed video matched Hydra's curve point for point (card e05522d2).
 Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 13 and 14 and 36 to 41; `#8288+0x94`, `#8288+0x190`
-Hydra: `category_scores` in src/core/scoring.cpp line 26; no speed owner, only `is_base_speed` in src/net/dmbot_client.h line 36 for leaderboard comparisons
+Hydra: `category_scores` in src/core/scoring.cpp line 42, which reads no speed, so points are the same at every song speed (page 3, TM-42 and TM-44); `is_base_speed` in src/net/dmbot_client.h line 37 sets apart off-speed leaderboard scores
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -372,9 +372,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-1
 
 Rule: Hydra's optimum is for normal speed only, and a score above it is labelled "above optimal", never "impossible", because Hydra's optimum leaves out many backends and the old fill-spawn logic.
 Label: Hydra assumes it, never checked
-Evidence: src/app/dm_report.cpp lines 125 to 149. The dmleaderboards site (a community leaderboard for drum scores) ranks every speed on one board per chart. The user said so on 2026-10-10 (D206, card 35360d51 line 18: "dmleaderboards does not use separate leaderboards for different speeds."); the public DMBot source and a user screenshot backed it, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
+Evidence: src/app/dm_report.cpp lines 128 to 152. The dmleaderboards site (a community leaderboard for drum scores) ranks every speed on one board per chart. The user said so on 2026-10-10 (D206, card 35360d51 line 18: "dmleaderboards does not use separate leaderboards for different speeds."); the public DMBot source and a user screenshot backed it, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
 Game code (6142): none (outside the game)
-Hydra: `is_base_speed` in src/net/dmbot_client.h line 36
+Hydra: `is_base_speed` in src/net/dmbot_client.h line 37; the report compares with the 100% result whatever the Song speed setting holds (`Settings::profile_at_clone_hero_cap`, src/app/config.cpp line 458)
 Ruling: card e3a57d11: "do not label above optimal as impossible." and "just note them as above optimal." (02:24 UTC)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 

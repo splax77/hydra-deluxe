@@ -24,6 +24,7 @@
 #include "audio/player.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
+#include "audio/stretch_mix.h"
 #include "audio_util.h"
 
 using namespace hydra::audio;
@@ -458,4 +459,26 @@ TEST_CASE("Playhead plays a StreamMix to the end and auto-pauses") {
     REQUIRE(got.size() == ref.samples.size());
     CHECK(max_diff(got, ref.samples.data(), 0, got.size()) <= 1e-6);
     CHECK(p.position_frames() == p.length_frames());
+}
+
+// The device thread reads and seeks the stretched source too, so after its
+// constructor it must not allocate (src/audio/stretch_mix.h says how).
+TEST_CASE("StretchSource: read and seek never touch the heap after construction") {
+    for (const double ratio : {0.5, 2.0}) {
+        hydra::audio::StretchSource src(testaudio::ramp_source(4 * 48000), ratio);
+        std::vector<float> buf(static_cast<std::size_t>(10000) * 2);
+        g_allocs = 0;
+        g_count_allocs = true;
+        src.read(buf.data(), 511);
+        src.read(buf.data(), 10000);
+        src.seek(30000);
+        src.read(buf.data(), 4096);
+        src.seek(0);
+        src.read(buf.data(), 7000);
+        src.seek(src.length_frames() - 10);
+        src.read(buf.data(), 100);
+        g_count_allocs = false;
+        CAPTURE(ratio);
+        CHECK(g_allocs.load() == 0);
+    }
 }

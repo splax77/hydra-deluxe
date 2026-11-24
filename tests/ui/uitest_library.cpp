@@ -516,6 +516,72 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == top);
 }
 
+// The panel's "Song speed" box keys a result like the early-fill window: set
+// to 150 by its label, the settings button reads "Analysis settings: Song
+// speed 150%", and the open song is analyzed again at 150% and saved beside
+// its 100% result. A value outside the key table's range lands on its nearest
+// edge (Settings::clamp, kMinSpeedPercent and kMaxSpeedPercent).
+void test_settings_song_speed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app_at_default_settings(ctx, h);
+    IM_CHECK(h.app->settings.speed_percent == hydra::kNormalSpeedPercent);
+
+    // Past either end of the range, the box lands on that end. No song is
+    // open yet, so neither end starts an analysis.
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemInputValue("**/##songspeed", hydra::kMaxSpeedPercent + 100);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->settings.speed_percent == hydra::kMaxSpeedPercent;
+    }, 5));
+    ctx->ItemInputValue("**/##songspeed", hydra::kMinSpeedPercent - 5);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->settings.speed_percent == hydra::kMinSpeedPercent;
+    }, 5));
+    ctx->ItemInputValue("**/##songspeed", hydra::kNormalSpeedPercent);
+    IM_CHECK(wait_until(ctx, [&] {
+        return hydra::ui::detail::settings_at_defaults(h.app->settings);
+    }, 5));
+    close_settings_panel(ctx);
+
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_details(ctx, 0);
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->viewed.record->speed_percent == hydra::kNormalSpeedPercent);
+    IM_CHECK(h.app->store->record_count() == 1);
+
+    const int speed = 150;
+    hydra::app::Settings faster = h.app->settings;
+    faster.speed_percent = speed;
+    IM_CHECK_STR_EQ(hydra::ui::detail::settings_button_label(faster, false).c_str(),
+                    "Analysis settings: Song speed 150%");
+    // Nothing is filed at the new key yet, so the open song has to ask for it.
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    IM_CHECK(h.app->store->lookup_one(md5, faster.profile()).status ==
+             hydra::store::RecordStatus::NotAnalyzed);
+
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSongSpeedName));
+    IM_CHECK((ctx->ItemInfo("**/##songspeed").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    ctx->ItemInputValue("**/##songspeed", speed);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.speed_percent == speed; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, faster); }, 5));
+    close_settings_panel(ctx);
+
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->viewed.record->speed_percent == speed);
+    IM_CHECK(h.app->store->lookup_one(md5, h.app->settings.profile()).status ==
+             hydra::store::RecordStatus::Ready);
+    IM_CHECK(h.app->store->record_count() == 2);  // the 100% result is still there
+    h.app->flush_settings();
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).speed_percent == speed);
+}
+
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
 // key stays on screen, Analyze library is disabled, and a click analyzes
 // nothing: the song's row stays Not analyzed (D87 item 9).
@@ -2430,6 +2496,7 @@ const std::vector<TestEntry>& library_tests() {
         {"settings-reset", test_settings_reset},
         {"settings-safe-paths", test_settings_safe_paths},
         {"settings-early-fill", test_settings_early_fill},
+        {"settings-song-speed", test_settings_song_speed},
         {"rules-error", test_rules_error},
         {"settings-error", test_settings_error},
         {"library-state-per-app", test_library_state_per_app},

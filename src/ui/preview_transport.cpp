@@ -1,25 +1,31 @@
 #include "ui/preview_transport.h"
 
+#include <exception>
 #include <utility>
 
 #include "app/preview_view.h"  // has_song_length
+#include "audio/stretch_mix.h"  // play_at_speed, plain_of
 
 namespace hydra::ui {
 
-// The transport's three sync-rule calls pass a speed ratio of 1.0: the
-// playhead plays the stems unstretched, one file ms per clock ms, and the
-// transport holds no song speed.
+// Every playhead seek asks playhead_ms where to go.
 
 PreviewTransport::PreviewTransport(app::PreviewClock::Now now)
     : clock_(std::move(now)) {}
 
-void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms) {
+double PreviewTransport::playhead_ms(double chart_ms) const {
+    return app::played_ms_of_chart_ms(chart_ms, audio_offset_ms_, speed_ratio_);
+}
+
+void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms,
+                            double speed_ratio) {
     std::lock_guard<std::mutex> lock(mu_);
     playhead_ = std::move(playhead);
     audio_offset_ms_ = audio_offset_ms;
+    speed_ratio_ = speed_ratio;
     if (playhead_) {
         playhead_->pause();
-        playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_, 1.0));
+        playhead_->seek_ms(playhead_ms(0.0));
         playhead_->set_gain(gain_);
     }
     clock_.pause();
@@ -31,6 +37,7 @@ void PreviewTransport::unload() {
     playhead_.reset();
     song_length_ms_.reset();
     audio_offset_ms_ = 0.0;
+    speed_ratio_ = 1.0;
     clock_.pause();
     clock_.seek_ms(0.0);
 }
@@ -39,7 +46,7 @@ void PreviewTransport::play() {
     {
         std::lock_guard<std::mutex> lock(mu_);
         if (playhead_) {
-            playhead_->seek_ms(audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_, 1.0));
+            playhead_->seek_ms(playhead_ms(clock_.now_ms()));
             playhead_->play();
         }
     }
@@ -66,7 +73,7 @@ void PreviewTransport::seek_ms(double ms) {
     clock_.seek_ms(ms);
     std::lock_guard<std::mutex> lock(mu_);
     if (!playhead_) return;
-    playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_, 1.0));
+    playhead_->seek_ms(playhead_ms(ms));
     // The clock is the master: while it plays, the audio plays too. The
     // playhead pauses itself when its audio runs out, so a jump back from
     // past that end would otherwise stay silent (finding 73).
@@ -87,6 +94,41 @@ void PreviewTransport::set_song_length_ms(std::optional<double> song_length_ms) 
     if (end > 0.0 && clock_.now_ms() > end) seek_ms(clock_.now_ms());
 }
 
+void PreviewTransport::set_timing(double speed_ratio, std::optional<double> song_length_ms) {
+    if (speed_ratio == speed_ratio_) {
+        set_song_length_ms(song_length_ms);
+        return;
+    }
+    // The place is read at the old timing, before the length or the ratio
+    // changes: set_song_length_ms would clamp the clock to the new end in the
+    // old speed's time.
+    const double place = file_ms();
+    const bool was_playing = playing();
+    pause();
+    std::unique_ptr<audio::MixSource> old_source;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        speed_ratio_ = speed_ratio;
+        if (playhead_) old_source = playhead_->swap_source(nullptr);
+    }
+    song_length_ms_ = song_length_ms;
+    // Off the lock: the old wrap is freed and the new one allocated here.
+    std::exception_ptr failed;
+    std::unique_ptr<audio::MixSource> new_source;
+    try {
+        new_source = audio::play_at_speed(audio::plain_of(std::move(old_source)), speed_ratio);
+    } catch (...) {
+        failed = std::current_exception();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (playhead_) playhead_->swap_source(std::move(new_source));
+    }
+    seek_file_ms(place);  // clamps to the new length
+    if (failed) std::rethrow_exception(failed);
+    if (was_playing) play();
+}
+
 bool PreviewTransport::has_audio() const {
     std::lock_guard<std::mutex> lock(mu_);
     return playhead_ && playhead_->length_frames() > 0;
@@ -103,6 +145,14 @@ double PreviewTransport::tick() {
 }
 
 double PreviewTransport::now_ms() const { return clock_.now_ms(); }
+
+double PreviewTransport::file_ms() const {
+    return audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_, speed_ratio_);
+}
+
+void PreviewTransport::seek_file_ms(double file_ms) {
+    seek_ms(chart_ms_of_audio_ms(file_ms, audio_offset_ms_, speed_ratio_));
+}
 
 // Remembered as given; audio::Playhead::set_gain owns the floor at 0.
 void PreviewTransport::set_gain(float gain) {

@@ -194,7 +194,8 @@ void PreviewLoadJob::run() {
         const bool chart_changed = changed_check.get();
         throw_if_cancelled();
         // The song's own mix step: what plays.
-        audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);
+        audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms,
+                                                        ps.song.timing().speed_ratio());
 
         // A changed chart is drawn with no path and no ghost path, as an
         // unanalyzed one is (drawn_path).

@@ -41,12 +41,16 @@ public:
     PreviewTransport(const PreviewTransport&) = delete;
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
-    // Load a chart's audio (may be null/empty for a chart with no audio) and
+    // Load a chart's audio (may be null/empty for a chart with no audio),
     // where chart time 0 sits in the audio (audio_ms_of_chart_ms; never
-    // negative, see audio::mix_song_stems). Resets the playhead to the
-    // offset, paused. Where playback ends is set apart, by
-    // set_song_length_ms: the audio's own length never decides it.
-    void load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms = 0.0);
+    // negative, see audio::mix_song_stems), and the song speed the chart is
+    // timed at (SongTiming::speed_ratio). Away from a ratio of 1 the playhead
+    // must play the stretched mix (audio::play_at_speed), whose frames are
+    // played frames. Resets the playhead to chart time 0, paused. Where
+    // playback ends is set apart, by set_song_length_ms: the audio's own
+    // length never decides it.
+    void load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms = 0.0,
+              double speed_ratio = 1.0);
     void unload();  // drop the playhead, back to an empty paused transport
 
     void play();    // seeks the playhead to the clock and starts both
@@ -70,11 +74,38 @@ public:
     void set_song_length_ms(std::optional<double> song_length_ms);
     std::optional<double> song_length_ms() const { return song_length_ms_; }
 
+    // The loaded song timed again: new notes of the same chart at
+    // `speed_ratio` (SongTiming::speed_ratio), whose length is
+    // `song_length_ms`. At the loaded ratio this is set_song_length_ms. At
+    // another ratio the same audio plays at the new speed from the same place
+    // in the file (file_ms), and plays on if it was playing: the playhead's
+    // plain mix (audio::plain_of) is wrapped again (audio::play_at_speed),
+    // with nothing opened or decoded again. The wrap is built on this thread
+    // between two swaps under the lock (audio::Playhead::swap_source), so the
+    // device's pull never waits on it; meanwhile the paused playhead has no
+    // source and the pull writes nothing into the device's buffer, which
+    // miniaudio hands over silenced. If play_at_speed throws, the mix is
+    // lost: the song stays paused with no audio at the new timing, and the
+    // error goes on to the caller.
+    void set_timing(double speed_ratio, std::optional<double> song_length_ms);
+    double speed_ratio() const { return speed_ratio_; }
+
     // The song time now. If playing and at/after the end, pauses and pins the
     // time to length_ms() (the stop-at-end rule) — so call this once per frame
     // where the highway is drawn.
     double tick();
     double now_ms() const;  // read-only, no end handling
+
+    // The clock's place in the audio file: now_ms() through the chart sync
+    // rule (audio_ms_of_chart_ms) at the loaded offset and speed. Unlike
+    // now_ms(), it does not change with the song speed, so it is what a
+    // reload at another speed carries across (PreviewController::open).
+    double file_ms() const;
+    // Seek to the clock time that file place `file_ms` plays at under the
+    // loaded offset and speed (chart_ms_of_audio_ms); seek_ms clamps it.
+    void seek_file_ms(double file_ms);
+    // Where chart time 0 sits in the loaded audio, as load() got it.
+    double audio_offset_ms() const { return audio_offset_ms_; }
 
     // Applied to the playhead if any (audio::Playhead::set_gain owns the
     // floor at 0), and remembered as given for the next load.
@@ -88,9 +119,14 @@ public:
     int sample_rate() const;
 
 private:
+    // Where the playhead goes for chart time `chart_ms`
+    // (app::played_ms_of_chart_ms). Called under mu_.
+    double playhead_ms(double chart_ms) const;
+
     app::PreviewClock clock_;  // GUI thread only
     std::optional<double> song_length_ms_;
     double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
+    double speed_ratio_ = 1.0;      // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
     std::unique_ptr<audio::Playhead> playhead_;

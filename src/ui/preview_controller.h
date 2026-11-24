@@ -53,7 +53,8 @@ struct PreviewSceneBase;
 // "1.0 fills" setting, which picks the game version's fill generator), is
 // another song and loads its own notes (D48, Q22; D104 item 1). On a chart
 // whose first load finished, only the notes reload: the audio and the
-// playhead stay (see PreviewController::open).
+// playhead stay, and a new song speed only plays the same audio at the new
+// speed from the same place (see PreviewController::open).
 struct PreviewSongKey {
     // Every part is named: a key built without its fill rule does not compile.
     PreviewSongKey() = default;
@@ -87,13 +88,16 @@ public:
     // path or cap: the new overlay is built on a background job off the
     // retained song and swapped in by a later poll() — no re-parse, no audio
     // re-decode, playback position untouched; the old overlay stays up until
-    // then. Same chart in another mode, once its first load has finished:
-    // only the notes reload, on a PreviewNotesJob. The audio keeps playing
-    // (or stays paused), the playhead stays put, and the old highway stays
-    // up until poll() swaps the new notes in. If the new mode has no notes,
-    // the Preview pauses where it is and shows the error. Another chart, or
-    // the same chart while its first load runs or after it failed: a fresh
-    // load from the start. `fills` is the fill rule the notes are read under
+    // then. Same chart in another mode or at another song speed, once its
+    // first load has finished: only the notes reload, on a PreviewNotesJob.
+    // The audio keeps playing (or stays paused), the playhead stays put, and
+    // the old highway stays up until poll() swaps the new notes in. At a new
+    // speed the audio then plays at that speed from the same place in the
+    // song, playing on if it was playing (PreviewTransport::set_timing). If
+    // the new mode has no notes, the Preview pauses where it is and shows the
+    // error. Another chart, or the same chart while its first load runs or
+    // after it failed: a fresh load from the start. `fills` is the fill rule
+    // the notes are read under
     // (search/graph.h's fill_rule_for turns the setting into it).
     void open(const store::ChartLibraryEntry& entry, const ChartReading& reading,
               FillDeadlineRule fills, const Path* path, const std::string& path_key, int sp_cap,
@@ -145,6 +149,10 @@ public:
     // The first load is still running: what the panel's progress bar means.
     // A notes reload is not a load here: the old highway stays on screen.
     bool loading() const { return job_ != nullptr; }
+    // How many full loads (PreviewLoadJob) open() has started since this
+    // controller was made. Tests read it to tell a full load from a notes
+    // reload.
+    int full_load_count() const { return full_load_count_; }
     // Any Preview job is still running or waiting for poll() to take it in:
     // the first load, a notes reload, the base build (or one poll() is about
     // to start), the overlay build, or a replaced notes, base or overlay
@@ -212,6 +220,11 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
+    // The playhead's place in the audio file and where chart time 0 sits in
+    // the loaded audio (PreviewTransport::file_ms, audio_offset_ms). Tests
+    // read them to check a reload at another speed kept the place.
+    double file_position_ms() const { return transport_.file_ms(); }
+    double audio_offset_ms() const { return transport_.audio_offset_ms(); }
     // Where the Preview ends: the song's length (PreviewTransport::length_ms;
     // D255, the user's answer 5), or 0 when the song has none and the clock
     // runs free. Play, the clock, jumps, the time box, the scrubber and its
@@ -347,6 +360,7 @@ private:
     bool have_frame_ = false;
 
     std::unique_ptr<PreviewLoadJob> job_;
+    int full_load_count_ = 0;  // see full_load_count()
     hydra::app::PreviewScene scene_;
     bool scene_dirty_ = true;  // scene_ changed since the renderer last saw it
     bool pro_ = true;          // the pro-drums setting the drawn notes were read with
@@ -431,7 +445,7 @@ private:
     // The first load landed and loaded the transport: a mode change can keep
     // it and reload only the notes. Cleared by close().
     bool first_load_done_ = false;
-    std::string job_path_key_;    // key the in-flight load or notes job was started with
+    std::string job_path_key_;   // key the in-flight load or notes job was started with
     std::string scene_path_key_;  // key scene_'s overlay was built from
 
     int volume_pct_;  // starts at app::Settings' preview_volume default

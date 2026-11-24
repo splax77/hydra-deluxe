@@ -90,8 +90,9 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
         rebuild_overlay();
         return;
     }
-    // The same chart in another mode, with its audio already loaded: keep the
-    // audio and the playhead, and reload only the notes.
+    // The same chart in another mode or at another song speed, with its audio
+    // already loaded: keep the audio and the playhead, and reload only the
+    // notes. take_notes_job times the audio to the new notes' speed.
     if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5) {
         record_request(path, path_key, sp_cap);
         start_notes_job(entry, key);
@@ -108,6 +109,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
     job_path_key_ = path_key_;
     job_ = std::make_unique<PreviewLoadJob>(entry, reading, fills, path_, sp_cap_, rules, ghost_);
     job_->start();
+    ++full_load_count_;
 }
 
 void PreviewController::set_ghost_path(const Path* ghost) {
@@ -168,7 +170,17 @@ void PreviewController::take_notes_job() {
     if (notes_job_->ok()) {
         PreviewNotesJob::Result result = notes_job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
-        transport_.set_song_length_ms(result.song_length_ms);
+        // At another song speed the same audio is played at the new one from
+        // the same place in the song (PreviewTransport::set_timing); at the
+        // same speed only the length changes.
+        try {
+            transport_.set_timing(song_->timing().speed_ratio(), result.song_length_ms);
+        } catch (const std::exception& e) {
+            // The new speed's audio could not be built: still previewable,
+            // just muted, as after a device failure in poll().
+            audio_device_.reset();
+            audio_warning_ = hydra::app::plain_error_line(e);
+        }
         pro_ = notes_job_->pro();
         show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
                    job_path_key_);
@@ -310,7 +322,7 @@ void PreviewController::poll() {
         first_load_done_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
-                        result.audio_offset_ms);
+                        result.audio_offset_ms, song_->timing().speed_ratio());
         transport_.set_song_length_ms(result.song_length_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).

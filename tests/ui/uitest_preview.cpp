@@ -11,8 +11,10 @@
 
 #include "../chart_text.h"
 
+#include "app/display_format.h"  // clock_str
+#include "app/preview_source.h"  // chart_ms_of_audio_ms
 #include "app/preview_view.h"
-#include "core/model.h"
+#include "core/model.h"  // kNormalSpeedPercent
 #include "core/stars.h"   // path_stars
 #include "core/strutil.h"  // ends_with
 #include "core/winstr.h"  // fopen_utf8
@@ -1317,6 +1319,129 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("previous/next activation") == std::string::npos);
 }
 
+// The Preview plays at the song speed (the user chose "Play at the speed").
+// Its times are chart times at that speed (SongTiming), so at 200% the time
+// box ends at half its 100% end, the song's length. Another speed reloads
+// only the notes and plays the same audio stretched to it
+// (PreviewController::open), and still plays.
+void test_preview_song_speed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_preview(ctx)) return;  // chart 0 of testdata/input, at the default speed
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
+    IM_CHECK_EQ(h.app->settings.speed_percent, hydra::kNormalSpeedPercent);
+    const double normal_end = pc.playback_end_ms();
+    IM_CHECK_GT(normal_end, 0.0);
+    if (ctx->IsError()) return;
+
+    // Twice as fast: the scene's timing runs at a ratio of 2 once the reload
+    // lands.
+    h.app->settings.speed_percent = 2 * hydra::kNormalSpeedPercent;
+    h.app->commit_settings();
+    ctx->Yield(2);
+    IM_CHECK(wait_until(ctx, [&] {
+        return !pc.loading() && !pc.busy() && pc.scene().timing &&
+               pc.scene().timing->speed_ratio() == 2.0;
+    }, 120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
+    if (ctx->IsError()) return;
+
+    const double fast_end = pc.playback_end_ms();
+    IM_CHECK_FLOAT_NEAR_EQ(fast_end, normal_end / 2.0, 0.01);
+    // At the end the box reads "end / end", in the Preview clock's own words
+    // (clock_str of the length the Preview plays to). That length is half the
+    // 100% one, checked just above.
+    pc.seek_ms(fast_end);
+    const std::string end_text = hydra::app::clock_str(fast_end);
+    const std::string box = pc.time_box().timestamp;
+    IM_CHECK_STR_EQ(box.c_str(), (end_text + " / " + end_text).c_str());
+
+    // It plays at the new speed.
+    pc.seek_ms(0.0);
+    ctx->ItemClick("**/Play");
+    IM_CHECK(pc.playing());
+    ctx->ItemClick("**/Pause");
+    IM_CHECK(!pc.playing());
+
+    // Back to normal speed, as the other tests expect.
+    h.app->settings.speed_percent = hydra::kNormalSpeedPercent;
+    h.app->commit_settings();
+    ctx->Yield(2);
+    IM_CHECK(wait_until(ctx, [&] {
+        return !pc.loading() && !pc.busy() && pc.scene().timing &&
+               pc.scene().timing->speed_ratio() == 1.0;
+    }, 120));
+    IM_CHECK_FLOAT_NEAR_EQ(pc.playback_end_ms(), normal_end, 0.001);
+}
+
+// "reload what needs to reload but dont reset your place in the song": a new
+// song speed reloads only the notes (PreviewController::open), never the full
+// load, so no loading bar shows. The audio then plays at the new speed from
+// the same place in the music, not the same clock time. That place is the
+// file time (PreviewController::file_position_ms), and the new clock time is
+// the sync rule's for it at the new speed (app::chart_ms_of_audio_ms). A
+// paused Preview stays paused there; a playing one plays on from there.
+void test_preview_speed_keeps_place(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_preview(ctx)) return;  // chart 0 of testdata/input, at the default speed
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
+    IM_CHECK_EQ(h.app->settings.speed_percent, hydra::kNormalSpeedPercent);
+    IM_CHECK_GT(pc.playback_end_ms(), kParkMs);
+    IM_CHECK(pc.scene().timing.has_value());
+    if (ctx->IsError()) return;
+
+    // Commits `percent` and waits until the reload at it has landed: the
+    // scene's timing runs at another ratio than `from` and nothing is busy.
+    // No full load starts on the way, and the audio stays loaded throughout.
+    const auto change_speed = [&](int percent, double from) {
+        const int loads = pc.full_load_count();
+        const bool had_audio = pc.has_audio();
+        h.app->settings.speed_percent = percent;
+        h.app->commit_settings();
+        ctx->Yield(2);
+        IM_CHECK(!pc.loading());
+        IM_CHECK(wait_until(ctx, [&] {
+            return !pc.busy() && pc.scene().timing &&
+                   pc.scene().timing->speed_ratio() != from;
+        }, 120));
+        IM_CHECK_STR_EQ(pc.error().c_str(), "");
+        IM_CHECK_EQ(pc.full_load_count(), loads);
+        IM_CHECK_EQ(pc.has_audio(), had_audio);
+    };
+
+    // Paused at kParkMs, then twice as fast.
+    pc.pause();
+    pc.seek_ms(kParkMs);
+    const double place = pc.file_position_ms();
+    change_speed(2 * hydra::kNormalSpeedPercent, pc.scene().timing->speed_ratio());
+    if (ctx->IsError()) return;
+    const double fast_ratio = pc.scene().timing->speed_ratio();
+    const double fast_ms = hydra::app::chart_ms_of_audio_ms(place, pc.audio_offset_ms(), fast_ratio);
+    // The clock time moved with the speed: it is not the old clock time.
+    IM_CHECK_LT(fast_ms, kParkMs);
+    // A paused clock does not move, so the kept spot is checked as
+    // preview-mode-reload checks its spot.
+    IM_CHECK(!pc.playing());
+    IM_CHECK_LT(std::abs(pc.position_ms() - fast_ms), 1.0);
+    IM_CHECK_LT(std::abs(pc.file_position_ms() - place), 1.0);
+
+    // Playing, then back to normal speed, as the other tests expect: it plays
+    // on, and the clock runs only forward from the place it left.
+    ctx->ItemClick("**/Play");
+    IM_CHECK(pc.playing());
+    const double left = pc.file_position_ms();
+    change_speed(hydra::kNormalSpeedPercent, fast_ratio);
+    if (ctx->IsError()) return;
+    const double normal_ms = hydra::app::chart_ms_of_audio_ms(
+        left, pc.audio_offset_ms(), pc.scene().timing->speed_ratio());
+    IM_CHECK(pc.playing());
+    IM_CHECK_GE(pc.position_ms(), normal_ms);
+    ctx->ItemClick("**/Pause");
+    IM_CHECK(!pc.playing());
+    IM_CHECK_EQ(h.app->settings.speed_percent, hydra::kNormalSpeedPercent);
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& preview_tests() {
@@ -1338,6 +1463,8 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-overlay-steady", test_preview_overlay_steady},
         {"preview-mode-reload", test_preview_mode_reload},
         {"settings-change-holds-layout", test_settings_change_holds_layout},
+        {"preview-song-speed", test_preview_song_speed},
+        {"preview-speed-keeps-place", test_preview_speed_keeps_place},
     };
     return entries;
 }

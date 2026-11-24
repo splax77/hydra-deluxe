@@ -258,6 +258,31 @@ set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/ogg EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
 
+# SoundTouch (LGPL v2.1) plays the Preview's audio at another song speed with
+# the pitch kept (src/audio/stretch_mix.h). Its source list is the one in
+# SoundTouch's own CMakeLists.txt, which is not vendored. Float samples, the
+# library's default, made PUBLIC so every file that includes its headers sees
+# the same sample type. THIRD_PARTY_NOTICES.txt says how its licence is met.
+add_library(soundtouch STATIC EXCLUDE_FROM_ALL
+    third_party/soundtouch/source/SoundTouch/AAFilter.cpp
+    third_party/soundtouch/source/SoundTouch/BPMDetect.cpp
+    third_party/soundtouch/source/SoundTouch/cpu_detect_x86.cpp
+    third_party/soundtouch/source/SoundTouch/FIFOSampleBuffer.cpp
+    third_party/soundtouch/source/SoundTouch/FIRFilter.cpp
+    third_party/soundtouch/source/SoundTouch/InterpolateCubic.cpp
+    third_party/soundtouch/source/SoundTouch/InterpolateLinear.cpp
+    third_party/soundtouch/source/SoundTouch/InterpolateShannon.cpp
+    third_party/soundtouch/source/SoundTouch/mmx_optimized.cpp
+    third_party/soundtouch/source/SoundTouch/PeakFinder.cpp
+    third_party/soundtouch/source/SoundTouch/RateTransposer.cpp
+    third_party/soundtouch/source/SoundTouch/SoundTouch.cpp
+    third_party/soundtouch/source/SoundTouch/sse_optimized.cpp
+    third_party/soundtouch/source/SoundTouch/TDStretch.cpp
+)
+target_include_directories(soundtouch PUBLIC third_party/soundtouch/include)
+target_compile_definitions(soundtouch PUBLIC SOUNDTOUCH_FLOAT_SAMPLES)
+target_compile_options(soundtouch PRIVATE /W1 /EHsc)
+
 # ---- third_party: mimalloc (the memory allocator every exe runs on) --------
 # D88 ships Microsoft's mimalloc as its override DLL: mimalloc.dll replaces
 # malloc/free for the whole process, helped by the prebuilt
@@ -447,15 +472,17 @@ add_library(hydra_audio STATIC
     src/audio/ma_reader.cpp
     src/audio/mixer.cpp
     src/audio/stream_mix.cpp
+    src/audio/stretch_mix.cpp
     src/audio/player.cpp
     src/audio/device.cpp
     src/audio/frames.h
 )
 target_link_libraries(hydra_audio PUBLIC hydra_app)
 # miniaudio decodes WAV/MP3/FLAC (its dr_libs) and, GUI-side, drives the device;
-# stb_vorbis decodes OGG; libopus over a libogg page demux decodes OPUS.
+# stb_vorbis decodes OGG; libopus over a libogg page demux decodes OPUS;
+# SoundTouch stretches the mix for another song speed.
 target_link_libraries(hydra_audio PRIVATE
-    miniaudio stb_vorbis opus ogg hydra_warnings)
+    miniaudio stb_vorbis opus ogg soundtouch hydra_warnings)
 
 # ---- hydra_render: the Preview 3D note-highway renderer (GUI-side) --------
 # A faithful port of Onyx's 3D drum previewer

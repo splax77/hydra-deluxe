@@ -6,19 +6,26 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "app/preview_view.h"  // scrub_thumb_ms
+#include "app/preview_source.h"  // audio_ms_of_chart_ms, chart_ms_of_audio_ms
+#include "app/preview_view.h"    // scrub_thumb_ms
 #include "audio/decode.h"
+#include "audio/frames.h"
 #include "audio/player.h"
+#include "audio/stretch_mix.h"
 #include "ui/preview_transport.h"
 #include "audio_util.h"
 
 using hydra::audio::DecodedAudio;
 using hydra::audio::Playhead;
+using hydra::audio::StretchSource;
 using hydra::ui::PreviewTransport;
 using testaudio::ramp_source;
 
@@ -289,6 +296,180 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
 
     transport.play();
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
+}
+
+// At another song speed the playhead plays the stretched mix, which counts
+// played frames (audio::StretchSource). Every transport seek still lands on
+// the sync rule's file time: at 200% chart time t is file time 2t plus the
+// delay (app::audio_ms_of_chart_ms, TM-05 on docs/clone-hero/03-timing.md),
+// and that file time read back through the rule is t again. load, seek_ms and
+// play each seek the playhead, so each is checked.
+TEST_CASE("at 200% the transport seeks the stretched audio to file time 2t plus the delay") {
+    constexpr double kRatio = 2.0;
+    constexpr double kDelayMs = 500.0;
+    constexpr int kRate = 48000;
+    constexpr int kChannels = 2;
+    // Chart 1500 ms is where play() starts below. Its file time holds an
+    // impulse kAfter frames on, so the sound itself shows where play landed.
+    constexpr double kPlayChartMs = 1500.0;
+    constexpr int64_t kAfter = 100;
+    const int64_t play_file_frame =
+        hydra::audio::frames_of_ms(kRatio * kPlayChartMs + kDelayMs, kRate);
+
+    DecodedAudio file;  // 10 s of stereo silence with that one impulse
+    file.channels = kChannels;
+    file.sample_rate = kRate;
+    file.samples.assign(static_cast<std::size_t>(10 * kRate) * kChannels, 0.0f);
+    for (int c = 0; c < kChannels; ++c)
+        file.samples[static_cast<std::size_t>(play_file_frame + kAfter) * kChannels + c] = 1.0f;
+
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto stretched = std::make_unique<StretchSource>(
+        std::make_unique<testaudio::BufferSource>(std::move(file)), kRatio);
+    const StretchSource* stretch = stretched.get();
+    auto* playhead = new Playhead(std::move(stretched));
+    transport.load(std::unique_ptr<Playhead>(playhead), kDelayMs, kRatio);
+
+    // The file time the playhead sits at, through the stretched source's own
+    // map from played frames to file frames.
+    const auto file_ms = [&] {
+        return hydra::audio::ms_of_frames(stretch->file_frame_of(playhead->position_frames()),
+                                          kRate);
+    };
+    // One frame of file time either way: the playhead holds whole frames.
+    const double frame_ms = hydra::audio::ms_of_frames(1, kRate);
+
+    // Loaded: chart time 0 is the delay.
+    CHECK(std::abs(file_ms() - kDelayMs) <= frame_ms);
+
+    for (const double chart_ms : {1000.0, 2750.0, 0.0, 4000.0}) {
+        CAPTURE(chart_ms);
+        transport.seek_ms(chart_ms);
+        CHECK(std::abs(file_ms() - (kRatio * chart_ms + kDelayMs)) <= frame_ms);
+        CHECK(std::abs(hydra::app::chart_ms_of_audio_ms(file_ms(), kDelayMs, kRatio) - chart_ms) <=
+              frame_ms);
+    }
+
+    // play() seeks to the clock: from 1000 ms, half a second of clock later.
+    transport.seek_ms(1000.0);
+    transport.play();
+    t += 0.5;
+    transport.pause();
+    REQUIRE(transport.now_ms() == doctest::Approx(kPlayChartMs));
+    transport.play();
+    CHECK(std::abs(file_ms() - (kRatio * kPlayChartMs + kDelayMs)) <= frame_ms);
+    // The first played frames after a seek are copied straight through
+    // (stretch_mix.cpp, kProbeFrame, says why), so the impulse kAfter file
+    // frames past the seek comes out kAfter played frames in.
+    std::vector<float> got(static_cast<std::size_t>(2 * kAfter) * kChannels, 0.0f);
+    REQUIRE(transport.read_frames(got.data(), 2 * kAfter) == 2 * kAfter);
+    int64_t loudest = -1;
+    float peak = 0.0f;
+    for (int64_t i = 0; i < 2 * kAfter; ++i) {
+        const float v = std::abs(got[static_cast<std::size_t>(i) * kChannels]);
+        if (v > peak) {
+            peak = v;
+            loudest = i;
+        }
+    }
+    CHECK(loudest == kAfter);
+}
+
+// At normal speed the transport passes the plain playhead's seeks straight
+// through the sync rule, as it always has: the playhead sits at the sync
+// rule's file time with no stretch in between.
+TEST_CASE("at 100% the transport seeks the plain playhead to the sync rule's file time") {
+    constexpr double kDelayMs = 500.0;
+    PreviewTransport transport([] { return 0.0; });
+    auto* playhead = new Playhead(ramp_source(96000));  // 2000 ms
+    transport.load(std::unique_ptr<Playhead>(playhead), kDelayMs, 1.0);
+    transport.seek_ms(250.0);
+    CHECK(playhead->position_ms() ==
+          doctest::Approx(hydra::app::audio_ms_of_chart_ms(250.0, kDelayMs, 1.0)));
+}
+
+// A reload at another song speed keeps the place in the song, which is the
+// place in the file, not the clock time (PreviewController::open). file_ms
+// reads it through the sync rule at the loaded speed, and seek_file_ms puts
+// it back at the next load's speed: the same file place, at that speed's own
+// clock time, clamped to the new end like any seek.
+TEST_CASE("the place in the file survives a reload at another speed") {
+    constexpr double kDelayMs = 500.0;
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(make_playhead(20000.0), kDelayMs, 1.0);
+    transport.seek_ms(8000.0);
+    const double place = transport.file_ms();
+    CHECK(place == doctest::Approx(hydra::app::audio_ms_of_chart_ms(8000.0, kDelayMs, 1.0)));
+
+    // The next load at 200% starts at chart time 0; seek_file_ms goes back.
+    transport.load(make_playhead(10000.0), kDelayMs, 2.0);
+    transport.set_song_length_ms(9000.0);
+    REQUIRE(transport.now_ms() == doctest::Approx(0.0));
+    transport.seek_file_ms(place);
+    CHECK(transport.now_ms() ==
+          doctest::Approx(hydra::app::chart_ms_of_audio_ms(place, kDelayMs, 2.0)));
+    CHECK(transport.file_ms() == doctest::Approx(place));
+    CHECK_FALSE(transport.playing());  // a seek never starts playback
+
+    // A place past the new end lands on the end, as seek_ms clamps.
+    transport.set_song_length_ms(1000.0);
+    transport.seek_ms(0.0);
+    transport.seek_file_ms(place);
+    CHECK(transport.now_ms() == doctest::Approx(transport.length_ms()));
+}
+
+// "reload what needs to reload but dont reset your place in the song": new
+// notes at another speed re-time the loaded song in place
+// (PreviewTransport::set_timing). The playhead and its mix stay, wrapped again
+// at the new speed; the place in the file stays, at the new speed's clock
+// time; the end is the new length; and playing stays playing.
+TEST_CASE("set_timing at another speed keeps the playhead, the mix and the place in the file") {
+    constexpr double kDelayMs = 500.0;
+    constexpr int kFileFrames = 20 * 48000;  // 20 s
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto* playhead = new Playhead(ramp_source(kFileFrames));
+    transport.load(std::unique_ptr<Playhead>(playhead), kDelayMs, 1.0);
+    transport.set_song_length_ms(19000.0);
+    transport.seek_ms(8000.0);
+    const double place = transport.file_ms();
+
+    // Paused, then twice as fast: still paused, at the same file place.
+    transport.set_timing(2.0, 9500.0);
+    CHECK(transport.speed_ratio() == 2.0);
+    CHECK_FALSE(transport.playing());
+    CHECK(transport.length_ms() == doctest::Approx(9500.0));
+    CHECK(transport.file_ms() == doctest::Approx(place));
+    CHECK(transport.now_ms() ==
+          doctest::Approx(hydra::app::chart_ms_of_audio_ms(place, kDelayMs, 2.0)));
+    // The same playhead now plays the mix stretched to 200%.
+    CHECK(transport.has_audio());
+    CHECK(playhead->length_frames() ==
+          StretchSource(ramp_source(kFileFrames), 2.0).length_frames());
+    CHECK(playhead->position_ms() ==
+          doctest::Approx(hydra::app::played_ms_of_chart_ms(transport.now_ms(), kDelayMs, 2.0)));
+
+    // Playing, then back to normal speed: it plays on from the same place.
+    transport.play();
+    t += 1.0;
+    const double left = transport.file_ms();
+    transport.set_timing(1.0, 19000.0);
+    CHECK(transport.speed_ratio() == 1.0);
+    CHECK(transport.playing());
+    CHECK(playhead->playing());
+    CHECK(transport.file_ms() == doctest::Approx(left));
+    CHECK(playhead->length_frames() == kFileFrames);
+    // The plain mix came back unstretched: the ramp's own frame at the place
+    // plays first (make_ramp's frame i holds L = i).
+    std::vector<float> out(4 * 2, -1.0f);
+    REQUIRE(transport.read_frames(out.data(), 4) == 4);
+    CHECK(out[0] == doctest::Approx(static_cast<float>(hydra::audio::frames_of_ms(left, 48000))));
+
+    // At the loaded speed it only moves the end, as set_song_length_ms does.
+    transport.set_timing(1.0, 1000.0);
+    CHECK(transport.length_ms() == doctest::Approx(1000.0));
+    CHECK(transport.now_ms() == doctest::Approx(1000.0));
 }
 
 // A song length past the audio's end: playback runs on to it in silence, so

@@ -1875,11 +1875,11 @@
       "anchor": "SP cap",
       "must_match": [
         "{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},",
-        "\"at SP cap 4: set SP cap to 4, analyze them, then compare again.\";",
+        "\" are in your library without a result for this mode at SP cap 4: \" +",
         "\"Set SP cap to 4 before you analyze.\";"
       ],
       "must_not_match": [
-        "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
+        "\" are in your library without a result for this mode at SP cap \" + cap + \": \" +",
         "\"SP cap 40\""
       ],
       "note": "---- report pages ---- Clone Hero's SP cap written as text, where the leaderboard page names it."

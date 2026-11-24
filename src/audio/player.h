@@ -65,13 +65,28 @@ public:
     // the end; only the return value shows the shortfall.
     int64_t read_frames(float* out, int64_t frame_count);
 
+    // Plays `source` (may be null, as in the constructor) from here on and
+    // hands back the one it played, the same object. The play state, the
+    // gain and the position stay, the position clamped to the new length. The
+    // new source's own cursor counts as unknown, so the next read_frames()
+    // while playing seeks it to the position first, as after a seek. Only
+    // pointers and counts change: nothing is allocated, freed or read, so it
+    // is safe under the lock the device's pull takes (PreviewTransport).
+    std::unique_ptr<MixSource> swap_source(std::unique_ptr<MixSource> source);
+
 private:
+    // Takes the format and length from source_: the constructor and
+    // swap_source both read them here.
+    void take_format();
+
     std::unique_ptr<MixSource> source_;
-    int channels_;
-    int sample_rate_;
-    int64_t length_;
+    int channels_ = 0;
+    int sample_rate_ = 0;
+    int64_t length_ = 0;
     int64_t position_ = 0;
-    int64_t source_position_ = 0;  // where the source's own cursor is
+    // Where the source's own cursor is; kUnknownCursor after swap_source.
+    static constexpr int64_t kUnknownCursor = -1;
+    int64_t source_position_ = 0;
     bool playing_ = false;
     float gain_ = 1.0f;
 };

@@ -47,10 +47,14 @@ inline void mark_phrase_end(SongTimestamp& ts, int64_t tick, int64_t resolution)
     ts.sp_phrase_start = tick >= resolution ? tick - resolution : 0;
 }
 
-// One red note per entry, flat tempo and 4/4.
-inline Song build_fixture_song(int resolution, double bpm, const std::vector<FixtureNote>& notes) {
+// One red note per entry, flat tempo and 4/4, timed at song speed
+// `speed_percent` (Song::set_speed_percent, which has to come before
+// build_timing).
+inline Song build_fixture_song(int resolution, double bpm, const std::vector<FixtureNote>& notes,
+                               int speed_percent = kNormalSpeedPercent) {
     Song song(resolution);
     song.bpm_changes[0] = bpm;
+    song.set_speed_percent(speed_percent);
     song.build_timing();
     for (const FixtureNote& n : notes) {
         SongTimestamp ts;
@@ -66,8 +70,11 @@ inline Song build_fixture_song(int resolution, double bpm, const std::vector<Fix
 // A note on every beat from 0 to `last`, with the phrase ends and fills
 // given. 240 BPM in 4/4 at 480 ticks a beat: a measure is 1920 ticks and
 // 1000 ms, and one SP bar (two measures) burns 2000 ms. A note every 250 ms.
+// Those ms are at the normal speed; `speed_percent` times the song at
+// another (build_fixture_song).
 inline Song beat_song(const std::vector<int64_t>& phrases,
-                      const std::vector<int64_t>& fills, int64_t last) {
+                      const std::vector<int64_t>& fills, int64_t last,
+                      int speed_percent = kNormalSpeedPercent) {
     std::vector<FixtureNote> notes;
     for (int64_t t = 0; t <= last; t += 480) {
         FixtureNote n{t};
@@ -75,7 +82,7 @@ inline Song beat_song(const std::vector<int64_t>& phrases,
         if (std::find(fills.begin(), fills.end(), t) != fills.end()) n.fill_length = 960;
         notes.push_back(n);
     }
-    return build_fixture_song(480, 240.0, notes);
+    return build_fixture_song(480, 240.0, notes, speed_percent);
 }
 
 // The Epidermis shape (finding 5). Phrases end at 480 and 1920, so two bars
@@ -84,9 +91,10 @@ inline Song beat_song(const std::vector<int64_t>& phrases,
 // phrase ends at 13920 (7250 ms), a quarter measure after that end. The
 // player squeezes it in by hitting it early. The engine extends SP one bar
 // from the old end, to 17280 (9000 ms), so at the phrase the meter holds
-// 1 - 0.25 / 2 = 0.875 bars.
-inline Song make_late_sqin_song() {
-    return beat_song({480, 1920, 13920}, {5760}, 21120);
+// 1 - 0.25 / 2 = 0.875 bars. The ms are at the normal speed;
+// `speed_percent` times the same ticks at another.
+inline Song make_late_sqin_song(int speed_percent = kNormalSpeedPercent) {
+    return beat_song({480, 1920, 13920}, {5760}, 21120, speed_percent);
 }
 
 // An early squeeze-out: the third phrase ends at 12960 (6750 ms), inside the

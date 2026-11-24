@@ -128,6 +128,16 @@ inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms, doub
     return (audio_ms - audio_offset_ms) / speed_ratio;
 }
 
+// Where the Preview's playhead goes for chart time `chart_ms`: the sync rule's
+// file position, counted in played ms. Away from normal speed the playhead
+// plays the stretched mix (audio::play_at_speed), which counts played frames;
+// audio::StretchSource owns how a played frame maps to a file frame, and this
+// is that map run backwards on the sync rule's answer. At a ratio of 1 it is
+// audio_ms_of_chart_ms's own answer.
+inline double played_ms_of_chart_ms(double chart_ms, double audio_offset_ms, double speed_ratio) {
+    return audio_ms_of_chart_ms(chart_ms, audio_offset_ms, speed_ratio) / speed_ratio;
+}
+
 // Asked between a container's audio entries; return false to stop early.
 using KeepGoing = std::function<bool()>;
 // The audio half: every stem, located but not decoded. Loose stems carry a

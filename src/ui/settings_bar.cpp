@@ -128,8 +128,16 @@ void render_chart_group(AppState& app, bool locked) {
     ImGui::EndTable();
 }
 
-// The Clone Hero rules a result is keyed by: the SP cap, when fills spawn
-// and the early-fill window.
+// The help text beside the "Song speed" box. The normal speed and the box's
+// two ends are core/model.h's constants, the ones the key table clamps to.
+std::string song_speed_help_text() {
+    return "Analyze the chart as Clone Hero plays it at this song speed. " +
+           std::to_string(kNormalSpeedPercent) + "% is the chart's own speed. The box takes " +
+           std::to_string(kMinSpeedPercent) + "% to " + std::to_string(kMaxSpeedPercent) + "%.";
+}
+
+// The Clone Hero rules a result is keyed by: the SP cap, when fills spawn,
+// the early-fill window and the song speed.
 void render_rules_group(AppState& app, bool locked) {
     if (!begin_group("Clone Hero rules")) return;
     begin_row("SP cap", (std::to_string(kCloneHeroSpCap) +
@@ -164,6 +172,18 @@ void render_rules_group(AppState& app, bool locked) {
     }
     ImGui::SameLine();
     ImGui::TextUnformatted("ms");
+    end_disabled_input(locked);
+
+    begin_row(kSongSpeedName, song_speed_help_text().c_str());
+    ImGui::SetNextItemWidth(px(100));
+    begin_disabled_input(locked);
+    int speed = app.settings.speed_percent;
+    if (ImGui::InputInt("##songspeed", &speed)) {
+        app.settings.speed_percent = app::Settings::clamp(&app::Settings::speed_percent, speed);
+        app.edit_settings();
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("%");
     end_disabled_input(locked);
     ImGui::EndTable();
 }
