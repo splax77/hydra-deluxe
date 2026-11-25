@@ -779,8 +779,9 @@ A squeeze that is already done with no frontend timing: its difficulty is below
 0, so a SqIn already inside Star Power or a SqOut already past it. At exactly 0
 both need 0.0 ms (D302). `SPSqueeze::needs_no_timing` in src/core/model.h is the
 one answer, through `timing_needs_hitting`, and the details sentence reads it.
-The rating does not: it reads which side of the SP end the note sits on
-(`core::paid_by_sp_walk`).
+A squeeze's rating reads the same side as its safe badge
+(`squeeze_multiplier`); a plain backend row still reads which side of the SP
+end it sits on.
 _Avoid_: free (for this test)
 
 **Saved hardest figure**:
