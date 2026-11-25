@@ -314,6 +314,10 @@ TEST_CASE("precheck check 2: each spelling's advice points at a page that exists
         std::smatch m;
         REQUIRE(std::regex_search(i.why, m, page));
         CHECK(fs::exists(sourcetree::root() / fs::u8path(m.str())));
+        // The ruling is that a test is not pinned to typed values; no advice
+        // tells an author to pin one.
+        CHECK(i.why.find("pins literals") == std::string::npos);
+        CHECK(i.why.find("pin the") == std::string::npos);
     }
 }
 
