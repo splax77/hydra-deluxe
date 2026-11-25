@@ -517,6 +517,13 @@ class NamedTestFiles(unittest.TestCase):
         r = run.bug_result(self.OUTSIDE, m, files, short, run.EXIT_PASSED, 0.5, False, "")
         self.assertEqual(r["state"], "incomplete")
 
+    def test_a_backslash_path_reaches_doctest_whole(self):
+        # doctest reads a doubled backslash in -sf as one (parseCommaSepArgs),
+        # so the path it matches is the one registered, backslashes single.
+        named = ["tests\\test_a.cpp", "tests\\test_b.cpp"]
+        self.assertEqual(run.run_args(None, None, named)[1:],
+                         ["-sf=tests\\\\test_a.cpp,tests\\\\test_b.cpp"])
+
     def test_a_named_file_the_mapping_run_did_not_record_stops(self):
         m = self._map_of_files([self.A])
         with self.assertRaises(run.RunError) as caught:

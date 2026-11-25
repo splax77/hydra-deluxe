@@ -9,9 +9,10 @@ with the mutation preset. This script then drives that one build:
 
 --test-files limits the whole run to the named test files. Each is the path
 doctest registered for the file, the one its console output prints before
-each test's line number (for example tests\\test_run_guard.cpp). The mapping run and every bug run then
-take only those files (run_args builds each run's arguments), and a bug's
-verdict follows the same rules as in a run of every file.
+each test's line number (for example tests\\test_run_guard.cpp). The
+mapping run and every bug run then take only those files (run_args builds
+each run's arguments), and a bug's verdict follows the same rules as in a
+run of every file.
 
 1. The mapping run. hydra_tests.exe runs once with HYDRA_MUTANT unset, so
    every switch is off, with HYDRA_MUTANT_OUT naming a result file, and
