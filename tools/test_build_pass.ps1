@@ -9,7 +9,8 @@ It compiles nothing and takes no real slot. Every case uses its own slot folder
 in a temporary fixture. The fixture holds a copy of the real build_cpp.ps1,
 build_slot.ps1, cmake_presets.ps1, stale_toolchain.ps1 and CMakePresets.json, with a find_cmake.ps1
 that hands back a fake cmake. The fake writes down its arguments and what the
-slot folder holds at that moment.
+slot folder holds at that moment. The fixture repo is a git repo, so the
+-Repo mode has a commit and changed paths to put in its build record.
 
 Locks are read through build_slot.ps1's own Read-BuildSlot.
 
@@ -60,18 +61,42 @@ function Invoke-Build([string[]]$BuildArgs = @('-Target', 'hydra_tests')) { Invo
 # Asks for a pass and returns it, or empty on a refusal. Invoke-Build builds
 # the default preset unless it is told another, so that is what a case asks
 # for unless it says otherwise.
-function New-Pass([string]$Session, [int]$Holder = $PID, [string]$Preset = 'default') {
-    $r = Invoke-Slot @('-NewPass', '-Session', $Session, '-Preset', $Preset, '-Holder', "$Holder")
+function New-Pass([string]$Session, [int]$Holder = $PID, [string]$Preset = 'default', [string]$Repo = '', [string]$Target = '') {
+    $passArgs = @('-NewPass', '-Session', $Session, '-Preset', $Preset, '-Holder', "$Holder")
+    if ($Repo) { $passArgs += @('-Repo', $Repo) }
+    if ($Target) { $passArgs += @('-Target', $Target) }
+    $r = Invoke-Slot $passArgs
     if ($r.Code -eq 0) { $r.Lines[0] -replace '^pass: ', '' } else { '' }
 }
 
-# The lock reader is build_slot.ps1's own Read-BuildSlot. The script cannot be
-# dot-sourced, because its main part would run, so this takes the one function
-# out of its parsed text.
-$readerAst = [System.Management.Automation.Language.Parser]::ParseFile($slotScript, [ref]$null, [ref]$null).Find({
-        param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Read-BuildSlot' }, $true)
-if (-not $readerAst) { throw "build_slot.ps1 has no Read-BuildSlot function to read locks with" }
-. ([scriptblock]::Create($readerAst.Extent.Text))
+# The lock reader is build_slot.ps1's own Read-BuildSlot, with the target
+# splitter it calls. The script cannot be dot-sourced, because its main part
+# would run, so this takes those functions out of its parsed text.
+$slotAst = [System.Management.Automation.Language.Parser]::ParseFile($slotScript, [ref]$null, [ref]$null)
+foreach ($name in 'Read-BuildSlot', 'Split-BuildTargets') {
+    $fnAst = $slotAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }.GetNewClosure(), $true)
+    if (-not $fnAst) { throw "build_slot.ps1 has no $name function to read locks with" }
+    . ([scriptblock]::Create($fnAst.Extent.Text))
+}
+
+# The build record lines in a git repo's common dir, each read as JSON.
+function Get-Records([string]$Repo) {
+    $file = Join-Path $Repo '.git\build_results.jsonl'
+    if (-not (Test-Path -LiteralPath $file)) { return @() }
+    @(Get-Content -LiteralPath $file | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+}
+
+function Invoke-Git([string]$Dir, [string[]]$GitArgs) {
+    $out = @(& git -C $Dir -c user.name=t -c user.email=t@example.invalid @GitArgs 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed in ${Dir}:`n$($out -join "`n")" }
+    $out
+}
+
+# The paths `git status --porcelain` lists, read from its plain form. The
+# fixture's file names hold no spaces or quotes, so the plain form is exact.
+function Get-PorcelainPaths([string]$Dir) { @(Invoke-Git $Dir @('status', '--porcelain') | Where-Object { $_ } | ForEach-Object { $_.Substring(3) }) }
+
+function Test-SameSet($A, $B) { (@($A | Sort-Object) -join "`n") -ceq (@($B | Sort-Object) -join "`n") }
 
 # The one lock in the case's slot folder, read by Read-BuildSlot.
 function Read-OnlyLock {
@@ -129,6 +154,11 @@ exit 0
     # Ninja preset; nothing runs it.
     Set-Content (Join-Path $fixture 'cl.exe') ''
     $env:PATH = "$fixture;$env:PATH"
+    # A git repo, so the -Repo mode has a commit and changed paths to record.
+    Set-Content (Join-Path $fakeRepo 'notes.txt') 'first'
+    Invoke-Git $fakeRepo @('init', '-q', '-b', 'main') | Out-Null
+    Invoke-Git $fakeRepo @('add', '-A') | Out-Null
+    Invoke-Git $fakeRepo @('commit', '-q', '-m', 'fixture') | Out-Null
 
     # -------------------------------------------------------- handing out passes
 
@@ -458,6 +488,147 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
     $env:CLAUDECODE = '1'
     $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-SlotDir', $script:slots)
     Check ($r.Code -ne 0 -and $r.Text -match 'no build pass' -and (Get-CMakeLines).Count -eq 0) "-Repo with no pass: expected a refusal, got exit $($r.Code):`n$($r.Text)"
+
+    # ------------------------------- a pass names its folder and its targets
+
+    # The reply's command sets the pass and runs this checkout's own
+    # build_slot.ps1 on the folder and target asked for; the lock holds both,
+    # before and after the claim.
+    New-Case
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default', '-Repo', $fakeRepo, '-Target', 'hydra_tests')
+    $token = $r.Lines[0] -replace '^pass: ', ''
+    $command = "$($r.Lines[2])"
+    Check ($r.Code -eq 0 -and $command.StartsWith("`$env:HYDRA_BUILD_PASS='$token'; ")) "a pass for a folder: the command does not set HYDRA_BUILD_PASS first:`n$($r.Text)"
+    Check ($command.Contains("& '$slotScript' -Repo '$fakeRepo' -Preset default -Target hydra_tests")) "a pass for a folder: the command does not run this checkout's build_slot.ps1 on the folder and target:`n$($r.Text)"
+    $lock = Read-OnlyLock
+    Check ($lock.HasRepo -and $lock.Repo -eq $fakeRepo -and (Test-SameSet $lock.Targets @('hydra_tests')) -and $lock.Unclaimed) "a pass for a folder: the unclaimed lock does not hold the folder and target (HasRepo $($lock.HasRepo), '$($lock.Repo)', '$($lock.Targets -join ',')')"
+    $env:HYDRA_BUILD_PASS = $token
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Slot @('-Claim', '-Owner', 'claimer', '-Preset', 'default')
+    $lock = Read-OnlyLock
+    Check ($r.Code -eq 0 -and -not $lock.Unclaimed -and $lock.HasRepo -and $lock.Repo -eq $fakeRepo -and (Test-SameSet $lock.Targets @('hydra_tests'))) "a pass for a folder: after the claim the lock lost its folder or target (Unclaimed $($lock.Unclaimed), '$($lock.Repo)', '$($lock.Targets -join ',')'):`n$($r.Text)"
+
+    # Run as the reply prints it, in one PowerShell process, the command builds
+    # under its pass and writes one record line.
+    New-Case
+    $before = (Get-Records $fakeRepo).Count
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default', '-Repo', $fakeRepo, '-Target', 'hydra_tests')
+    $env:CLAUDECODE = '1'
+    $printed = Join-Path $fixture 'printed.ps1'
+    Set-Content $printed "$($r.Lines[2])`nexit `$LASTEXITCODE"
+    $run = Invoke-Pwsh $printed
+    Check ($run.Code -eq 0 -and @(Get-CMakeLines | Where-Object { Test-TargetBuildLine $_ }).Count -eq 1 -and (Get-Records $fakeRepo).Count -eq $before + 1) "the printed command: expected one build of hydra_tests and one record, got exit $($run.Code):`n$($run.Text)"
+    Check ((Get-Locks).Count -eq 0) 'the printed command: the slot was not given back'
+
+    # A pass with neither is handed out as before, with the old command; one
+    # that names only one of the two is refused and takes no slot.
+    New-Case
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default')
+    Check ($r.Code -eq 0 -and $r.Lines[2] -match '\.\\build_cpp\.ps1 -Preset default' -and -not (Read-OnlyLock).HasRepo) "a pass with no folder: expected the old command and a lock with no folder, got exit $($r.Code):`n$($r.Text)"
+    New-Case
+    foreach ($half in @('-Repo', $fakeRepo), @('-Target', 'hydra_tests'), @('-Repo', $fakeRepo, '-Target', ','), @('-Repo', $fakeRepo, '-Target', 'two words')) {
+        $r = Invoke-Slot (@('-NewPass', '-Session', 'session-a', '-Preset', 'default') + $half)
+        Check ($r.Code -eq 1 -and $r.Text -match '^no pass: ') "a pass naming '$($half -join ' ')': expected a refusal, got exit $($r.Code):`n$($r.Text)"
+    }
+    Check ((Get-Locks).Count -eq 0) 'a refused pass for half a folder and target left a lock'
+
+    # Two targets: the pass builds both, in one build, and refuses a build of
+    # one of them, or of another folder, before anything runs or is recorded.
+    New-Case
+    $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Repo $fakeRepo -Target 'a,b'
+    $env:CLAUDECODE = '1'
+    $before = (Get-Records $fakeRepo).Count
+    $elsewhere = Join-Path $fixture 'elsewhere'
+    foreach ($wrong in @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'a'), @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'a,b,c'), @('-Repo', $elsewhere, '-Preset', 'default', '-Target', 'a,b')) {
+        $r = Invoke-Slot ($wrong + @('-SlotDir', $script:slots))
+        Check ($r.Code -ne 0 -and $r.Text -match 'this build pass is for the (folder|targets)' -and (Get-CMakeLines).Count -eq 0) "-Repo $($wrong -join ' ') under a pass for a,b: expected a refusal before configure, got exit $($r.Code):`n$($r.Text)`n$((Get-CMakeLines) -join "`n")"
+        Check ((Get-Records $fakeRepo).Count -eq $before) "-Repo $($wrong -join ' ') under a pass for a,b: a refused build wrote a record line"
+        Check ((Read-OnlyLock).Unclaimed) "-Repo $($wrong -join ' ') under a pass for a,b: the lock was claimed"
+    }
+    # The same folder spelled with other slashes and case, and the targets in
+    # another order, is the folder and targets of the pass.
+    $respelled = $fakeRepo.ToUpperInvariant().Replace('\', '/') + '/'
+    $r = Invoke-Slot @('-Repo', $respelled, '-Preset', 'default', '-Target', 'b,a', '-SlotDir', $script:slots)
+    $said = Get-CMakeLines
+    Check ($r.Code -eq 0 -and @($said | Where-Object { $_ -match '^--build .*--target b --target a( |$)' }).Count -eq 1) "-Repo b,a under a pass for a,b: expected one build of both, got exit $($r.Code):`n$($r.Text)`n$($said -join "`n")"
+    $records = @(Get-Records $fakeRepo)
+    Check ($records.Count -eq $before + 1 -and (Test-SameSet $records[-1].targets @('b', 'a'))) "-Repo b,a: the record does not list the targets built: $($records[-1] | ConvertTo-Json -Compress)"
+
+    # ------------------------------------------------------ the build record
+
+    # One line per build, passing or failing, each field what git and the
+    # command line say at the build's start.
+    foreach ($fail in '', '3') {
+        New-Case
+        Set-Content (Join-Path $fakeRepo 'notes.txt') "changed $fail"
+        Set-Content (Join-Path $fakeRepo "untracked$fail.txt") 'new'
+        $head = "$(Invoke-Git $fakeRepo @('rev-parse', 'HEAD'))".Trim()
+        $dirty = Get-PorcelainPaths $fakeRepo
+        $before = (Get-Records $fakeRepo).Count
+        $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Repo $fakeRepo -Target 'hydra_tests'
+        $env:CLAUDECODE = '1'
+        $env:FAKE_CMAKE_EXIT = $fail
+        $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+        $label = if ($fail) { 'failing' } else { 'passing' }
+        Check (($r.Code -eq 0) -eq (-not $fail)) "record, $label build: unexpected exit $($r.Code):`n$($r.Text)"
+        $records = @(Get-Records $fakeRepo)
+        Check ($records.Count -eq $before + 1) "record, $label build: expected one new line, got $($records.Count - $before)"
+        $rec = $records[-1]
+        $raw = (Get-Content -LiteralPath (Join-Path $fakeRepo '.git\build_results.jsonl'))[-1] | ConvertFrom-Json -AsHashtable
+        Check ((Test-SameSet $raw.Keys @('repo', 'commit', 'dirty', 'preset', 'targets', 'build_dir', 'exit_code', 'switched_copies', 'time'))) "record, $label build: the fields are $($raw.Keys -join ',')"
+        Check ($rec.repo -eq $fakeRepo -and $rec.commit -eq $head -and $rec.preset -ceq 'default') "record, $label build: repo, commit or preset is wrong: $($rec | ConvertTo-Json -Compress)"
+        Check ($dirty.Count -eq 2 -and $raw.dirty -is [System.Collections.IList] -and (Test-SameSet $rec.dirty $dirty)) "record, $label build: dirty is $($rec.dirty -join ','), git status said $($dirty -join ',')"
+        Check ($raw.targets -is [System.Collections.IList] -and (Test-SameSet $rec.targets @('hydra_tests'))) "record, $label build: targets is $($rec.targets -join ',')"
+        Check ($raw.exit_code -is [long] -or $raw.exit_code -is [int]) "record, $label build: exit_code is not a number"
+        Check ($rec.exit_code -eq $r.Code -and (($rec.exit_code -eq 0) -eq (-not $fail))) "record, $label build: exit_code $($rec.exit_code), the build exited $($r.Code)"
+        Check ($raw.switched_copies -is [bool]) "record, $label build: switched_copies is not true or false"
+        # ConvertFrom-Json turns an ISO 8601 string into a date by itself.
+        Check ($raw.time -is [DateTime]) "record, $label build: time '$($raw.time)' is not an ISO date"
+        Remove-Item -LiteralPath (Join-Path $fakeRepo "untracked$fail.txt")
+        Invoke-Git $fakeRepo @('checkout', '--', 'notes.txt') | Out-Null
+    }
+
+    # Dirty paths are plain paths as git names them: no status letters, no
+    # quotes around a name with a space, and a rename as its new path and its
+    # old path, each its own entry.
+    New-Case
+    Set-Content (Join-Path $fakeRepo 'with space.txt') 'new'
+    Invoke-Git $fakeRepo @('mv', 'notes.txt', 'renamed notes.txt') | Out-Null
+    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+    $rec = @(Get-Records $fakeRepo)[-1]
+    Check ($r.Code -eq 0 -and (Test-SameSet $rec.dirty @('with space.txt', 'renamed notes.txt', 'notes.txt'))) "dirty with a space and a rename: expected 'with space.txt', 'renamed notes.txt' and 'notes.txt', got $($rec.dirty | ConvertTo-Json -Compress)"
+    Remove-Item -LiteralPath (Join-Path $fakeRepo 'with space.txt')
+    Invoke-Git $fakeRepo @('mv', 'renamed notes.txt', 'notes.txt') | Out-Null
+    Check ((Get-PorcelainPaths $fakeRepo).Count -eq 0) 'dirty with a space and a rename: the fixture repo was not put back clean'
+
+    # A build's own exit code is the record's, as the stand-in build gives it.
+    New-Case
+    $codeRepo = Join-Path $fixture 'code_repo'
+    New-Item -ItemType Directory -Force $codeRepo | Out-Null
+    Set-Content (Join-Path $codeRepo 'build_cpp.ps1') "& '$fakeCMake' coded-build; exit 7"
+    Copy-Item (Join-Path $repoRoot 'CMakePresets.json') $codeRepo
+    Invoke-Git $codeRepo @('init', '-q', '-b', 'main') | Out-Null
+    Invoke-Git $codeRepo @('add', '-A') | Out-Null
+    Invoke-Git $codeRepo @('commit', '-q', '-m', 'fixture') | Out-Null
+    $r = Invoke-Slot @('-Repo', $codeRepo, '-Preset', 'default', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+    $records = @(Get-Records $codeRepo)
+    Check ($r.Code -eq 7 -and $records.Count -eq 1 -and $records[0].exit_code -eq 7) "a build exiting 7: expected exit 7 and one record saying 7, got exit $($r.Code), records $($records | ConvertTo-Json -Compress)"
+
+    # Switched copies: true for the preset whose cache turns HYDRA_MUTATION on,
+    # false for default; the build folder is the preset's own.
+    $realPresets = (Get-Content -LiteralPath (Join-Path $repoRoot 'CMakePresets.json') -Raw | ConvertFrom-Json).configurePresets
+    $mutationCache = ($realPresets | Where-Object { $_.name -eq 'mutation' }).cacheVariables
+    Check ($mutationCache.PSObject.Properties['HYDRA_MUTATION'] -and $mutationCache.HYDRA_MUTATION.value -eq 'ON') 'the real CMakePresets.json no longer turns HYDRA_MUTATION on in the mutation preset, so this check reads nothing'
+    . (Join-Path $PSScriptRoot 'cmake_presets.ps1')
+    foreach ($case in @{ Preset = 'mutation'; Switched = $true }, @{ Preset = 'default'; Switched = $false }) {
+        New-Case
+        $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset $case.Preset -Repo $fakeRepo -Target 'hydra_tests'
+        $env:CLAUDECODE = '1'
+        $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', $case.Preset, '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+        $rec = @(Get-Records $fakeRepo)[-1]
+        Check ($r.Code -eq 0 -and $rec.preset -ceq $case.Preset -and $rec.switched_copies -eq $case.Switched) "record, $($case.Preset): expected switched_copies $($case.Switched), got exit $($r.Code), $($rec | ConvertTo-Json -Compress)"
+        Check ($rec.build_dir -eq (Get-PresetBuildDir $fakeRepo $case.Preset)) "record, $($case.Preset): build_dir '$($rec.build_dir)' is not the preset's"
+    }
 
     # An old release's build_cpp.ps1 claims nothing, so -Repo's own claim is
     # what holds the slot through its build. Its exit code comes through.
