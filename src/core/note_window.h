@@ -21,6 +21,7 @@
 
 #include "core/model.h"
 #include "core/song.h"
+#include "core/squeeze_rating.h"  // Press, PricedScale, squeeze_multiplier
 
 namespace hydra {
 
@@ -75,10 +76,15 @@ ChordTimes chord_times(const Song& song);
 // ---- the Dynamic Hit Window row --------------------------------------------
 // Each sum is "what the game's windows give, minus what the timing needs".
 
-// A squeeze's safe sum: the anchor's side moves the SP end by `ratio` per ms,
-// and the squeezed note's side covers the rest of the `needed_ms` it must
-// cross (SPSqueeze::difficulty). Squeeze in and squeeze out share it;
-// squeeze_window_ends picks `ratio` (transfer_side).
+// The anchor's side after the multiplier: how far the anchor's window moves
+// the SP end, at `ratio` per ms. The row's "Effective: frontend" figure is
+// this number, and squeeze_safe_ms adds it.
+double scaled_anchor_ms(double anchor_side_ms, double ratio);
+
+// A squeeze's safe sum: the anchor's side moves the SP end by `ratio` per ms
+// (scaled_anchor_ms), and the squeezed note's side covers the rest of the
+// `needed_ms` it must cross (SPSqueeze::difficulty). Squeeze in and squeeze
+// out share it; squeeze_window_ends takes `ratio` from squeeze_multiplier.
 double squeeze_safe_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms);
 
 // An early fill's safe sum: the side of the note that makes Star Power ready,
@@ -91,9 +97,9 @@ bool safe_is_short(double safe_ms);
 
 // ---- which way each squeeze note is pressed ---------------------------------
 // A squeeze's two notes are each pressed off their chart time, one early and
-// one late. This is the one owner of which way each goes.
-
-enum class Press { Early, Late };
+// one late. This is the one owner of which way each goes. The Press enum
+// itself is declared in core/squeeze_rating.h, whose squeeze_multiplier reads
+// the answer.
 
 // The way each of a squeeze's two notes is pressed: the squeezed note (the SP
 // phrase's last note, Activation::squeeze_chord_tick) and the anchor (the
@@ -111,8 +117,8 @@ SqueezePresses squeeze_presses(const SPSqueeze& q);
 
 // Which side of a stored transfer scale a note pressed `press` counts
 // through: the early side for an early press, the late side for a late one.
-// Which stored scale it is (Activation::transfer_post or SPSqueeze::transfer)
-// is the caller's.
+// Which stored scale belongs to a squeeze is stored_scale's question
+// (core/squeeze_rating.h).
 double transfer_side(const TransferScale& scale, Press press);
 
 // ---- the row's word for each note ------------------------------------------
@@ -138,20 +144,24 @@ struct WindowEnd {
 };
 
 // A row's ends, frontend first (one end for an early fill, two for a
-// squeeze), and the safe sum.
+// squeeze), and the safe sum. A squeeze's row also keeps the multiplier its
+// sum used (`priced`) and the frontend's side after it
+// (`frontend_effective_ms`, scaled_anchor_ms); an early fill's row has no
+// multiplier and leaves both unset.
 struct WindowEnds {
     std::vector<WindowEnd> ends;
     double safe_ms = 0.0;
+    std::optional<PricedScale> priced;
+    std::optional<double> frontend_effective_ms;
     bool is_short() const { return safe_is_short(safe_ms); }
 };
 
 // Squeeze `k` of `act`, of either kind: the anchor as the frontend, then the
-// squeezed note as the backend. The anchor's side counts through
-// transfer_side of the squeeze's stored scale, on the side of the anchor's
-// press (squeeze_presses); the stored scale is Activation::transfer_post for a
-// squeeze out and the squeeze's own SPSqueeze::transfer for a squeeze in.
-// Unset when `act` has no squeeze `k`, that scale is unset, the record names
-// no chord or no end for it, or no chord in `chords` sits on either tick.
+// squeezed note as the backend. The anchor's side counts through the
+// multiplier squeeze_multiplier hands out for the squeeze.
+// Unset when `act` has no squeeze `k`, squeeze_multiplier is unset for it, the
+// record names no chord or no end for it, or no chord in `chords` sits on
+// either tick.
 std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, const ChordTimes& chords);
 
 // The early fill of `act`: the note that made Star Power ready
