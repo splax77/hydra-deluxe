@@ -64,8 +64,10 @@ ChordTimes chord_times(const Song& song) {
 
 // ---- the Dynamic Hit Window row --------------------------------------------
 
+double scaled_anchor_ms(double anchor_side_ms, double ratio) { return anchor_side_ms * ratio; }
+
 double squeeze_safe_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms) {
-    return anchor_side_ms * ratio + squeeze_side_ms - needed_ms;
+    return scaled_anchor_ms(anchor_side_ms, ratio) + squeeze_side_ms - needed_ms;
 }
 
 double early_fill_safe_ms(double ready_side_ms, double early_fill_ms) { return ready_side_ms - early_fill_ms; }
@@ -75,7 +77,8 @@ bool safe_is_short(double safe_ms) { return safe_ms < 0.0; }
 // ---- which way each squeeze note is pressed ---------------------------------
 
 // The squeeze sentence (app::squeeze_sentences) prints its "early" or "late"
-// from this answer, and replay_schedule presses the anchor from it.
+// from this answer, and squeeze_multiplier (core/squeeze_rating.h) hands out
+// the anchor's press from it.
 SqueezePresses squeeze_presses(const SPSqueeze& q) {
     const bool squeezed_late = (q.kind == SqueezeKind::SqOut) != q.needs_no_timing();
     const Press squeezed = squeezed_late ? Press::Late : Press::Early;
@@ -113,9 +116,8 @@ std::optional<double> side_at(const ChordTimes& chords, std::optional<int64_t> t
 std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, const ChordTimes& chords) {
     if (k >= act.sqinouts.size()) return std::nullopt;
     const SPSqueeze& q = act.sqinouts[k];
-    const std::optional<TransferScale>& scale =
-        q.kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer;
-    if (!scale || !act.squeeze_end_tick(k)) return std::nullopt;
+    const std::optional<PricedScale> priced = squeeze_multiplier(act, k);
+    if (!priced || !act.squeeze_end_tick(k)) return std::nullopt;
     const std::optional<int64_t> anchor_tick = act.squeeze_anchor_tick(k);
     const std::optional<int64_t> squeezed_tick = act.squeeze_chord_tick(k);
     const std::optional<double> anchor = side_at(chords, anchor_tick);
@@ -124,8 +126,9 @@ std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, c
     WindowEnds out;
     out.ends.push_back(WindowEnd{EndRole::Frontend, *anchor_tick, *anchor});
     out.ends.push_back(WindowEnd{EndRole::Backend, *squeezed_tick, *squeezed});
-    out.safe_ms =
-        squeeze_safe_ms(*anchor, transfer_side(*scale, squeeze_presses(q).anchor), *squeezed, q.difficulty());
+    out.priced = priced;
+    out.frontend_effective_ms = scaled_anchor_ms(*anchor, priced->ratio);
+    out.safe_ms = squeeze_safe_ms(*anchor, priced->ratio, *squeezed, q.difficulty());
     return out;
 }
 
