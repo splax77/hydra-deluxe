@@ -118,28 +118,42 @@ any command on another page that builds. An agent that needs one says so in
 its report.
 
 A build works like a ticket booth, and the ticket has the seat printed on it.
-The main session calls `hydra_build_pass` first, with `preset` set to the
-preset it will build, such as `default`. A preset is a named build setup in
-`CMakePresets.json`. The call has no default preset, and a call without one
-is refused. The call never waits: it hands back a pass, or a line saying who
-holds the slots. With a pass, the main session runs its command with the pass
-in the environment and the same preset on the command line:
+The main session calls `hydra_build_pass` first, with three things: `preset`,
+the preset it will build, such as `default`; `repo`, the folder to build, such
+as a branch's worktree; and `target`, one or more targets, comma-separated, as
+`build_cpp.ps1 -Target` takes them, such as `hydra_tests`. A preset is a named
+build setup in `CMakePresets.json`. None of the three has a default. The call
+never waits: it hands back a pass and the command to run, or a line saying why
+there is none. The command looks like this, with the main checkout as
+`<checkout>`:
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset default -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset <preset> -Target <targets>
 ```
 
-The pass builds that preset only. `build_cpp.ps1` refuses a different preset,
-and the two words must match letter for letter. Any other target goes the same
-way. Another preset needs its own pass that names it: the installer's
-`installer\build_installer.ps1` builds the `ship` preset, so it needs a pass
-asked for with `preset` set to `ship`. A session holds
-one pass at a time. `build_cpp.ps1` claims the slot, builds, and gives the slot
-back whether the build passed or failed. Without a pass it stops before
-configure. A pass nobody claims runs out, and a slot whose owner died frees
-itself; `tools\build_slot.ps1` owns those limits.
-`tools\build_slot.ps1 -Repo <worktree> -Preset <preset>` builds another
-worktree under the pass the caller already holds, with the pass's preset.
+Run it as printed. It runs the main checkout's `tools\build_slot.ps1`, which
+claims the pass, runs the folder's own `build_cpp.ps1`, and records the result.
+It refuses a folder or target other than the pass's before it builds, and
+`build_cpp.ps1` refuses a preset other than the pass's. Another preset needs
+its own pass that names it: the installer's `installer\build_installer.ps1`
+builds the `ship` preset with no target, so it needs a pass asked for with
+`preset` set to `ship`. The call still wants `repo` and a `target`; the
+installer's own claim is not held to them, and it writes no build record. A session holds one pass at a time. The slot is given back whether the
+build passed or failed. Without a pass the build stops before configure. A
+pass nobody claims runs out, and a slot whose owner died frees itself;
+`tools\build_slot.ps1` owns those limits.
+
+The pass is refused when the folder already holds a passing build that covers
+what is in it now. The refusal names that build, and the session carries on
+with the binaries it has. In plain terms, a passed build covers a branch until
+the branch itself gains a code commit, so a move of `main`, a clean merge of
+`main` and a commit that changes no code file never call for another build.
+When the gate cannot read something it needs, it hands the pass out.
+`build_rules.py` in the hooks repo's `gates` folder
+(`C:\Users\Patrick\.claude\gates\`) owns the rule, and `percall.py` there
+asks it. A build run any other way, such as `.\build_cpp.ps1` under a
+pass inside a worktree, records nothing, so the gate cannot refuse a later
+build of that folder.
 
 A build folder remembers the Visual Studio install and the compiler, linker
 and librarian it was first set up with. A Visual Studio update can remove that
@@ -650,10 +664,11 @@ skipped are `SKIP_REASONS` there and `REWRITE_SKIP_REASONS` in `rewrite.py`.
 default.
 
 Second, build once with the `mutation` preset, through a build pass asked for
-with `preset` set to `mutation`:
+with `preset` set to `mutation`, `repo` set to the folder the copies were
+written in and `target` set to `hydra_tests`. Run the command the pass prints:
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset mutation -Target hydra_tests
 ```
 
 That builds into `build-mutation\`. The `HYDRA_MUTATION` block in
@@ -760,11 +775,12 @@ no default list. A test reaches a planted bug only through a source file you
 named, so name every source file the change's tests check. A test that
 reaches no switched source file is "not judged", and the gate says so.
 
-Third, ask `hydra_build_pass` for a pass with `preset` set to `mutation`, and
-build `hydra_tests` with the mutation preset.
+Third, ask `hydra_build_pass` for a pass with `preset` set to `mutation`,
+`repo` set to the change's folder and `target` set to `hydra_tests`, and run
+the command it prints.
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset mutation -Target hydra_tests
 ```
 
 Fourth, run the mapping run and the bug runs on those test files only.
