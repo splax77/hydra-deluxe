@@ -33,7 +33,7 @@ The task table:
 
 - It is the one table outside the `## Plan run` section that has a column headed `Branch`, `Phase` or `Owned files`. A second such table, even one with only one of the three, is refused. So is a task table that lacks one of the three columns or repeats one.
 - Every line of it is a row that starts and ends with `|`, has the header's number of cells and has a `|---|` line under the header. It needs at least one task.
-- A `Branch` or `Phase` cell is one word: bare, or in backticks. `Branch` is the task's own branch, the one its executor commits on. It must be a name git accepts, used once, and it may not be `main` or start with `plan/`. `Phase` is a phase name from the `## Plan run` table.
+- A `Branch` or `Phase` cell is one word: bare, or in backticks. `Branch` is the task's own branch, the one its executor commits on. It must be a name git accepts, used once, and it may not be `main` or start with `plan` followed by a slash. `Phase` is a phase name from the `## Plan run` table.
 - An `Owned files` cell is one or more paths, each in backticks and separated by commas. It lists the files the task may change, which the run records. A path listed twice in one cell is refused.
 
 Fenced code (a block between ``` lines or ~~~ lines) is never read, so a plan may show the section's shape as an example. The plan's own path, which `--open` and `--join` take, is absolute.
