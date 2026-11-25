@@ -4,8 +4,7 @@ Date: 2026-11-24. Status: waiting for the user's yes. Nothing here is built.
 
 ## The short version
 
-The user asked: "create a plan to make one function that decides what a multiplier is and when to show it and add this effective thing you mocked up too". Before that: "so there should be a sqin multiplier. and it's not showing. why not? why are different parts of the code deciding what a multiplier is?"
-
+The user asked: "create a plan to make one function that decides what a multiplier is and when to show it and add this effective thing you mocked up too".
 Today two places decide which side of a squeeze's multiplier counts. The safe badge asks `squeeze_presses`. The scale line and the "eff." figure ask `rate_note`, which picks by where the note sits. They disagree for one case: a squeeze in at exactly 0.0 ms. The badge takes the late side and the scale line takes the early side. On Bloom the late side is x0.40 and the early side is x1.00, so the badge uses a multiplier the screen never shows.
 
 The plan makes one owner in `src/core/squeeze_rating`. It answers three things for a squeeze or a backend row: which stored multiplier belongs to it, which side of it counts, and whether that side is worth showing. Its side rule for a squeeze is the badge's, `squeeze_presses`. The badge, the Dynamic Hit Window row, the scale lines, the eff. figures, the Rating words and the `hydra_replay schedule` tool all call it. The scale lines then print exactly the sides the owner handed out.
@@ -25,7 +24,7 @@ Only one screen reads the changed values: the opened activation row on the Paths
 | Line | Before | After |
 |---|---|---|
 | Safe tag | 103.6 ms safe | 103.6 ms safe |
-| Sentence | Hit the SP phrase's last note more than 0.0 ms early so it lands before Star Power ends. | Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms) so it lands before Star Power ends. (question 3) |
+| Sentence | Hit the SP phrase's last note more than 0.0 ms early so it lands before Star Power ends. | Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms) so it lands before Star Power ends. (see "The eff. figure on Bloom") |
 | Dynamic Hit Window | frontend 74.0 ms [ RY  ] backend 74.0 ms [ RY  ] | the same |
 | Effective | no line | Effective: frontend 29.6 ms (P16) |
 | SqIn scale line | no line | Frontend timing scales x0.40 (late) at the SqIn's SP end. |
@@ -41,9 +40,17 @@ Only one screen reads the changed values: the opened activation row on the Paths
 
 ## When the Effective line shows
 
-It shows exactly when the owner says the priced side is a scale, and never at x1.00. Two things settle this, so it is not a question. The user's request is for "one function that decides what a multiplier is and when to show it", so the Effective line takes its "when" from the same owner as the scale line. That owner's existing test is `is_scaled` (owner map O6), whose own words are "A multiplier counts as no scale when it is less than the tolerance away from 1 ... The user chose a thousandth". All three mockups show a scaled multiplier, and none shows a x1.00 line.
+It shows exactly when the owner says the priced side is a scale, and never at x1.00. Three things settle this, so it is not a question. The user's request is for "one function that decides what a multiplier is and when to show it", so the Effective line takes its "when" from the same owner as the scale line. That owner's existing test is `is_scaled` (owner map O6), whose own words are "A multiplier counts as no scale when it is less than the tolerance away from 1 ... The user chose a thousandth" (D256). The user's ruling D116, "if a multiplier exists there should be a corresponding display", is about a multiplier that exists, and a x1.00 side is no multiplier by D256. All three mockups show a scaled multiplier and none shows a x1.00 line. At x1.00 the line would only repeat the figure on the Dynamic Hit Window line above it.
 
 An early fill's row has no multiplier, so it never gets the line.
+
+## The eff. figure on Bloom
+
+Reading the late side gives Bloom's squeeze in a scaled multiplier, so the existing rule prints its eff. figure and turns the scale lines orange: "Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms) so it lands before Star Power ends." This is not a question. D116 (`docs/agents/rulings/ui-and-display.md:80`) already says a multiplier that exists gets its figure: "if a multiplier exists there should be a corresponding display". The figure is 0.0 ms because the squeeze sits exactly on the end (P9). Whether the lines are orange today is P15, read by LS4.
+
+## What stays as the mockup has it
+
+The words "Effective" and "eff." mean two things. The new line is in real ms, and the "eff. N ms" figures are shrunk onto the normal 170.5 ms budget. The user asked to "add this effective thing you mocked up", so the plan builds the mockup's words and changes no "eff." figure. The wording is not a question for the user, who can ask for a rename later.
 
 ## Owner map
 
@@ -68,29 +75,36 @@ An early fill's row has no multiplier, so it never gets the line.
 
 **O1, which side for a squeeze.** One function, `squeeze_multiplier(act, k)`, returns the stored scale from `stored_scale`, the anchor's press from `squeeze_presses`, and the one number, `transfer_side` of the two. It is unset when the stored scale is unset. `squeeze_window_ends` prices the safe sum from it. `rate_activation` rates each squeeze in from it, in place of `paid_by_sp_walk`. The schedule tool presses the anchor from it. This is the badge's rule used as it is; nothing is added to it.
 
-**O2, which side for a backend row.** One function, `row_multiplier(act, row, leeway)`. The squeezed-out row is its squeeze out's note, so it returns that squeeze's `squeeze_multiplier`. A plain row is not a squeeze and has no press, so it keeps the rule it has today, `counted_without_squeeze`, on the activation's scale. That is the one place the leeway rule is still asked for a side, and it changes nothing on screen (P7). `rate_activation` calls `row_multiplier` for every row.
+**O2, which side for a backend row.** One function, `row_multiplier(act, row, leeway)`. The squeezed-out row is its squeeze out's note, so it returns that squeeze's `squeeze_multiplier`. That is the merge: the row and its badge reach one side by one route. A plain row is not a squeeze and has no press, so the only question left for it is the engine's own, "is this row counted without a squeeze?", and `row_multiplier` asks `core::counted_without_squeeze` for it (`backend_value.h`, which owns that question) and reads the early side when it holds and the late side when it does not. `row_multiplier` adds no condition and no rule of its own to that answer. It changes nothing on screen (P7). `rate_activation` calls `row_multiplier` for every row, and keeps today's guard: when `stored_transfer_scales` is unset, nothing is asked of the owner and the "Transfer scale unknown." line stays (O7).
 
 **When to show.** The owner's answer carries `shown()`, which is `is_scaled` of its one number (O6). The scale lines, the eff. figures and the Effective line all read it.
 
-The owner lives in `src/core/squeeze_rating.h`, whose header already claims the job: "which scale directions matter, which multiplier governs a note". `squeeze_presses` and `transfer_side` stay in `note_window.h` as the owner of the press; the new functions call them.
+The owner lives in `src/core/squeeze_rating.h`, whose header already claims the job: "which scale directions matter, which multiplier governs a note". `squeeze_presses` stays in `note_window.h` as the owner of the press, and `transfer_side` stays there as the owner of "the number on this side of a scale"; the new functions call them. `tools/replay_schedule.cpp` also applies a press to scales that are not the squeeze's own (the read ends, `moving_side`), which is `transfer_side`'s own job and stays a call to it.
 
-The exact shapes, so the four code tasks can work side by side without a build:
+One header dependency has to run one way. `squeeze_rating.h` cannot include `note_window.h`, because `WindowEnds` in `note_window.h` holds a `PricedScale`. So the `Press` enum moves from `note_window.h` into `squeeze_rating.h`, and `note_window.h` includes `squeeze_rating.h`. Every file that sees `Press` today includes `note_window.h` and keeps seeing it. `squeeze_rating.cpp` includes `note_window.h` for `squeeze_presses`.
+
+The exact shapes, so the code tasks can work side by side without a build:
 
 ```
 // core/squeeze_rating.h
+enum class Press { Early, Late };   // moved here from core/note_window.h
 struct PricedScale {
     TransferScale stored;   // the squeeze's or row's stored scale, both sides
-    Press press;            // the side that counts, as Press (core/note_window.h)
-    double ratio;           // transfer_side(stored, press)
+    Press press;            // the side that counts
+    double ratio;           // the number on that side of `stored`
     bool shown() const;     // is_scaled(ratio)
 };
 const std::optional<TransferScale>& stored_scale(const Activation& act, size_t k);
 std::optional<PricedScale> squeeze_multiplier(const Activation& act, size_t k);
 std::optional<PricedScale> row_multiplier(const Activation& act, const BackendSqueeze& row, double leeway_ms);
 
-// core/note_window.h
+// core/note_window.h (includes core/squeeze_rating.h; Press is no longer declared here)
 double scaled_anchor_ms(double anchor_side_ms, double ratio);   // the product squeeze_safe_ms adds
 struct WindowEnds { ...; std::optional<PricedScale> priced; std::optional<double> frontend_effective_ms; };
+
+// app/path_view.h
+struct WindowRowView { ...; std::optional<WindowFigure> effective; };   // word "frontend", figure "29.6 ms", no chord
+inline constexpr const char* kEffectiveLabel = "Effective:";
 ```
 
 ## Plan run
@@ -108,19 +122,21 @@ Each task is one Opus executor, under 100 tool calls and 20 minutes. Agents neve
 
 | Task | Branch | Phase | Owned files |
 |---|---|---|---|
-| M1 | `one-multiplier/m1-owner` | all | `src/core/squeeze_rating.h`, `src/core/squeeze_rating.cpp`, `tests/test_squeeze_rating.cpp`, `tests/single_owner/rules/core.json` |
+| M1 | `one-multiplier/m1-owner` | all | `src/core/squeeze_rating.h`, `src/core/squeeze_rating.cpp`, `tests/test_squeeze_rating.cpp` |
 | M2 | `one-multiplier/m2-window` | all | `src/core/note_window.h`, `src/core/note_window.cpp`, `tests/test_note_window.cpp` |
-| M3 | `one-multiplier/m3-screen` | all | `src/app/path_view.h`, `src/app/path_view.cpp`, `src/ui/paths_tab.cpp`, `tests/test_activation_rows.cpp`, `tests/ui/uitest_paths.cpp` |
+| M3 | `one-multiplier/m3-view` | all | `src/app/path_view.h`, `src/app/path_view.cpp`, `tests/test_activation_rows.cpp` |
 | M4 | `one-multiplier/m4-schedule` | all | `tools/replay_schedule.cpp`, `tools/replay_schedule.h`, `tests/test_replay_schedule.cpp` |
 | M5 | `one-multiplier/m5-pages` | all | `docs/clone-hero/05-star-power.md`, `docs/audit/2026-10-03-fix-decisions.md`, `docs/UserGuide.md`, `CONTEXT.md` |
+| M6 | `one-multiplier/m6-rule` | all | `tests/single_owner/rules/core.json` |
+| M7 | `one-multiplier/m7-draw` | all | `src/ui/paths_tab.cpp`, `tests/ui/uitest_paths.cpp` |
 
 ### M1: The owner, and the rating reads it
 
 Uses O1, O2, O3, O4, O5, O6, O9, O11.
 
-Add `PricedScale`, `stored_scale`, `squeeze_multiplier` and `row_multiplier` to `src/core/squeeze_rating`, in the shapes above. `rate_note` takes the owner's answer in place of its `inside` flag, so it no longer picks a side. `rate_activation` asks `row_multiplier` for each backend row and `squeeze_multiplier` for each squeeze, and marks `post_read` and `sqins_read` from those answers. A squeeze out marks its side on `post_read` too, so a priced side can never be missing from the line. `stored_transfer_scales` builds through `stored_scale` and keeps its all-or-nothing rule.
+Add `Press`, `PricedScale`, `stored_scale`, `squeeze_multiplier` and `row_multiplier` to `src/core/squeeze_rating`, in the shapes above. `rate_note` takes the owner's answer in place of its `inside` flag, so it no longer picks a side. `rate_activation` asks `row_multiplier` for each backend row and `squeeze_multiplier` for each squeeze, and marks `post_read` and `sqins_read` from those answers. A squeeze out marks its side on `post_read` too, so a priced side can never be missing from the line. `stored_transfer_scales` builds through `stored_scale` and keeps its all-or-nothing rule.
 
-The test at `tests/test_squeeze_rating.cpp:780-810` pins the old side and is rewritten, not deleted.
+The test at `tests/test_squeeze_rating.cpp:780-810` pins the old side and is rewritten, not deleted. The direct `rate_note` calls in the same file (lines 587 to 623) take the new argument; their expected values stay as they are.
 
 Acceptance criteria, each with its test in `tests/test_squeeze_rating.cpp`:
 
@@ -130,39 +146,48 @@ Acceptance criteria, each with its test in `tests/test_squeeze_rating.cpp`:
 4. A plain row reads the early side when `counted_without_squeeze` holds and the late side when it does not, at an offset inside the leeway and one at it. The existing plain-row tests stay as they are; the reviewer confirms none of their expected values was edited.
 5. `stored_scale` returns the activation's scale for a squeeze out and the squeeze's own for a squeeze in, and `squeeze_multiplier` is unset when that scale is unset.
 6. `shown()` is true exactly when `is_scaled(ratio)` is.
-7. A single-owner rule in `tests/single_owner/rules/core.json` fails when a file other than the owner picks between `transfer_post` and `SPSqueeze::transfer`, or calls `transfer_side` outside the owner and `note_window.cpp`. The executor reads that file's existing rules for the shape first (P20).
+7. With one SqIn's stored scale unset, `rate_activation` leaves `scales` unset and rates no row and no squeeze, as today.
 
 ### M2: The Dynamic Hit Window row is priced by the owner and keeps the product
 
 Uses O1, O5, O8, O10.
 
-`squeeze_window_ends` asks `squeeze_multiplier` in place of its own pick at lines 116 to 117 and 128. `squeeze_safe_ms` adds `scaled_anchor_ms(anchor_side_ms, ratio)` in place of its inline product, and `squeeze_window_ends` stores that same call's result as `WindowEnds::frontend_effective_ms`, beside the owner's answer in `WindowEnds::priced`. An early fill's row leaves both unset.
+`squeeze_window_ends` asks `squeeze_multiplier` in place of its own pick at lines 116 to 117 and 128. `squeeze_safe_ms` adds `scaled_anchor_ms(anchor_side_ms, ratio)` in place of its inline product, and `squeeze_window_ends` stores that same call's result as `WindowEnds::frontend_effective_ms`, beside the owner's answer in `WindowEnds::priced`. An early fill's row leaves both unset. `note_window.h` drops the `Press` declaration and includes `squeeze_rating.h`, which M1 gives it (see "How the splits merge"); `transfer_side` and `squeeze_presses` stay.
 
 Acceptance criteria, each with its test in `tests/test_note_window.cpp`:
 
-1. On a real chart from `testdata/input` with a squeeze, `safe_ms` equals `squeeze_safe_ms` of the frontend end's `side_ms`, `priced->ratio`, the backend end's `side_ms` and the squeeze's `difficulty()`. It fails if the stored answer is not the one the sum used.
-2. `frontend_effective_ms` equals `scaled_anchor_ms(frontend side_ms, priced->ratio)` on the same chart, and `safe_ms` equals `frontend_effective_ms` plus the backend side less the difficulty.
+1. On the file's existing hand-built squeezes, a squeeze in and a squeeze out (its `t.act` cases), `safe_ms` equals `squeeze_safe_ms` of the frontend end's `side_ms`, `priced->ratio`, the backend end's `side_ms` and the squeeze's `difficulty()`. It fails if the stored answer is not the one the sum used.
+2. `frontend_effective_ms` equals `scaled_anchor_ms(frontend side_ms, priced->ratio)` on the same squeezes, and `safe_ms` equals `frontend_effective_ms` plus the backend side less the difficulty.
 3. No existing expected `safe_ms` in the file changes. The reviewer reads the diff and says so; a changed one means the badge moved, which the user ruled out.
 4. `early_fill_row` returns a row with `priced` and `frontend_effective_ms` unset.
 
-### M3: The screen prints what the owner handed out, and the Effective line
+### M3: The view builds the Effective text and the scale lines read the owner
 
-Uses O6, O7, O9, O10.
+Uses O6, O7, O9, O10. Rests on P21.
 
-In `src/app/path_view.cpp` the scale lines keep their wording and read `post_read` and `sqins_read` as M1 fills them. `WindowRowView` gains one optional text, the Effective line, built from the row's `frontend_effective_ms` with `format_ms` and `role_word(EndRole::Frontend)`, and set only when `priced->shown()`. Its label, `Effective:`, is one constant beside `kDynamicHitWindowLabel`. `window_row` in `src/ui/paths_tab.cpp` draws it on its own line under the Dynamic Hit Window line, label in the box's text colour, word and figure in the row's existing word and figure colours, as the mockups show. The comment in `squeeze_sentences` that calls the eff. side "a different question" is corrected to name the owner.
+In `src/app/path_view.cpp` the scale lines keep their wording and read `post_read` and `sqins_read` as M1 fills them. `WindowRowView` gains `effective`, an optional `WindowFigure` built in `window_row_view` from the row's `frontend_effective_ms`: its word is `role_word(EndRole::Frontend)`, its figure is `format_ms` of the number and its chord is empty. It is unset unless `priced->shown()`. `kEffectiveLabel` (`Effective:`) is one constant beside `kDynamicHitWindowLabel` in `src/app/path_view.h`. The comment in `squeeze_sentences` that calls the eff. side "a different question" is corrected to name the owner.
 
-Acceptance criteria:
+Acceptance criteria, each in `tests/test_activation_rows.cpp`:
 
-1. `tests/test_activation_rows.cpp`: on a real chart's squeeze whose `priced->shown()` is true, the view's Effective text is `Effective: frontend ` plus `format_ms` of the engine's `frontend_effective_ms`. The expected figure is read from `squeeze_window_ends`, never worked out in the test.
-2. The same file: on a real chart's squeeze whose `priced->shown()` is false, the view has no Effective text.
-3. The same file: for every activation of a real chart, a side appears on a scale line exactly when the owner handed that side out and it is `shown()`. It fails if the line and the owner disagree in either direction.
-4. `tests/ui/uitest_paths.cpp`: a headless test opens a `testdata/input` song with a scaled squeeze and requires the Effective line on screen directly after the Dynamic Hit Window line of the same box, and requires none in an early fill's box. The executor picks the chart by scanning `testdata/input` results in the test itself for the first squeeze with `shown()` true (P21).
+1. On a real chart's squeeze whose `priced->shown()` is true, the view's `effective` holds the word `frontend` and `format_ms` of the engine's `frontend_effective_ms`. The expected figure is read from `squeeze_window_ends`, never worked out in the test.
+2. On a real chart's squeeze whose `priced->shown()` is false, the view's `effective` is unset. So is an early fill's.
+3. For every activation of a real chart, a side appears on a scale line exactly when the owner handed that side out and it is `shown()`. It fails if the line and the owner disagree in either direction.
+
+The test finds its charts by scanning the fast-tempo charts under `testdata/input/test_fast_tempo` (read the way `late_sqin_twice()` reads one) and the corpus songs, for the first squeeze with `shown()` true and one with it false. If the scan finds no scaled squeeze, the executor stops and reports it; it does not hand-build one in place of a real chart.
+
+### M7: The box draws the Effective line
+
+Uses O6, O10.
+
+`window_row` in `src/ui/paths_tab.cpp` draws `WindowRowView::effective`, when it is set, on its own line under the Dynamic Hit Window line, as the mockups show: `kEffectiveLabel` in the box's text colour, then the word in the row's word colour and the figure in its figure colour. It takes the word and the figure as the view hands them out and builds no text of its own.
+
+Acceptance criterion, in `tests/ui/uitest_paths.cpp`: a headless test opens a corpus song whose squeeze has `shown()` true (found by the same scan as M3's, at test time; P21) and requires the Effective line on screen directly after the Dynamic Hit Window line of the same box, and none in an early fill's box. If no corpus song has such a squeeze, the executor stops and reports it.
 
 ### M4: The schedule tool asks the owner
 
 Uses O1, O5.
 
-`tools/replay_schedule.cpp` picks a squeeze's stored scale at lines 415 and 619 to 620, and the anchor's press at line 626. Both become calls to `stored_scale` and `squeeze_multiplier`. `moving_side` stays a thin read of the owner's answer.
+`tools/replay_schedule.cpp` picks a squeeze's stored scale at lines 415 and 619 to 620, and the anchor's press at line 626. The scale pick becomes a call to `stored_scale` and the press a read of `squeeze_multiplier(act, k)->press`. `moving_side` stays a call to `transfer_side`: the tool applies a press to the read ends' scales too (lines 224, 749 and 766), which are not the squeeze's own, and "the number on this side of a scale" is `transfer_side`'s own question.
 
 Acceptance criteria, in `tests/test_replay_schedule.cpp`:
 
@@ -171,19 +196,30 @@ Acceptance criteria, in `tests/test_replay_schedule.cpp`:
 
 ### M5: The pages
 
-Waits for: question 1 (the `CONTEXT.md` wording only; the other three files do not wait).
+The user's answer to question 1 comes with the go for the plan, so the dispatch brief carries it. If the answer is no, `CONTEXT.md` is not edited and the other three files go ahead.
 
 `docs/clone-hero/05-star-power.md`, block SP-39: its last Rule sentence, "The scale's direction follows the sign of the difficulty, not the squeeze kind", does not match the code. It is corrected to point at the owner, and its `Hydra:` line names the new functions. `docs/audit/2026-10-03-fix-decisions.md` gets a new entry that quotes the user's answer of 2026-11-24 and says D302 item 2's sentence "The rating keeps reading the note's side from paid_by_sp_walk" no longer holds for a squeeze. `docs/UserGuide.md` gets one sentence on the Effective line, in the public doc style. `CONTEXT.md`, "Needs no timing", takes the wording the user approves in question 1.
 
 Acceptance criteria: the reviewer checks every backticked name on SP-39 exists in the code (the Clone Hero README's first check), that the decision entry's quote is the user's exact words, and that `CONTEXT.md` holds the approved wording and nothing else changed in it. `docs/UserGuide.md` goes through the doc review gate (`docs/agents/doc-review.md`).
 
+### M6: The single-owner rule
+
+Uses O5.
+
+Add one rule to `tests/single_owner/rules/core.json`, in the shape its neighbours have (`engine.cpp:93-130` lists the keys: `question`, `owner`, `owner_file`, `owner_symbol`, `date`, `decision`, `added_by`, `pattern`, `anchor`, `must_match`, `must_not_match`, `owner_lines`, `scope`, `note`). Its question is "Which stored transfer scale belongs to this squeeze?", its owner `stored_scale` in `src/core/squeeze_rating.cpp`, its `scope` `src` and `tools`, and its `decision` the user's words of 2026-11-24, "why are you even offering an option that would make the display wrong?", with this plan's path. Its pattern matches a pick between `transfer_post` and `SPSqueeze::transfer`, such as `kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer` and `is_in ? q.transfer : act.transfer_post`, and its `owner_lines` list the owner's one line. Reads of `transfer_post` that pick nothing (the search storing it, `tools/replay_json.cpp` printing it) do not match; `must_not_match` pins two of them. `transfer_side` calls are not covered: `moving_side` in the schedule tool legitimately calls it.
+
+Acceptance criteria:
+
+1. Each `must_match` line, spelled as the four old spellings in `note_window.cpp`, `squeeze_rating.cpp` and `replay_schedule.cpp` were, matches the pattern, and each `must_not_match` line does not.
+2. The rule finds nothing in `src` or `tools` once M1, M2 and M4 have landed, so no `baseline.json` entry is added. The executor checks this by reading the files, because it cannot run the scan; the main session's build runs it.
+
 ## The GUI checks
 
-M3 changes text and adds a line to a box, so it needs two checks from `docs/agents/ui-testing.md`. Case 1, behaviour and text, is M3's headless test, run by the main session after the phase's one build. Case 2, what the user sees, is the live steps below: the new line is a layout change, so the real dev app is opened on a copy of the user's library and the captures are shown to the user before `main` moves.
+M7 changes text and adds a line to a box, so it needs two checks from `docs/agents/ui-testing.md`. Case 1, behaviour and text, is M3's tests and M7's headless test, run by the main session after the phase's one build. Case 2, what the user sees, is the live steps below: the new line is a layout change, so the real dev app is opened on a copy of the user's library and the captures are shown to the user before `main` moves.
 
 ## The live steps
 
-The main session runs these with the `hydra` MCP server. It runs them once on the current build before any task starts, to read the "before" text, and once on the plan branch's build. They only read the screen. Each step's reply text and capture are shown to the user; none blocks a task.
+The main session runs these with the `hydra` MCP server (P22). It runs them twice. The first run is on the current build, before any task starts, to read the "before" text. It starts the window with `hydra_start("window", keep=True)`. The second run is on the plan branch's build, after the main session built it, and starts with `hydra_start("window", keep=True, worktree=<the plan branch's worktree folder>)`, so the real-app record names that branch. The steps only read the screen. The result of a run is each step's reply text and its screenshots, kept in the helper's scratch folder because of `keep=True`; the main session shows both to the user, and none of it blocks a task. Titles go to `hydra_open_song` exactly: "Bloom", "Gethsemane", "Waste of Air", "Subdivisions".
 
 ### LS1: Start the real window
 
@@ -197,7 +233,13 @@ Calls: `hydra_open_song` (never tried)
 
 Pass: the song's tabs settle. This step starts only after LS1 passed.
 
-### LS3: Open Bloom's third path and activation 2
+### LS3a: Read the Paths tab's widget labels
+
+Calls: `hydra_dump` (never tried)
+
+Pass: the reply, narrowed with `contains` to the path rows and the `##act` ids (the row id is `##act<number>`, `src/app/path_view.h`), names the label of Bloom's third path and of its activation 2.
+
+### LS3b: Open Bloom's third path and activation 2
 
 Calls: `hydra_click` (never tried)
 
@@ -217,31 +259,37 @@ Pass: a capture of the open box exists and is shown to the user.
 
 ### LS6: Open Gethsemane
 
-Calls: `hydra_open_song` (never tried)
+Calls: `hydra_open_song` (seen: LS2's passing run)
+
+Pass: the song's tabs settle.
 
 ### LS7: Read Gethsemane's activation 3
 
-Calls: `hydra_click` (never tried), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
+Calls: `hydra_click` (seen: LS3b's passing run), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
 
 Pass: every line the brief quoted is unchanged and the new line settles P17.
 
 ### LS8: Open Waste of Air
 
-Calls: `hydra_open_song` (never tried)
+Calls: `hydra_open_song` (seen: LS2's passing run)
+
+Pass: the song's tabs settle.
 
 ### LS9: Read Waste of Air's activation 4
 
-Calls: `hydra_click` (never tried), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
+Calls: `hydra_click` (seen: LS3b's passing run), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
 
 Pass: both boxes keep their lines and the two new lines settle P18.
 
 ### LS10: Open Subdivisions
 
-Calls: `hydra_open_song` (never tried)
+Calls: `hydra_open_song` (seen: LS2's passing run)
+
+Pass: the song's tabs settle.
 
 ### LS11: Read Subdivisions' activation 2
 
-Calls: `hydra_click` (never tried), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
+Calls: `hydra_click` (seen: LS3b's passing run), `hydra_text` (seen: LS4's passing run), `hydra_screenshot` (seen: LS5's passing run)
 
 Pass: the quoted lines are unchanged and the new line settles P19.
 
@@ -249,7 +297,7 @@ Pass: the quoted lines are unchanged and the new line settles P19.
 
 Calls: `hydra_stop` (never tried)
 
-Pass: the reply says the window closed.
+Pass: the reply says the window closed and names the real-app record it wrote.
 
 ## Global constraints
 
@@ -264,19 +312,17 @@ Pass: the reply says the window closed.
 
 1. **The glossary line.** `CONTEXT.md`, "Needs no timing", ends: "The rating does not: it reads which side of the SP end the note sits on (`core::paid_by_sp_walk`)." After this work that is false for a squeeze: its rating reads the side its badge reads. You already answered the choice itself: "why are you even offering an option that would make the display wrong?" Only you change a glossary term, so: may that sentence become "A squeeze's rating reads the same side as its safe badge (`squeeze_multiplier`); a plain backend row still reads which side of the SP end it sits on."? You will see: nothing on screen from this wording.
 
-2. **Two kinds of "effective".** The "eff. N ms" figures are in shrunk units: the timing rescaled onto the normal 170.5 ms budget. The new Effective line is in real ms. On Gethsemane the box will read "Effective: frontend 184.0 ms" a few lines above "Insane+ (eff. 140.2 ms)". The two words mean different things. What do you want done about that? This plan changes no eff. figure's meaning and waits for your answer before anything else is built on it.
+That is the only question. Two more that an earlier draft held are settled by what is already ruled: the eff. figure on Bloom by D116 (see "The eff. figure on Bloom"), and the "Effective" against "eff." wording by the mockup the user asked for (see "What stays as the mockup has it").
 
-3. **Bloom's sentence gains "(eff. 0.0 ms)".** Reading the late side gives the squeeze in a scaled multiplier, and the existing rule prints an eff. figure whenever the multiplier is scaled. Before: "Hit the SP phrase's last note more than 0.0 ms early so it lands before Star Power ends." After: "Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms) so it lands before Star Power ends." The scale lines on that activation are also orange after the change; whether they are orange today is P15. You did not ask for the eff. figure. Is it right to show it?
+## Out of scope
 
-## Out of scope, for the user to approve
-
-Changing what any "eff. N ms" figure means or how it is worded waits on question 2. Relabelling the frontend window itself was turned down ("184 is a fucking lie. the hit window is not 84"), and so was a longer Effective line ("literally half of that is unnecessary and already explained elsewhere in the interface"); neither is built.
+Changing what any "eff. N ms" figure means or how it is worded is not built. Relabelling the frontend window, and a longer Effective line than the mockups show, are not built either.
 
 ## Promise map
 
 | Promise | Plan line | Task | The check that proves it |
 |---|---|---|---|
-| One owner decides which stored multiplier a squeeze has | "O5, which stored multiplier" | M1 | M1 criterion 5 and the single-owner rule, criterion 7 |
+| One owner decides which stored multiplier a squeeze has | "O5, which stored multiplier" | M1, M6 | M1 criterion 5 and M6 criterion 1 |
 | One owner decides the side, by the badge's rule | "O1, which side for a squeeze" | M1 | M1 criteria 1 and 2 |
 | The squeezed-out row and its squeeze out take one route | "O2, which side for a backend row" | M1 | M1 criterion 3 |
 | A plain row keeps its side | "O2", constraint 3 | M1 | M1 criterion 4 |
@@ -284,8 +330,9 @@ Changing what any "eff. N ms" figure means or how it is worded waits on question
 | The safe tag never moves | constraint 1 | M2, M4 | M2 criterion 3, M4 criterion 2, LS4's "103.6 ms safe" |
 | The Effective figure is the engine's own product | M2, constraint 4 | M2, M3 | M2 criterion 2, M3 criterion 1 |
 | The Effective line shows exactly when the owner says so | "When the Effective line shows" | M3 | M3 criteria 1 and 2 |
-| An early fill gets no Effective line | "When the Effective line shows" | M2, M3 | M2 criterion 4, M3 criterion 4 |
-| The line sits under the Dynamic Hit Window line | M3 | M3 | M3 criterion 4, LS5's capture |
+| An early fill gets no Effective line | "When the Effective line shows" | M2, M3 | M2 criterion 4, M3 criterion 2 |
+| The line sits under the Dynamic Hit Window line | M7 | M7 | M7 criterion, LS5's capture |
+| A missing stored scale still gives no rating | M1 | M1 | M1 criterion 7 |
 | A scale line shows exactly the sides the owner handed out | "The short version" | M3 | M3 criterion 3 |
 | Bloom shows x0.40 (late) at the SqIn's SP end | Bloom table | M1, M3 | M1 criterion 1, LS4 |
 | The schedule tool calls the owner and its output is unchanged | M4 | M4 | M4 criteria 1 and 2 |
@@ -293,7 +340,7 @@ Changing what any "eff. N ms" figure means or how it is worded waits on question
 | Nothing stored changes, the stamp stays | constraint 2 | M2 | M2 criterion 3; the reviewer confirms no file under `src/search` or `src/store` is in any task's diff |
 | The search never reads the multiplier | constraint 5 | all | no task owns a file under `src/search` (the task table) |
 | SP-39 is corrected | M5 | M5 | M5's reviewer check of the block |
-| `CONTEXT.md` changes only with the user's yes | question 1 | M5 | M5's `Waits for:` line and its reviewer check |
+| `CONTEXT.md` changes only with the user's yes | question 1 | M5 | M5's reviewer check |
 | The real app is seen before merge | "The GUI checks" | LS1 to LS12 | the captures shown to the user |
 | The plan and mockups leave with the work | constraint 6 | main session | the finishing merge's file list |
 
@@ -320,10 +367,14 @@ Changing what any "eff. N ms" figure means or how it is worded waits on question
 | P17: Gethsemane's Effective figure prints as 184.0 ms. | unchecked | `docs/superpowers/specs/2026-11-24-effective-line-mockup/index.html` | LS7; blocks nothing |
 | P18: Waste of Air's Effective figures print as 172.5 ms and 80.5 ms. | unchecked | `docs/superpowers/specs/2026-11-24-effective-line-mockup/both-squeezes.html` | LS9; blocks nothing |
 | P19: Subdivisions' Effective figure prints as 80.2 ms. | unchecked | `docs/superpowers/specs/2026-11-24-effective-line-mockup/subdivisions.html` | LS11; blocks nothing |
-| P20: The single-owner scan can hold a rule of the kind M1 criterion 7 needs. | unchecked | `tests/single_owner/rules/core.json` was found but not opened | M1 |
-| P21: `testdata/input` holds a squeeze whose priced side is scaled and one whose side is not. | unchecked | `testdata/input` was listed for the four named charts only, and holds none of them | M3 |
-| P22: The `hydra` MCP tools the live steps name exist. | unchecked | `docs/agents/ui-testing.md` names them in "Live mode and the MCP server", found by search, not read through | LS1; blocks nothing |
+| P20: A single-owner rule is a JSON row with `question`, `owner`, `owner_file`, `owner_symbol`, `date`, `decision`, `added_by`, `pattern`, optional `anchor`, `must_match`, `must_not_match`, `owner_lines`, `scope` and `note`, and `core.json` already holds such rows, one for which scale belongs to a SqIn. | code | `tests/single_owner/engine.cpp:93-130`, `tests/single_owner/rules/core.json:804-830` | checked 2026-11-24 |
+| P21: `testdata/input` holds a squeeze whose priced side is scaled and one whose side is not. | unchecked | `testdata/input/test_fast_tempo/late_sqin_twice.chart` has a tempo jump to 2000 BPM (line 10), but a read cannot say which squeezes the search finds there or what their scales are | M3 and M7 scan for them at test time and stop and report if none is found; blocks nothing else |
+| P22: The `hydra` MCP tools the live steps name exist, and `hydra_start` takes `keep` and `worktree`. | code | `tools/hydra_ui_mcp.py:843-955` | checked 2026-11-24 |
+| P27: `Press` is declared in `note_window.h` only, and `squeeze_rating.h` includes neither it nor `note_window.h`, so the owner needs `Press` moved. | code | `src/core/note_window.h:92-104`, `src/core/squeeze_rating.h:24-35` | checked 2026-11-24 |
+| P28: The schedule tool applies a press to scales that are not the squeeze's own, through `moving_side`. | code | `tools/replay_schedule.cpp:89-93`, `tools/replay_schedule.cpp:218-229` | checked 2026-11-24 |
+| P29: `rate_note` is called directly in tests with a bool for the side. | code | `tests/test_squeeze_rating.cpp:584-625` | checked 2026-11-24 |
+| P30: A multiplier within a thousandth of 1 is no scale, so `is_scaled` is the one test of whether a multiplier exists. | code | `src/core/squeeze_rating.h:112-126` | checked 2026-11-24 |
 | P23: The user chose the badge's side at 0.0 ms. | ruling | the user's message, quoted in this plan's brief: `why are you even offering an option that would make the display wrong?` | checked 2026-11-24 |
 | P24: A multiplier that exists gets a display. | ruling | `docs/agents/rulings/ui-and-display.md:80` | checked 2026-11-24 |
 | P25: Display-only changes do not move the results stamp. | code | `docs/audit/2026-10-03-fix-decisions.md:1687`, `src/store/stored_versions.h:42-55` | checked 2026-11-24 |
-| P26: D302 item 2 and `CONTEXT.md` both say the rating reads `paid_by_sp_walk`, and SP-39 says the direction follows the sign of the difficulty. | code | `docs/audit/2026-10-03-fix-decisions.md:1685`, `CONTEXT.md:777-783`, `docs/clone-hero/05-star-power.md:445` | checked 2026-11-24 |
+| P26: D302 item 2 and `CONTEXT.md` both say the rating reads `paid_by_sp_walk`, and SP-39 says the direction follows the sign of the difficulty. | code | `docs/audit/2026-10-03-fix-decisions.md:1685`, `CONTEXT.md:777-783`, `docs/clone-hero/05-star-power.md:444` | checked 2026-11-24 |
