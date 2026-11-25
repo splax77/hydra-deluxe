@@ -2,7 +2,7 @@
 
 These are real tests from this repo, judged by the questions in `docs/agents/test-rubric.md`. "Q3" means question 3 on that page. Every quoted line was copied from the file at the commit that last changed this page; line numbers are from that commit and will drift. Where a neighbouring line was not read again for this page, the example says so.
 
-Eighteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. B15 to B18 show the four kinds of bad test the 2026-11-14 test audit named, and they quote an older commit, as their section says. Then comes one good example, G1, with its full record. No existing test was found that passes every question, so G1 was written for this page.
+Eighteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. B15 to B18 show the four kinds of bad test the 2026-11-14 test audit named, and they quote an older commit, as their section says. Then comes G1, written for this page as a good example and no longer one: it retypes game-rule values from a Clone Hero page. No existing test passes every question, and this page holds no good example today.
 
 ## Bad examples: the framing is the bug
 
@@ -183,11 +183,11 @@ It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are p
     CHECK(passed_over(edge + 1).empty());
 ```
 
-The test builds a chart at 125 BPM with 480 ticks a beat, so one tick is one millisecond. Fill A starts at tick 9120 and ends at 9600. Clone Hero's 1.1 deadline is four beats before a fill's start (FL-19 in `docs/clone-hero/04-fills.md`): 9120 minus 1920 is 7200. Hydra keeps a fill offered until Star Power comes ready up to 85 ms after that deadline (FL-23, Hydra's own reach, which the game does not have). So 7285 is "the fill's start, minus four beats, plus Hydra's 85 ms reach". None of that is in the check. It fails question 4: cover the comments and nobody can tell what 7285 is. The comment's reason for typing it ("so a changed window fails here") is real, but a named rule number does the same job.
+The test builds a chart at 125 BPM with 480 ticks a beat, so one tick is one millisecond. Fill A starts at tick 9120 and ends at 9600. Clone Hero's 1.1 deadline is four beats before a fill's start (FL-19 in `docs/clone-hero/04-fills.md`): 9120 minus 1920 is 7200. Hydra keeps a fill offered until Star Power comes ready up to 85 ms after that deadline (FL-23, Hydra's own reach, which the game does not have). So 7285 is "the fill's start, minus four beats, plus Hydra's 85 ms reach". None of that is in the check. It fails question 4: cover the comments and nobody can tell what 7285 is. The comment's reason for typing it ("so a changed window fails here") is real, but reading Hydra's own value by name does the same job without a typed copy.
 
-The rewrite names the inputs and the two rules: a name "fill_a_start", `deadline = fill_a_start - 4 * beat` with the four beats cited to FL-19, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A, written as fill A's named end and not as 9600, and `passed_over(reach + 1)` is empty. This page has not done Q2 and Q3 for the reach rule (who uses it, and what the engine recorded on a real chart). So this is a sketch of the checks only, and the test stays off the good list until both are answered.
+The rewrite names the inputs and reads the two rule values from Hydra's code by name: a name "fill_a_start", `deadline = fill_a_start - 4 * beat` with the four beats read from where Hydra holds them, and `reach = deadline + <Hydra's reach, read by name>`. Where Hydra holds either value only as an unnamed literal, it is named in production first, and the test never types 4 or 85. The pages FL-19 and FL-23 are not a reason to type them. Then `passed_over(reach)` holds fill A, written as fill A's named end and not as 9600, and `passed_over(reach + 1)` is empty. This page has not done Q2 and Q3 for the reach rule (who uses it, and what the engine recorded on a real chart). So this is a sketch of the checks only, and the test stays off the good list until both are answered.
 
-### B14. A near miss: rule numbers, plus one number nobody can explain and one line that guards nothing
+### B14. A near miss: typed rule values, plus one number nobody can explain and one line that guards nothing
 
 "timing: to_multiplier thresholds", `tests/test_timing.cpp` lines 72 to 82. This is the closest any existing test came, so it is quoted whole:
 
@@ -205,11 +205,11 @@ TEST_CASE("timing: to_multiplier thresholds") {
 }
 ```
 
-Its claim is right (Q1 to Q3, as in G1's record below). It still fails four questions.
+Its claim is right (Q1 to Q3, as in G1's record below). It still fails four questions, and G1 does not repair the typed values.
 
-It fails Q5 on line 81. Nothing says why 1000. The line is there to show the multiplier stops at x4, and 1000 is just a big number somebody picked. It fails Q8 on line 74: every small change to `to_multiplier` in `src/core/timing.cpp` that turns `to_multiplier(0) == 1` red also turns line 75 red, so line 74 guards nothing of its own. It fails Q4 on lines 75, 77 and 79: 9, 19 and 29 are each "one below a step", but the line does not say so, and the test cites no page for 10, 20 and 30. It fails Q7: the commit that added it, 3b699581, is a bulk checkpoint that names no failure.
+It fails Q5 on line 81. Nothing says why 1000. The line is there to show the multiplier stops at x4, and 1000 is just a big number somebody picked. It fails Q8 on line 74: every small change to `to_multiplier` in `src/core/timing.cpp` that turns `to_multiplier(0) == 1` red also turns line 75 red, so line 74 guards nothing of its own. It fails Q4 on lines 75, 77 and 79: 9, 19 and 29 are each "one below a step", but the line does not say so. Typing 10, 20 and 30 is also a constant pin: `to_multiplier` in `src/core/timing.cpp` holds them as unnamed literals, so the fix starts in production (name them), and the test reads the names. It fails Q7: the commit that added it, 3b699581, is a bulk checkpoint that names no failure.
 
-The verdict is rewrite, and G1 is that rewrite.
+The verdict is rewrite. G1 was the first rewrite, and the filed rulings now fail it too.
 
 ## Bad examples: the four kinds the audit named
 
@@ -313,11 +313,13 @@ It fails Q9 as a fake stand-in for outside data (`counts/T5-IR6.md` line 34). In
 
 On today's tree the test reads `self.captured()` instead, which loads that saved table, and checks every process in it. This page has not judged today's version.
 
-## A good example
+## A former good example
 
 ### G1. The combo multiplier steps up every ten notes and stops at x4
 
-This test was written for this page. It is in `tests/test_timing.cpp` on main, where it replaced "timing: to_multiplier thresholds" (B14). It passes on today's code. Its one review added the check at combo 0, which the first draft had dropped. With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
+This test was written for this page. It is in `tests/test_timing.cpp` on main, where it replaced "timing: to_multiplier thresholds" (B14). It passes on today's code. Its one review added the check at combo 0, which the first draft had dropped. With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them.
+
+**G1 is no longer a good example.** It types 10, 20 and 30 and cites SC-05 in `docs/clone-hero/06-scoring.md` as the reason. The user's rulings say "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." and "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". A Clone Hero page is not code, and Hydra already holds these values, so G1 fails the rulings. Its claim and its checks at each step are sound. Its typed values are the fault. The test is rewritten in this plan's scans phase; the rewrite reads the three values from Hydra by name, which needs them named in `src/core/timing.cpp` first. Until it lands, the test and the record below stay here as the shape of a claim checked on a real chart, not as a model for typed values. This page does not edit the test.
 
 ```cpp
 TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
@@ -343,7 +345,7 @@ TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4
 }
 ```
 
-Every number in it is either typed in SC-05 (10, 20, 30 and the multipliers 1 to 4) or written as its working (`x2_from - 1`). The last line's input is the longest combo an `int` can hold, so no big number is picked.
+Every number in it is either typed from SC-05 (10, 20, 30 and the multipliers 1 to 4, the fault above) or written as its working (`x2_from - 1`). The last line's input is the longest combo an `int` can hold, so no big number is picked.
 
 The record, in the rubric's own shape:
 
@@ -387,9 +389,13 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             last reads "the longest combo still pays x4". With the three
             comments covered, the constants' names still say what each
             number is.
-5 Reason:   10, 20, 30 and the multipliers 1 to 4: SC-05, "So 1x at 0 to
-            9, 2x at 10 to 19, 3x at 20 to 29 and 4x from 30", Label:
-            Proven in the game's code. The "- 1" is the test's working,
+5 Reason:   Fails. 10, 20, 30 and the multipliers 1 to 4 are typed from
+            SC-05 ("So 1x at 0 to 9, 2x at 10 to 19, 3x at 20 to 29 and
+            4x from 30"). A Clone Hero page is not code, and
+            to_multiplier already holds these values as unnamed literals
+            (timing.cpp:13-15). They are constant pins, and the page
+            citation is cited non-code. Fix: name them in production,
+            read the names in the test. The "- 1" is the test's working,
             on the line. numeric_limits<int>::max() is the test's own
             input, and its name says what it is. No other number.
 6 Display:  Not a display test. Question 2's callers are all in src/core;
@@ -428,7 +434,9 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
 11 Real:    Yes. Pitch Dark reaches all three steps in its first 20
             chords. A combo as long as the last line's input cannot
             happen; the line says why it is used (no combo, however long).
-Verdict:    Keep.
+Verdict:    Rewrite. Keep the claim and the eight checks. Read the three
+            step values from Hydra by name, after naming them in
+            production. Type none of them.
 ```
 
 ## The display test that comes with the Preview fix
@@ -439,4 +447,4 @@ Here is the test to write in the same change as the Preview fix. It takes every 
 
 ## What was removed from this page, and why
 
-An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13). The version after that had no good example at all; G1 was written to fill that gap.
+An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13). The version after that had no good example at all; G1 was written to fill that gap, and the user's rulings on typed constants and cited non-code have since taken it off the good list.

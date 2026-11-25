@@ -16,9 +16,11 @@ Three failures made this page. Each one got past people who were looking.
 
 So the questions below start with what the test claims, and who owns that claim. How the check is written comes after.
 
-## Two kinds of number
+## Kinds of number
 
-A **rule number** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". The game or the user chose it, a page or a ruling states it, and the test would be wrong with any other value. Rule numbers are fine. Only the rule itself counts: 85 is a rule number, but 7285 (a deadline on a made-up chart plus 85) is a raw result built from one, and fails like any other raw result. The same holds for small numbers: 10 is the combo where the multiplier first doubles, and 9 is a result built from it. Write the working, `x2_from - 1`, so the line shows which rule the 9 comes from.
+A **game rule's value** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". Hydra already holds these values in its own code. A test takes such a value from Hydra by name and checks what the code does with it. It never types the value again. A page or rule id under `docs/clone-hero/` is not a reason to type it: a Clone Hero page is not code, and the user ruled "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". Results built from a rule's value, such as 7285 (a deadline on a made-up chart plus 85) or 9 (the combo before 10), are written as the working on the value read by name, such as `x2_from - 1`.
+
+Where Hydra holds a value only as an unnamed literal, as `to_multiplier` in `src/core/timing.cpp` holds 10, 20 and 30, the fix is to name it in production first. The test then reads the name. A test never retypes the literal.
 
 A **snapshot number** is what the code printed on the day the test was written. A total over `testdata/input` is always one, because adding a chart changes it. A number "pinned from one run" is one. A number an agent picked and someone approved is one too, until somebody writes down why that value and no other. Snapshot numbers are never fine.
 
@@ -66,28 +68,28 @@ A decision record does not answer this question. The squeeze-in claim cited one:
 
 **4. Does each check state the expected behaviour directly?** Go through the test one assertion at a time. For each, say in one plain sentence what it checks, then look at what it compares against. These pass:
 
-- A rule number, typed because the test is about that rule, with the page and rule id that state it written where the number is typed. Calling a number a rule number does not make it one: open the rule and find that exact value in it.
+- A game rule's value read from Hydra's own code by name, with the test checking what the code does with it. A typed value never passes, whatever page states it.
 - A property: two things that must agree, or a condition every item must meet. "No row differs." "Every stored fill is a fill on the screen."
 - The owner's answer, compared item by item (question 6).
 - The rule applied to the chart's named inputs, so the check reads as the rule.
 
 These fail: a snapshot number, a floor with no reason, and a raw result whose meaning lives in a comment. The test for a raw result is to cover the comments and ask whether a reader can still tell what behaviour the line protects.
 
-**5. Can each number be traced to a reason?** A reason says why this value and not another, and why the test needs it. An approval is not a reason. A citation is not a reason until you open it. So open every D-number, ruling and page the test cites, and write down what it said. Four things give a reason: a Clone Hero rule (cite the page and rule id under `docs/clone-hero/`, and copy its `Label:` line); a line under `## Confirmed` in `docs/agents/rulings/` that names the value; the test's own input, which the test is free to choose; and a property, which needs no number. An input is free only when its name or its working says what it stands for. `to_multiplier(1000)` holds an input nobody can explain: why 1000, and not 31 or a million? If the value matters, write it from the rule. If it does not, say what range it stands for, in code. Zero is the one literal a property may use freely. The same goes for text: the user ruled "tests should test their intended behavior directly, not make up an arbitrary meaningless string".
+**5. Can each number be traced to a reason?** A reason says why this value and not another, and why the test needs it. An approval is not a reason. A citation is not a reason until you open it. So open every D-number, ruling and page the test cites, and write down what it said. Three things give a reason: a game rule's value that the test reads from Hydra's code by name (it checks behaviour, so it needs no typed value; the user ruled "tests should not be pinned to typed constants. they should be pinned to the behavior of the code."); the test's own input, which the test is free to choose; and a property, which needs no number. An input is free only when its name or its working says what it stands for. `to_multiplier(1000)` holds an input nobody can explain: why 1000, and not 31 or a million? If the value matters, read it from Hydra by name. If it does not, say what range it stands for, in code. Zero is the one literal a property may use freely. The same goes for text: the user ruled "tests should test their intended behavior directly, not make up an arbitrary meaningless string".
 
 Five things never give one.
 
-A **snapshot** is an expected number pinned from one run, with no rule and no named inputs it follows from, whether or not a comment says so. It is the snapshot number of "Two kinds of number" above.
+A **snapshot** is an expected number pinned from one run, with no rule and no named inputs it follows from, whether or not a comment says so. It is the snapshot number of "Kinds of number" above.
 
 A copy is a test that repeats the production code's steps to make its expected value, so it agrees with any bug in them.
 
 A saved expected-output file never gives one either: the ruling in `docs/agents/rulings/code-and-engine.md` reads "we don't need golden anymore, remove it all", so never propose one.
 
-A **constant pin** is an expected value that is a product constant, table or text typed again: a window, a cap, a tier edge, a message, a label, a key name. The user ruled "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." A pin proves only that the value is still the value. An intended change turns it red with no bug, and a broken rule that never reads the value leaves it green. Reading a constant by name in order to check behaviour is not a pin: G1 on the examples page feeds `to_multiplier` the combo each step starts at and checks the multiplier that comes out. Checking that the constant equals a typed number is a pin. For a message, the behaviour is when it is shown and what it names, not its spelling. Example B16.
+A **constant pin** is an expected value that is a product constant, table or text typed again: a window, a cap, a tier edge, a message, a label, a key name. The user ruled "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." A pin proves only that the value is still the value. An intended change turns it red with no bug, and a broken rule that never reads the value leaves it green. Reading a constant by name in order to check behaviour is not a pin: feed the code the value the constant holds, read by name, and check what comes out. Checking that the constant equals a typed number is a pin. For a message, the behaviour is when it is shown and what it names, not its spelling. Example B16.
 
 A **cited non-code** check is one whose expected value names its source as something that is not code: "from one run", "pinned", "the engine's record", a saved run, a plan, a mockup, a doc, a person's chart. The user ruled "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". The citation admits the value belongs somewhere else, and nothing in the test ties it there. Write the expected side from the code's own inputs and the rule instead. Example B17.
 
-One case is open. This question counts a Clone Hero rule, cited by page and rule id, as a reason, and G1 cites SC-05 that way. The 2026-11-14 test audit marked a test that cites FL-19 for a typed deadline as cited non-code (`tools/ch_probe/tests/test_early_fill_walk.py`, judged at commit c10c7f54). The user has not said which reading holds. Until then, a check that cites a Clone Hero rule gets its verdict from question 4's rule-number test, and its record names this open question.
+A Clone Hero page is not code, so citing one for a typed value is cited non-code like any other. The 2026-11-14 test audit marked a test that cites FL-19 for a typed deadline that way (`tools/ch_probe/tests/test_early_fill_walk.py`, judged at commit c10c7f54). Hydra already holds the value the page states. The test reads it from Hydra by name and checks the behaviour.
 
 **6. For a test of a display: is the display checked against what the engine already knows?** A display is anything a person reads: the Preview, the gauge, a report, a table, a label. Its test takes the expected side from the engine's record, and compares item by item: for each chord, step or row the record names, the screen shows that one, at that place. The test never types the value the display should show, and never calls a function only the display uses to get it. A display test with a typed expected value can only prove the display does what the display does. "Not a display test" is an answer only with question 2's caller list beside it, showing that nothing a person reads calls the function directly.
 
@@ -198,7 +200,7 @@ What it got wrong, line by line:
 
 ## Named inputs
 
-Question 4 lets a check be the rule applied to the chart's named inputs: "measure 3", "a quarter measure after this end". No test helper does this today, and this page does not write one; that is a code change with its own plan and review. A test needs no helper to do it, though: example G1 on the examples page names its three inputs as plain constants in the test. The fixtures state their grid in comments, such as the one above `make_late_sqin_song` in `tests/record_fixtures.h`.
+Question 4 lets a check be the rule applied to the chart's named inputs: "measure 3", "a quarter measure after this end". No test helper does this today, and this page does not write one; that is a code change with its own plan and review. A test needs no helper to do it, though: a test can write its inputs as named values, such as the combo at which a step starts, read from Hydra's code by name. The fixtures state their grid in comments, such as the one above `make_late_sqin_song` in `tests/record_fixtures.h`.
 
 One trap matters now. A helper that names a tick by calling Hydra's timing code, or `test::tick_ms` in `tests/record_fixtures.h`, which reads the song's own tempo map, is fine for finding an input. It may never produce an expected result. An expected value that came out of production code is a copy.
 
