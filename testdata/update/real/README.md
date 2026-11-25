@@ -61,13 +61,13 @@ These checks need no build. They were run in PowerShell from this folder.
     1
     1
 
-**The reply's version is not newer than Hydra's own.** The reply names v3.1.2, and `CMakeLists.txt` line 21 sets the project version to 3.2.0, so the reply is older.
+**The reply's version is not newer than Hydra's own.** The reply names v3.1.2, and `CMakeLists.txt` line 21 sets the project version to 3.3.0, so the reply is older.
 
     $j.tag_name
     Select-String -Path ..\..\..\CMakeLists.txt -Pattern 'project\s*\('
 
     v3.1.2
-    CMakeLists.txt:21:project(Hydra VERSION 3.2.0 LANGUAGES C CXX RC)
+    CMakeLists.txt:21:project(Hydra VERSION 3.3.0 LANGUAGES C CXX RC)
 
 **The two replies are plain command output.** Each starts with `{` and ends with `}`, with no byte-order mark and no line breaks. The 404 reply reads in full:
 
