@@ -227,28 +227,23 @@ TEST_CASE("user_messages: the no-notes message is already plain and passes throu
     CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Expert, true)) == msg);
 ```
 
-It fails Q8 as an echo (the audit's `cross-findings.md`, section X11, line 147). Line 122 types a sentence into the error and requires `plain_error` to hand the same sentence back. For that kind of error, `plain_error` in `src/app/user_messages.cpp` (line 181 at c10c7f54) returns the error's own text. So the line states nothing the code works out; it shows only that a typed string came back. Line 124 already does the real job: it runs the error the chart loaders really throw through `plain_error`. The rewrite drops line 122 and keeps line 124.
+It fails Q8 as an echo (the audit's `git show b2287e56:docs/audit/2026-11-14-test-audit/cross-findings.md`, section X11, line 147). Line 122 types a sentence into the error and requires `plain_error` to hand the same sentence back. For that kind of error, `plain_error` in `src/app/user_messages.cpp` (line 181 at c10c7f54) returns the error's own text. So the line states nothing the code works out; it shows only that a typed string came back. Line 124 already does the real job: it runs the error the chart loaders really throw through `plain_error`. The rewrite drops line 122 and keeps line 124.
 
 The test is unchanged on today's tree, at lines 129 to 133.
 
 ### B16. A constant pin
 
-"precheck pick (d): a test file the range changes is picked", `tests/test_precheck_pick.cpp` lines 315 to 322 at c10c7f54:
+"is_scaled: within a thousandth of 1 is no scale (D256)", `tests/test_squeeze_rating.cpp` lines 480 to 482 at c10c7f54:
 
 ```cpp
-TEST_CASE("precheck pick (d): a test file the range changes is picked") {
-    PickRepo fx("precheck_pick_d", {{"tests/test_d.cpp", "int d1() { return 1; }\n"},
-                                    {"tests/test_e.cpp", "int e1() { return 1; }\n"}});
-    const TestPick p = fx.pick({{"tests/test_d.cpp", "int d1() { return 2; }\n"}});
-    REQUIRE_FALSE(p.whole_suite);
-    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_d.cpp"});
-    CHECK(reasons_of(p, "tests/test_d.cpp") == std::vector<std::string>{"changed in range"});
-}
+    // The scale line's digit cap follows the tolerance.
+    CHECK(kScaleIdentityTolerance == 1e-3);
+    CHECK(kScaleIdentityDigits == 3);
 ```
 
-It fails Q5 as a constant pin (`counts/T5-IR10.md` line 27). Line 320 checks the behaviour: the one test file the range changed is picked, and the other is not. Line 321 types the reason text again, "changed in range", which `tools/precheck/test_pick.cpp` writes at line 363. If someone rewords that reason, the test goes red with no bug. If the pick stopped giving any reason, line 321 would catch it, but so would any check that the reason is there. For a message, the behaviour is when it is shown and what it names. Here that is: the picked file carries one reason, and it names no function, because no function changed.
+It fails Q5 as a constant pin (`git show b2287e56:docs/audit/2026-11-14-test-audit/counts/T5-KR5.md` line 122). Lines 463 to 479 of the same test check the behaviour: `is_scaled` calls a multiplier no scale when it sits less than a thousandth from 1, and scaled at a thousandth or beyond. Lines 481 and 482 read the two constants by name from `src/core/squeeze_rating.h` (lines 119 and 134 at c10c7f54) and then type their values again. If the tolerance were changed on purpose, line 481 would go red with no bug, and so would the typed edges above it, such as 1.0009, which spell out the same thousandth. The comment says the digit cap follows the tolerance, but line 482 does not check that; it checks only that the cap is 3. For a constant, the behaviour is what the code does with it. Here that is: the closest scaled value, rounded to the cap's number of decimals, never prints as 1.
 
-On today's tree the test no longer types the text. It requires one reason that is not empty and names no changed function, and it reads that same reason back where a helper header passes it on.
+On today's tree the test is "is_scaled: less than the tolerance from 1 is no scale", at lines 533 to 577. It reads the tolerance by name and builds its edges from it, and it types neither constant's value. It finds the closest scaled value on each side of 1, and checks that rounding it to `kScaleIdentityDigits` decimals never gives 1 while one decimal fewer does.
 
 ### B17. Cited non-code
 
@@ -271,7 +266,7 @@ The test, lines 121 to 125:
             self.assertEqual(flush_last - case_last, 6000)
 ```
 
-It fails Q5 as cited non-code, and as a constant pin too (`counts/T5-IR5.md` line 106). The header says every number pinned in the file is the plan's. So 6000 names a plan as its source, not the code that writes the chart. The code that makes the chart is the generator in `tools/ch_probe/probe_songs.py`, and it already held the gap by name at that commit: `EFW_FLUSH_AFTER_MS = 6000` (line 105). The test types the number again instead of reading it, and says it came from the plan. An intended change to the generator's gap makes this line red with no bug in the layout. The rewrite reads the gap by that name and checks that the written chart keeps it.
+It fails Q5 as cited non-code, and as a constant pin too (`git show b2287e56:docs/audit/2026-11-14-test-audit/counts/T5-IR5.md` line 106). The header says every number pinned in the file is the plan's. So 6000 names a plan as its source, not the code that writes the chart. The code that makes the chart is the generator in `tools/ch_probe/probe_songs.py`, and it already held the gap by name at that commit: `EFW_FLUSH_AFTER_MS = 6000` (line 105). The test types the number again instead of reading it, and says it came from the plan. An intended change to the generator's gap makes this line red with no bug in the layout. The rewrite reads the gap by that name and checks that the written chart keeps it.
 
 On today's tree the test is renamed "test_flush_fill_last_note_comes_the_flush_gap_after_the_case_fill" and reads the gap as `P.EFW_FLUSH_AFTER_MS`. The header now says every expected number is read from the generator's own layout table. This page has not judged today's version.
 
@@ -309,7 +304,7 @@ The test, lines 323 to 327:
         self.assertEqual(gains[7].threads[71], M.ThreadGain(0, 0.0))
 ```
 
-It fails Q9 as a fake stand-in for outside data (`counts/T5-IR6.md` line 34). In real use the process table comes from Windows: `tools/ch_mcp/machine_recorder.py` asks `NtQuerySystemInformation` for it (lines 62 and 454 at c10c7f54). Here the test types two processes nobody ran, with made-up times and counts, and writes them into bytes in the layout the test file itself declares. So the recorder's sums are checked on a table Windows never wrote. The audit's counter re-read this mark after the user chose that input a test builds is fine, and kept it, as a stand-in for outside data. The same file already held a table Windows really wrote, which its `CapturedTable` tests read. The rewrite runs the same check on that table.
+It fails Q9 as a fake stand-in for outside data (`git show b2287e56:docs/audit/2026-11-14-test-audit/counts/T5-IR6.md` line 34). In real use the process table comes from Windows: `tools/ch_mcp/machine_recorder.py` asks `NtQuerySystemInformation` for it (lines 62 and 454 at c10c7f54). Here the test types two processes nobody ran, with made-up times and counts, and writes them into bytes in the layout the test file itself declares. So the recorder's sums are checked on a table Windows never wrote. The audit's counter re-read this mark after the user chose that input a test builds is fine, and kept it, as a stand-in for outside data. The same file already held a table Windows really wrote, which its `CapturedTable` tests read. The rewrite runs the same check on that table.
 
 On today's tree the test reads `self.captured()` instead, which loads that saved table, and checks every process in it. This page has not judged today's version.
 
