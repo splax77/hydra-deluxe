@@ -403,7 +403,6 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
     nlohmann::json squeezes = nlohmann::json::array();
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
         const SPSqueeze& q = act.sqinouts[k];
-        const bool is_in = q.kind == SqueezeKind::SqIn;
         const std::optional<int64_t> end = act.squeeze_end_tick(k);
         const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
         const std::optional<int64_t> chord_tick = act.squeeze_chord_tick(k);
@@ -411,12 +410,14 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
         if (!chord_tick) refusals.push_back(what + " names no chord in the record");
         if (!end || !anchor) refusals.push_back(what + " has no end in the record");
 
-        // The ratios as stored: a SqIn's own, a SqOut's on transfer_post.
-        const std::optional<TransferScale>& ratio = is_in ? q.transfer : act.transfer_post;
-        if (!ratio)
-            refusals.push_back(what + " has no stored ratio (" +
-                               (is_in ? "SPSqueeze::transfer" : "Activation::transfer_post") +
-                               " is unset), so its lead cannot be planned");
+        // The ratios as stored; stored_scale owns which one is this squeeze's.
+        const std::optional<TransferScale>& ratio = stored_scale(act, k);
+        if (!ratio) {
+            // stored_scale returns the field itself, so the field it names is
+            // read from its answer, not picked again by kind.
+            const char* field = &ratio == &act.transfer_post ? "Activation::transfer_post" : "SPSqueeze::transfer";
+            refusals.push_back(what + " has no stored ratio (" + field + " is unset), so its lead cannot be planned");
+        }
 
         nlohmann::json one{{"index", k},
                            {"kind", q.type_name()},
@@ -616,14 +617,14 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             squeeze_at[cs] = {a, k};
             const SPSqueeze& sq = act.sqinouts[k];
             if (sq.needs_no_timing()) continue;
-            const std::optional<TransferScale>& ratio =
-                sq.kind == SqueezeKind::SqIn ? sq.transfer : act.transfer_post;
-            if (!ratio) continue;  // activation_json's refusal names it
+            // Unset exactly when the stored scale is; activation_json's refusal names it.
+            const std::optional<PricedScale> priced = squeeze_multiplier(act, k);
+            if (!priced) continue;
             // Set whenever the end is (squeeze_end_tick reads it).
             const std::optional<size_t> own_step = act.squeeze_end_step(k);
             if (!own_step) continue;
             SqueezeGeometry g;
-            g.anchor_press = squeeze_presses(sq).anchor;
+            g.anchor_press = priced->press;
             g.anchor_chord = ca;
             g.anchor_ms = replay.chords[static_cast<size_t>(ca)].ms;
             g.anchor_side_ms = sides[static_cast<size_t>(ca)];
@@ -631,7 +632,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             g.squeeze_ms = replay.chords[static_cast<size_t>(cs)].ms;
             g.squeeze_side_ms = sides[static_cast<size_t>(cs)];
             g.end_ms = q["end_ms"].get<double>();
-            g.ratio = *ratio;
+            g.ratio = priced->stored;
             g.steady = steady_spans(q["anchor_tick"].get<int64_t>(), q["end_tick"].get<int64_t>(), timing);
             // The read end, as the reads below find it. Unset here, the read
             // after the anchor is not planned and its refusal says why.

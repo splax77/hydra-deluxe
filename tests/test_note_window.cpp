@@ -471,6 +471,47 @@ TEST_CASE("note window: the anchor's scale side follows its press") {
     }
 }
 
+TEST_CASE("note window: a squeeze's row keeps the multiplier its sum used") {
+    // two_squeezes' squeeze in (0) and squeeze out (1). Each scale's sides
+    // differ, so a row that kept one multiplier and summed with another shows.
+    const TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(t.song);
+    for (size_t k : {size_t{0}, size_t{1}}) {
+        CAPTURE(k);
+        const SPSqueeze& q = t.act.sqinouts[k];
+        const std::optional<WindowEnds> row = squeeze_window_ends(t.act, k, chords);
+        REQUIRE(row.has_value());
+        REQUIRE(row->ends.size() == 2);
+        REQUIRE(row->priced.has_value());
+        REQUIRE(row->frontend_effective_ms.has_value());
+        // The row keeps the owner's answer for this squeeze.
+        const std::optional<PricedScale> owner = squeeze_multiplier(t.act, k);
+        REQUIRE(owner.has_value());
+        CHECK(row->priced->press == owner->press);
+        CHECK(row->priced->ratio == owner->ratio);
+        const double front = row->ends[0].side_ms;
+        const double back = row->ends[1].side_ms;
+        // The sum is priced by the multiplier the row keeps.
+        CHECK(row->safe_ms == pinned(squeeze_safe_ms(front, row->priced->ratio, back, q.difficulty())));
+        // The Effective figure is the product that sum adds.
+        CHECK(*row->frontend_effective_ms == pinned(scaled_anchor_ms(front, row->priced->ratio)));
+        CHECK(row->safe_ms == pinned(*row->frontend_effective_ms + back - q.difficulty()));
+    }
+}
+
+TEST_CASE("note window: an early fill's row has no multiplier") {
+    TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(t.song);
+    t.act.e_offset = -10.0;  // ready 10 ms after the deadline
+    REQUIRE(t.act.is_e_critical());
+    const std::optional<WindowEnds> row = early_fill_row(t.act, chords);
+    REQUIRE(row.has_value());
+    REQUIRE(row->ends.size() == 1);
+    CHECK(row->ends[0].role == EndRole::SpReady);
+    CHECK_FALSE(row->priced.has_value());
+    CHECK_FALSE(row->frontend_effective_ms.has_value());
+}
+
 TEST_CASE("note window: the early fill end reads the SP-ready note") {
     TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(t.song);
