@@ -92,11 +92,12 @@ const Shapes& py_shapes() {
 // assertion: on either side of ==, or as either argument of a two-argument
 // assertion. The typed number may sit inside the approximate match.
 std::string constant_pin_pattern(const Shapes& s) {
+    const std::string sp = "\\s*";
     const std::string number = s.number + s.whole;
-    const std::string typed = "(?:" + s.approx + "\\s*\\(\\s*" + number + "\\s*\\)|" + number + ")";
-    return s.head + "(?:[^;]*?" + s.name + "\\s*==\\s*" + typed + s.ends + "|(?:[^;]*?" + s.before + ")?\\s*" +
-           typed + "\\s*==\\s*" + s.name + s.ends + "|\\s*" + s.name + "\\s*,\\s*" + typed + s.ends + "|\\s*" +
-           typed + "\\s*,\\s*" + s.name + s.ends + ")";
+    const std::string typed = "(?:" + s.approx + sp + "\\(" + sp + number + sp + "\\)|" + number + ")";
+    return s.head + "(?:[^;]*?" + s.name + sp + "==" + sp + typed + s.ends + "|(?:[^;]*?" + s.before + ")?" + sp +
+           typed + sp + "==" + sp + s.name + s.ends + "|" + sp + s.name + sp + "," + sp + typed + s.ends + "|" + sp +
+           typed + sp + "," + sp + s.name + s.ends + ")";
 }
 
 // One assertion that types the same number as a call's argument and as the
@@ -104,9 +105,10 @@ std::string constant_pin_pattern(const Shapes& s) {
 // follows == or a comma, or the expected side opens the assertion and the
 // argument follows.
 std::string echo_pattern(const Shapes& s) {
+    const std::string sp = "\\s*";
     const std::string same = group_after(s.head);
-    return s.head + "(?:[^;]*?[(,]|(?=\\s*-?\\d))\\s*(" + s.number + ")\\s*(?:[,)][^;]*(?:==\\s*" + same + s.whole +
-           "|,\\s*" + same + "\\s*[,)])|(?:==|,)[^;]*[(,]\\s*" + same + "\\s*[,)])";
+    return s.head + "(?:[^;]*?[(,]|(?=\\s*-?\\d))" + sp + "(" + s.number + ")" + sp + "(?:[,)][^;]*(?:==" + sp +
+           same + s.whole + "|," + sp + same + sp + "[,)])|(?:==|,)[^;]*[(,]" + sp + same + sp + "[,)])";
 }
 
 // A stand-in's name, as each language writes it. A longer word such as
