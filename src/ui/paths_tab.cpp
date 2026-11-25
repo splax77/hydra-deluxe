@@ -7,6 +7,8 @@
 // Text is drawn with ImGui's Text calls, not the draw list, so hydra_uitest's
 // visible_text sees it. Rows are a full-width Selectable with the text laid
 // over it; only decoration (arrows, circles, the timeline) uses the draw list.
+// The one exception is a text in more than one ink (draw_runs), which ImGui's
+// Text calls cannot draw; it tells the text log each piece itself.
 //
 // The answers named below are the user's, in
 // docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show d6666440:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md).
@@ -48,10 +50,118 @@ ImVec4 text_color() { return ImGui::GetStyleColorVec4(ImGuiCol_Text); }
 ImVec4 dim_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
 
 // The colour of a timing mark: the warning colour when its timing is
-// difficult (or, for the scale line, when the scale moves a figure), the dim
-// grey otherwise. A path button's timing, an activation's badge, its outline
-// on the timeline and its scale line all use it.
+// difficult, the dim grey otherwise. A path button's timing, an activation's
+// badge and its outline on the timeline use it.
 ImVec4 warn_or_dim(bool warn) { return warn ? kWarningColor : dim_color(); }
+
+// The one place an ink the view named (app::Ink) becomes a colour.
+ImVec4 ink_color(app::Ink ink) {
+    switch (ink) {
+        case app::Ink::Warning: return kWarningColor;
+        case app::Ink::Effective: return dim_color();
+        case app::Ink::Plain: break;
+    }
+    return text_color();
+}
+
+// The runs with each two neighbours of one ink joined, so a text the switch
+// leaves in one colour is one text on screen and in the text log.
+std::vector<app::InkRun> merged_runs(const std::vector<app::InkRun>& runs) {
+    std::vector<app::InkRun> out;
+    for (const app::InkRun& r : runs) {
+        if (!out.empty() && out.back().ink == r.ink)
+            out.back().text += r.text;
+        else
+            out.push_back(r);
+    }
+    return out;
+}
+
+// The text `runs` draw, all of them in order.
+std::string joined_text(const std::vector<app::InkRun>& runs) {
+    std::string out;
+    for (const app::InkRun& r : runs) out += r.text;
+    return out;
+}
+
+// Draws `runs` as one text in `role`'s font, wrapped at the line's right
+// edge, each piece in its ink's colour (ink_color). A text in one ink is
+// ImGui's own wrapped
+// TextUnformatted. A text in several inks breaks its lines exactly where
+// that call would break the joined text, because it asks the same ImGui
+// functions TextEx and ImFont::RenderText use: the item is placed, sized and
+// added as TextEx does it, each line ends where ImFontCalcWordWrapPositionEx
+// says, the next starts where ImTextCalcWordWrapNextLineStart says, and each
+// piece starts at the unrounded width of the line before it, so every glyph
+// lands where the one-colour call would put it. Each run is then told to the
+// text log whole, in order, at the place its first piece was drawn, so the
+// GUI tests read the pieces in order with only an item gap between them.
+void draw_runs(const std::vector<app::InkRun>& in, TextRole role) {
+    ScopedFont scoped(role);
+    const std::vector<app::InkRun> runs = merged_runs(in);
+    if (runs.size() <= 1) {
+        const app::InkRun one = runs.empty() ? app::InkRun{} : runs.front();
+        ImGui::PushStyleColor(ImGuiCol_Text, ink_color(one.ink));
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(one.text.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+        return;
+    }
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (window->SkipItems) return;
+    const std::string text = joined_text(runs);
+    std::vector<size_t> ends;  // where each run ends in `text`
+    ends.reserve(runs.size());
+    for (size_t r = 0, at = 0; r < runs.size(); ++r) ends.push_back(at += runs[r].text.size());
+    const char* const begin = text.c_str();
+    const char* const end = begin + text.size();
+
+    // As TextEx places, measures and adds a text wrapped at PushTextWrapPos(0).
+    const ImVec2 pos(window->DC.CursorPos.x,
+                     window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
+    const float wrap_w = ImGui::CalcWrapWidthForPos(window->DC.CursorPos, 0.0f);
+    const ImVec2 size = ImGui::CalcTextSize(begin, end, false, wrap_w);
+    ImGui::ItemSize(size, 0.0f);
+    if (!ImGui::ItemAdd(ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y)), 0)) return;
+
+    // ImFont::RenderText snaps the text's origin to a pixel once, then lays
+    // glyphs at unrounded advances. The pieces are drawn unsnapped from that
+    // same origin, so they do not each snap again.
+    ImFont* const font = font_for(role).font;
+    const float font_size = ImGui::GetFontSize();
+    const WidthOf width_of = measure_in_role(role);  // unrounded, as RenderText lays glyphs
+    ImDrawList* const dl = window->DrawList;
+    const ImDrawListFlags flags = dl->Flags;
+    const bool snap = (flags & ImDrawListFlags_TextNoPixelSnap) == 0;
+    const float x0 = snap ? IM_TRUNC(pos.x) : pos.x;
+    float y = snap ? IM_TRUNC(pos.y) : pos.y;  // each line's top, a line height apart
+    float log_y = pos.y;                        // the same line's top as the log is told it
+    dl->Flags |= ImDrawListFlags_TextNoPixelSnap;
+    std::vector<std::optional<ImVec2>> log_at(runs.size());  // each run's first piece, for the log
+    for (const char* s = begin; s < end; y += font_size, log_y += font_size) {
+        const char* const eol = ImFontCalcWordWrapPositionEx(font, font_size, s, end, wrap_w);
+        for (size_t r = 0; r < runs.size(); ++r) {
+            const char* const piece = std::max(begin + (r == 0 ? 0 : ends[r - 1]), s);
+            const char* const piece_end = std::min(begin + ends[r], eol);
+            if (piece >= piece_end) continue;
+            const float x = x0 + width_of(std::string_view(s, static_cast<size_t>(piece - s)));
+            dl->AddText(font, font_size, ImVec2(x, y), ImGui::GetColorU32(ink_color(runs[r].ink)),
+                        piece, piece_end);
+            if (!log_at[r]) log_at[r] = ImVec2(x, log_y);
+        }
+        s = ImTextCalcWordWrapNextLineStart(eol, end);
+    }
+    dl->Flags = flags;
+
+    if (!ImGui::GetCurrentContext()->LogEnabled) return;
+    ImVec2 at = pos;  // a run wholly in skipped blanks is logged where the last one was
+    for (size_t r = 0; r < runs.size(); ++r) {
+        if (log_at[r]) at = *log_at[r];
+        const char* const run_begin = begin + (r == 0 ? 0 : ends[r - 1]);
+        ImGui::LogRenderedText(&at, run_begin, begin + ends[r]);
+    }
+}
 
 // Draw `text` in `role`'s font (text_role.h) at `pos` over an item already
 // submitted; `wrap_w` > 0 wraps the text at that width.
@@ -358,33 +468,36 @@ constexpr float kWindowRowGap = 14.0f;  // unscaled
 constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's #c9b39b
 const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
-// The Effective line under a Dynamic Hit Window row: its own divider,
-// the label in the box's text colour, then the view's word and figure in the
-// row's word and figure colours. The word and the figure are the view's
-// (WindowRowView::effective), which also decides whether the line is drawn.
+// The Effective line under a Dynamic Hit Window row: its own divider, then
+// the label, the view's word and its figure, all in Effective ink (an
+// effective figure). The word and the figure are the view's
+// (WindowRowView::effective), which also decides whether the line exists;
+// the Effective figures switch decides whether it is drawn (window_row).
 // They start the next line whole when they do not fit beside the label.
 void effective_row(const app::WindowFigure& e) {
     ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
     ImGui::Separator();
     ImGui::PopStyleColor();
-    ImGui::TextUnformatted(app::kEffectiveLabel);
+    const ImVec4 ink = ink_color(app::Ink::Effective);
+    ImGui::TextColored(ink, "%s", app::kEffectiveLabel);
     const float space = ImGui::CalcTextSize(" ").x;
     flow_next(ImGui::CalcTextSize(e.word.c_str()).x + space + ImGui::CalcTextSize(e.figure.c_str()).x,
               space);
-    ImGui::TextColored(pill_vec4(kWindowWordInk), "%s", e.word.c_str());
+    ImGui::TextColored(ink, "%s", e.word.c_str());
     ImGui::SameLine(0.0f, space);
-    ImGui::TextColored(kWindowFigureInk, "%s", e.figure.c_str());
+    ImGui::TextColored(ink, "%s", e.figure.c_str());
 }
 
 // One Dynamic Hit Window row, at the bottom of its timing's box: a divider,
 // the label, then each end in the Figure role (its word when it has one, its
-// window, its chord), then the Effective line when the view holds one
-// (effective_row). The row's tag is not here: it is drawn under the
-// timing's badge on the activation row (render_activation_row).
+// window, its chord), then the Effective line when the view holds one and
+// the Effective figures switch is on (effective_row). The row's tag is not
+// here: it is drawn under the timing's badge on the activation row
+// (render_activation_row).
 // An end that does not fit beside the last piece starts the next line whole,
 // so nothing is cut off at the narrowest panel. The chord draws in the box's
 // text colour (timing_box), which is the mockup's colour for a chord.
-void window_row(const app::WindowRowView& w) {
+void window_row(const app::WindowRowView& w, bool effective_figures) {
     ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
     ImGui::Separator();
     ImGui::PopStyleColor();
@@ -405,44 +518,45 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
-    if (w.effective) effective_row(*w.effective);
+    if (w.effective && effective_figures) effective_row(*w.effective);
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a
-// squeeze sentence or the "Early fill" line, then its Dynamic Hit Window row
-// when the view holds one. The border turns warning-coloured when the
-// timing's badge is.
-void timing_box(const char* id, const std::string& text, bool warn,
-                const std::optional<app::WindowRowView>& window) {
+// squeeze sentence's runs or the "Early fill" line, then its Dynamic Hit
+// Window row when the view holds one. The border turns warning-coloured when
+// the timing's badge is.
+void timing_box(const char* id, const std::vector<app::InkRun>& text, bool warn,
+                const std::optional<app::WindowRowView>& window, bool effective_figures) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));
     ImGui::PushStyleColor(ImGuiCol_Border, warn ? kWarningColor : pill_vec4(kPillBorder));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(232 / 255.0f, 214 / 255.0f, 196 / 255.0f, 1.0f));
     ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
                           ImGuiChildFlags_AlwaysUseWindowPadding);
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(text.c_str());
-    ImGui::PopTextWrapPos();
-    if (window) window_row(*window);
+    draw_runs(text, TextRole::Prose);
+    if (window) window_row(*window, effective_figures);
     ImGui::EndChild();
     ImGui::PopStyleColor(3);
 }
 
-// One squeeze sentence's box, with the row build_activations gave it.
-void squeeze_box(const app::ActivationRowView& a, size_t k) {
+// One squeeze sentence's box, with the row build_activations gave it. The
+// sentence is drawn as the view's runs for the switch (sentence_runs).
+void squeeze_box(const app::ActivationRowView& a, size_t k, bool effective_figures) {
     char id[32];
     std::snprintf(id, sizeof(id), "##sq%d_%zu", a.number, k);
     const app::TextLine& s = a.squeeze_sentences[k];
-    timing_box(id, s.text, s.warn,
-               k < a.squeeze_windows.size() ? a.squeeze_windows[k] : std::nullopt);
+    timing_box(id, app::sentence_runs(s, effective_figures), s.warn,
+               k < a.squeeze_windows.size() ? a.squeeze_windows[k] : std::nullopt,
+               effective_figures);
 }
 
-// The "Early fill" line's box. Its border follows the fill's badge, through
-// early_fill_warn.
-void early_fill_box(const app::ActivationRowView& a) {
+// The "Early fill" line's box, its line in one plain run. Its border follows
+// the fill's badge, through early_fill_warn.
+void early_fill_box(const app::ActivationRowView& a, bool effective_figures) {
     char id[32];
     std::snprintf(id, sizeof(id), "##ef%d", a.number);
-    timing_box(id, a.early_fill, a.early_fill_warn, a.early_fill_window);
+    timing_box(id, {app::InkRun{a.early_fill, app::Ink::Plain}}, a.early_fill_warn,
+               a.early_fill_window, effective_figures);
 }
 
 // The role each backend column's cells draw in; the header row is Label.
@@ -464,33 +578,35 @@ std::vector<ColumnSpec> backend_column_specs() {
     return specs;
 }
 
-// Column `c`'s text in a backend row, the text its cell draws.
-std::string backend_cell(const app::BackendRowView& row, size_t c) {
+// Column `c`'s text in a backend row, the text its cell draws. The Rating is
+// the text its runs draw in the switch's state (rating_runs), so the column
+// is measured from what is on screen.
+std::string backend_cell(const app::BackendRowView& row, size_t c, bool effective_figures) {
     switch (c) {
         case 0: return row.timing;
         case 1: return row.chord;
         case 2: return row.points;
-        default: return row.rating;
+        default: return joined_text(app::rating_runs(row, effective_figures));
     }
 }
 
 // How tall each backend row's Rating is once it wraps at the width the rule
 // gave that column, in the column's cell role, for table_outer_height.
 std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
-                                          const ColumnLayout& layout) {
+                                          const ColumnLayout& layout, bool effective_figures) {
     ScopedFont font(kBackendCellRole[kRatingColumn]);
     std::vector<float> heights;
     heights.reserve(a.backends.size());
     for (const app::BackendRowView& row : a.backends)
-        heights.push_back(
-            ImGui::CalcTextSize(backend_cell(row, kRatingColumn).c_str(), nullptr, false,
-                                layout.widths[kRatingColumn])
-                .y);
+        heights.push_back(ImGui::CalcTextSize(
+                              backend_cell(row, kRatingColumn, effective_figures).c_str(),
+                              nullptr, false, layout.widths[kRatingColumn])
+                              .y);
     return heights;
 }
 
 // The backend rows of one activation, in backend_column_specs' columns.
-void render_backend_table(const app::ActivationRowView& a) {
+void render_backend_table(const app::ActivationRowView& a, bool effective_figures) {
     // What the backend limit hid, as build_activations words it.
     const auto hidden_line = [&a] {
         ImGui::PushTextWrapPos(0.0f);
@@ -511,8 +627,10 @@ void render_backend_table(const app::ActivationRowView& a) {
     std::snprintf(id, sizeof(id), "##backends%d", a.number);
     if (begin_small_table(
             id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),
-            [&](size_t r, size_t c) { return backend_cell(a.backends[r], c); },
-            [&](const ColumnLayout& layout) { return backend_rating_heights(a, layout); })) {
+            [&](size_t r, size_t c) { return backend_cell(a.backends[r], c, effective_figures); },
+            [&](const ColumnLayout& layout) {
+                return backend_rating_heights(a, layout, effective_figures);
+            })) {
         {
             ScopedFont font(TextRole::Label);
             ImGui::TableHeadersRow();
@@ -524,20 +642,18 @@ void render_backend_table(const app::ActivationRowView& a) {
             for (size_t c = 0; c < kRatingColumn; ++c) {
                 ImGui::TableSetColumnIndex(static_cast<int>(c));
                 ScopedFont font(kBackendCellRole[c]);
-                ImGui::TextUnformatted(backend_cell(row, c).c_str());
-                if (c == 0 && !row.tooltip.empty() &&
-                    ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
-                    ImGui::SetTooltip("%s", row.tooltip.c_str());
+                ImGui::TextUnformatted(backend_cell(row, c, effective_figures).c_str());
+                if (c == 0) {
+                    const std::string note = app::timing_hover_note(row, effective_figures);
+                    if (!note.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+                        ImGui::SetTooltip("%s", note.c_str());
+                }
             }
             ImGui::TableSetColumnIndex(kRatingColumn);
-            ScopedFont font(kBackendCellRole[kRatingColumn]);
             // Rating wraps inside its cell: at the narrowest panel the
-            // squeezed-out note is longer than the column is wide.
-            if (row.warn) ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());
-            ImGui::PopTextWrapPos();
-            if (row.warn) ImGui::PopStyleColor();
+            // squeezed-out note is longer than the column is wide. Its runs
+            // carry the warning ink of a row that costs points.
+            draw_runs(app::rating_runs(row, effective_figures), kBackendCellRole[kRatingColumn]);
         }
         ImGui::EndTable();
     }
@@ -562,17 +678,13 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     place_control_at_line_end(button_slot_width("Show in Preview >"));
     if (ImGui::SmallButton(show)) ui.preview_jump = i;
 
-    if (!a.early_fill.empty()) early_fill_box(a);
-    for (size_t k = 0; k < a.squeeze_sentences.size(); ++k) squeeze_box(a, k);
-    // The SqIn's scale line, then the SP end's. Orange when the scale moves a
-    // figure on screen, gray otherwise.
-    for (const std::string* line : {&a.sqin_scale_warning, &a.scale_warning}) {
-        if (line->empty()) continue;
-        ImGui::PushStyleColor(ImGuiCol_Text, warn_or_dim(a.scale_warn));
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(line->c_str());
-        ImGui::PopTextWrapPos();
-        ImGui::PopStyleColor();
+    const bool eff = ui.effective_figures;
+    if (!a.early_fill.empty()) early_fill_box(a, eff);
+    for (size_t k = 0; k < a.squeeze_sentences.size(); ++k) squeeze_box(a, k, eff);
+    // The lines under the boxes, each with its hover hint: the view says
+    // which lines the switch leaves and in which ink (scale_lines).
+    for (const app::InkRun& line : app::scale_lines(a, eff)) {
+        draw_runs({line}, TextRole::Prose);
         overflow_tooltip(app::kTransferScaleHint);
     }
     if (!a.overfill_warning.empty()) {
@@ -599,13 +711,18 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     // Not kFactSeparator: a leading dot after the tree node, whose gap
     // SameLine already gives.
     ImGui::TextDisabled("\xC2\xB7 %s", a.backends_label.c_str());
-    if (backends) render_backend_table(a);
+    if (backends) render_backend_table(a, eff);
     ImGui::Unindent(px(48.0f));
     ImGui::Spacing();
 }
 
-// The right-hand column's top half: the heading and its summary, Expand all,
-// the timeline, and every row with its body when open.
+// The label of the switch that shows or hides every effective figure in the
+// list (PathsTabUi::effective_figures).
+constexpr const char* kEffectiveFiguresLabel = "Effective figures";
+
+// The right-hand column's top half: the heading and its summary, the
+// Effective figures switch and Expand all, the timeline, and every row with
+// its body when open.
 void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     ImGui::TextUnformatted("Activations");
     if (!view.summary.empty()) {
@@ -616,9 +733,20 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
         ImGui::TextDisabled("None.");
         return;
     }
+    // The switch and the toggle sit at the line's right end together, or
+    // together on a line of their own when they do not fit beside the summary.
+    // The switch has no vertical frame padding, as SmallButton has none, so
+    // the two sit on the heading's text line without making it taller.
     const bool all = ui.all_open();
     const char* toggle = all ? "Collapse all" : "Expand all";
-    place_control_at_line_end(button_slot_width(toggle));
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+    place_control_at_line_end(checkbox_slot_width(kEffectiveFiguresLabel) + spacing +
+                              button_slot_width(toggle));
+    ImGui::Checkbox(kEffectiveFiguresLabel, &ui.effective_figures);
+    ImGui::PopStyleVar();
+    ImGui::SameLine(0.0f, spacing);
     if (ImGui::SmallButton(toggle)) ui.set_all(!all);
 
     render_timeline(view);
