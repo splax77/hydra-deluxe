@@ -6,7 +6,7 @@ namespace precheck {
 
 const std::vector<Check> kChecks = {
     {"Helpers defined twice (kind C)", run_check_1},
-    {"Recompute spellings in tests (kind B)", run_check_2},
+    {"Recomputes, pins, echoes and named fakes in tests (kind B)", run_check_2},
     {"New numbers with no decision (kind D)", run_check_3},
     {"Scans outside the scan file (kind E)", run_check_4},
     {"Second homes in src/ (kind F)", run_check_5},

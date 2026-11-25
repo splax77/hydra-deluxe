@@ -56,7 +56,7 @@ Rule: The multiplier is 1 plus the streak divided by 10 (whole division), and 4 
 Label: Proven in the game's code
 Evidence: Lines 1 and 2 test the streak at +0x88 against 30; lines 3 to 9 divide by 10 and add 1; lines 11 and 12 store 4 above 30; lines 13 to 16 double it when +0x42 is set. At a streak of exactly 30 the division gives 4 too, so the step is at 30, not 31. Live: run 1's multiplier read only 1, 2, 3, 4 and 8.
 Game code (6142): RVA `0x20F52E0` (slot 10), `code/6142/multiplier_from_streak_20F52E0.asm` lines 1 to 16
-Hydra: `to_multiplier` in src/core/timing.cpp line 12; `kStarPowerMultiplier` in src/core/timing.h line 48
+Hydra: `to_multiplier` in src/core/timing.cpp line 12; `kX2StartCombo`, `kX3StartCombo` and `kX4StartCombo` in src/core/timing.h lines 33 to 35; `kStarPowerMultiplier` in src/core/timing.h line 56
 Ruling: none needed: same rule (D51 call 13 records the steps at combos 10, 20 and 30 "as they are")
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 

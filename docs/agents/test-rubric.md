@@ -20,7 +20,7 @@ So the questions below start with what the test claims, and who owns that claim.
 
 A **game rule's value** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". Hydra already holds these values in its own code. A test takes such a value from Hydra by name and checks what the code does with it. It never types the value again. A page or rule id under `docs/clone-hero/` is not a reason to type it: a Clone Hero page is not code, and the user ruled "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". Results built from a rule's value, such as 7285 (a deadline on a made-up chart plus 85) or 9 (the combo before 10), are written as the working on the value read by name, such as `x2_from - 1`.
 
-Where Hydra holds a value only as an unnamed literal, as `to_multiplier` in `src/core/timing.cpp` holds 10, 20 and 30, the fix is to name it in production first. The test then reads the name. A test never retypes the literal.
+Where Hydra holds a value only as an unnamed literal, the fix is to name it in production first. The test then reads the name. A test never retypes the literal.
 
 A **snapshot number** is what the code printed on the day the test was written. A total over `testdata/input` is always one, because adding a chart changes it. A number "pinned from one run" is one. A number an agent picked and someone approved is one too, until somebody writes down why that value and no other. Snapshot numbers are never fine.
 

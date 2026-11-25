@@ -667,19 +667,29 @@ TEST_CASE("rules: a path over the Path limit below the best score is dropped eve
 // Finding 179: the engine's running tie count (bookkeeping for the limit)
 // must equal the recount of the finished tree, which is what is stored.
 // rebuild throws when they differ; this runs it over real charts.
+// The sample is the first kSample corpus charts. A chart that fails to load
+// throws and fails the test; one with no notes at the default difficulty is
+// counted, and every corpus chart has notes there, so the count must be 0.
 TEST_CASE("rules: the engine's tied count matches the recount") {
+    constexpr int kSample = 5;
     int charts = 0;
+    int skipped = 0;
     for (const std::string& path : corpus::chart_paths()) {
+        CAPTURE(path);
         const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++skipped;
+            continue;
+        }
         ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, core::default_rules());
         std::vector<Path> paths;
         REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
         REQUIRE_FALSE(paths.empty());
         for (const Path& p : paths) CHECK(p.tied_pathcount() >= 1);
-        if (++charts == 5) break;
+        if (++charts == kSample) break;
     }
-    CHECK(charts == 5);
+    CHECK(skipped == 0);
+    REQUIRE(charts > 0);
 }
 
 // fill_cooldown_measures is a retired key (kRetiredRulesKeys in
