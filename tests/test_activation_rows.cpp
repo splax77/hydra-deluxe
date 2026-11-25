@@ -1245,7 +1245,7 @@ std::string text_at(const std::string& text, TextSpan eff) {
 std::string eff_text(double effective_ms) { return " (eff. " + format_ms(effective_ms) + ")"; }
 
 // The text of `runs`, in order.
-std::string joined(const std::vector<InkRun>& runs) {
+std::string runs_text(const std::vector<InkRun>& runs) {
     std::string out;
     for (const InkRun& r : runs) out += r.text;
     return out;
@@ -1262,9 +1262,9 @@ void check_runs(const std::string& text, TextSpan eff, Ink around,
     const std::string figure = text_at(text, eff);
     const std::string before = text.substr(0, eff.start);
     const std::string after = text.substr(eff.start + eff.length);
-    CHECK(joined(off) == before + after);
+    CHECK(runs_text(off) == before + after);
     for (const InkRun& r : off) CHECK(r.ink == around);
-    CHECK(joined(on) == text);
+    CHECK(runs_text(on) == text);
     int figures = 0;
     for (const InkRun& r : on) {
         if (r.ink == Ink::Effective) {
@@ -1480,7 +1480,7 @@ TEST_CASE("backend table: a costing squeezed-out row keeps its orange, its eff. 
     // On: the figure alone is Effective ink; the tier word before it and the
     // squeezed-out note after it keep the warning colour.
     const std::vector<InkRun> on = rating_runs(out, /*effective_figures=*/true);
-    CHECK(joined(on) == out.rating);
+    CHECK(runs_text(on) == out.rating);
     REQUIRE(on.size() == 3);
     CHECK(on[0].text == out.rating.substr(0, out.rating_eff.start));
     CHECK(on[0].ink == Ink::Warning);
@@ -1491,8 +1491,8 @@ TEST_CASE("backend table: a costing squeezed-out row keeps its orange, its eff. 
 
     // Off: the figure is gone and everything left keeps the warning colour.
     const std::vector<InkRun> off = rating_runs(out, /*effective_figures=*/false);
-    CHECK(joined(off).find(figure) == std::string::npos);
-    CHECK(joined(off) == on[0].text + on[2].text);
+    CHECK(runs_text(off).find(figure) == std::string::npos);
+    CHECK(runs_text(off) == on[0].text + on[2].text);
     for (const InkRun& r : off) CHECK(r.ink == Ink::Warning);
 
     // The hover note goes with the switch.
