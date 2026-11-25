@@ -403,7 +403,6 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
     nlohmann::json squeezes = nlohmann::json::array();
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
         const SPSqueeze& q = act.sqinouts[k];
-        const bool is_in = q.kind == SqueezeKind::SqIn;
         const std::optional<int64_t> end = act.squeeze_end_tick(k);
         const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
         const std::optional<int64_t> chord_tick = act.squeeze_chord_tick(k);
@@ -413,10 +412,12 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
 
         // The ratios as stored; stored_scale owns which one is this squeeze's.
         const std::optional<TransferScale>& ratio = stored_scale(act, k);
-        if (!ratio)
-            refusals.push_back(what + " has no stored ratio (" +
-                               (is_in ? "SPSqueeze::transfer" : "Activation::transfer_post") +
-                               " is unset), so its lead cannot be planned");
+        if (!ratio) {
+            // stored_scale returns the field itself, so the field it names is
+            // read from its answer, not picked again by kind.
+            const char* field = &ratio == &act.transfer_post ? "Activation::transfer_post" : "SPSqueeze::transfer";
+            refusals.push_back(what + " has no stored ratio (" + field + " is unset), so its lead cannot be planned");
+        }
 
         nlohmann::json one{{"index", k},
                            {"kind", q.type_name()},

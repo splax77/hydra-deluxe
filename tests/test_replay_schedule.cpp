@@ -209,15 +209,15 @@ TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
             CHECK(q[k]["end_tick"] == (end ? json(*end) : json(nullptr)));
             CHECK(q[k]["anchor_tick"] == (anchor ? json(*anchor) : json(nullptr)));
             CHECK(q[k]["chord_tick"] == (chord ? json(*chord) : json(nullptr)));
-            const bool is_in = act.sqinouts[k].kind == SqueezeKind::SqIn;
-            const std::optional<TransferScale>& stored = is_in ? act.sqinouts[k].transfer : act.transfer_post;
+            const std::optional<TransferScale>& stored = stored_scale(act, k);
             if (stored) {
                 CHECK(q[k]["ratio"]["early"].get<double>() == stored->early);
                 CHECK(q[k]["ratio"]["late"].get<double>() == stored->late);
             } else {
                 CHECK(q[k]["ratio"]["early"].is_null());
                 CHECK(q[k]["ratio"]["late"].is_null());
-                const std::string field = is_in ? "SPSqueeze::transfer" : "Activation::transfer_post";
+                const std::string field =
+                    &stored == &act.transfer_post ? "Activation::transfer_post" : "SPSqueeze::transfer";
                 CHECK(std::any_of(refusals.begin(), refusals.end(),
                                   [&](const std::string& r) { return r.find(field) != std::string::npos; }));
             }
