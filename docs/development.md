@@ -141,17 +141,9 @@ itself; `tools\build_slot.ps1` owns those limits.
 `tools\build_slot.ps1 -Repo <worktree> -Preset <preset>` builds another
 worktree under the pass the caller already holds, with the pass's preset.
 
-The pass is given by the plan run, not asked for per task. A plan's work
-builds once per phase, on the run's branch `plan/<slug>/<phase>`, after every
-task of the phase is reviewed and merged there. A second build is given only
-after a reviewed fix. A phase that changed a C++ test file may also take one
-build of the `mutation` preset, outside that count. A session with no open run
-gets a pass only when the user types `allow build`. `docs/agents/plan-runs.md`
-says how a run is opened,
-joined and closed. `build_cpp.ps1` records each build it starts, with its
-commit and whether it passed or failed, in `builds.jsonl` in the repo's git
-common folder; `tools\build_record.ps1` owns that record, and the hooks read
-it to count a phase's builds.
+`build_cpp.ps1` records each build it starts, with its commit and whether it
+passed or failed, in `builds.jsonl` in the repo's git common folder;
+`tools\build_record.ps1` owns that record.
 
 A build folder remembers the Visual Studio install and the compiler, linker
 and librarian it was first set up with. A Visual Studio update can remove that
@@ -747,19 +739,18 @@ by side (one unless you say), and `--map-only` stops after the mapping run.
 It writes its own report, `summary.txt`, in the run folder; `report.py`
 reads only the C++ runs.
 
-### The gate on a phase's new tests
+### The gate on a change's new tests
 
-The gate asks one question of the tests a plan phase added or changed: did
-each one catch a planted bug? It runs once per phase, after the phase's
-build and tests pass. Every step is the main session's. The C++ side needs
-one build, and the gate reads results only a built `hydra_tests` writes
-(agent rule 14). The gate never decides what "caught" means. It reads the
-verdicts `run.py` stored, and `bug_result` in `run.py` is the one place that
-decides them.
+The gate asks one question of the tests a change added or changed: did
+each one catch a planted bug? It runs after the build and tests pass.
+Every step is the main session's. The C++ side needs one build, and the gate
+reads results only a built `hydra_tests` writes (agent rule 14). The gate
+never decides what "caught" means. It reads the verdicts `run.py` stored, and
+`bug_result` in `run.py` is the one place that decides them.
 
-For a phase that changed a C++ test file, the steps go in this order.
+For a change that holds a C++ test file, the steps go in this order.
 
-First, list the C++ test files the phase changed. The precheck's
+First, list the C++ test files the change touched. The precheck's
 `--changed-tests` mode prints them, one per line, using the precheck's own
 rule for what a test file is. A file the range deletes is not printed.
 
@@ -770,13 +761,11 @@ build-cpp\Release\hydra_precheck.exe --repo <folder> --changed-tests main...<tip
 Second, write the switched copies with `rewrite.py`, as "Running it" says.
 It switches only the source files you name on its command line, and it has
 no default list. A test reaches a planted bug only through a source file you
-named, so name every source file the phase's tests check. A test that
+named, so name every source file the change's tests check. A test that
 reaches no switched source file is "not judged", and the gate says so.
 
 Third, ask `hydra_build_pass` for a pass with `preset` set to `mutation`, and
-build `hydra_tests` with the mutation preset. A phase gets one such build,
-outside its normal build count, so ask for it last.
-`docs/agents/plan-runs.md` says when it is given.
+build `hydra_tests` with the mutation preset.
 
 ```
 $env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
@@ -793,7 +782,7 @@ slashes, so swap them.
 py -I tools/mutate/run.py --test-files tests\test_a.cpp [more test files...]
 ```
 
-Last, run the gate on the run folder, the phase's range and the same test
+Last, run the gate on the run folder, the change's range and the same test
 files. `--files` takes either kind of slash. The gate judges only the tests
 whose own line in the run's test list falls on a line the range added. A
 test runs from its own line to the next test's line in the same file.
@@ -812,7 +801,7 @@ tests live in, as its own docstring says, then run the gate on its run
 folder. Give `--target` the same folder you gave `py_mutate.py`, as a path
 in the checkout. A Python test name carries no line, so the gate judges
 every test of a test module the range added a line to, and its output says
-so. Give it the phase's Python test files; a file the range added no line to
+so. Give it the change's Python test files; a file the range added no line to
 is reported as "unchanged".
 
 ```
@@ -845,11 +834,7 @@ inside a test adds none, so the gate does not judge it. The reviewer, not
 the gate, catches a test weakened by deletion.
 
 A refused test is a failed test, handled the way
-`docs/agents/derive-once-review.md`, "For the orchestrator", says. A phase
-gets one mutation build, so after a refused C++ test is fixed and the fix is
-rebuilt, the gate cannot run again on the fix. The fix's fresh reviewer reads
-the refused test and the gate's output for it, and says what would make the
-fixed test fail.
+`docs/agents/derive-once-review.md`, "For the orchestrator", says.
 
 ### What the report says
 
