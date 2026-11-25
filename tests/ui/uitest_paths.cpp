@@ -1461,6 +1461,192 @@ void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
     check_tapped_out_box_fits();
 }
 
+// Whether text[from, to) holds only what ImGui's text log puts between two
+// items it drew: spaces, line breaks and a Separator's dashes. So no other
+// drawn text sits there.
+bool only_item_gap(const std::string& text, size_t from, size_t to) {
+    for (size_t i = from; i < to; ++i) {
+        const char c = text[i];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != '-') return false;
+    }
+    return true;
+}
+
+// Where `pieces`, in order, end in `text` when the first starts at `at` or
+// later with only an item gap (only_item_gap) before it and between each two.
+// npos when they are not drawn that way.
+size_t run_at(const std::string& text, const std::vector<std::string>& pieces, size_t at) {
+    size_t cur = at;
+    for (const std::string& p : pieces) {
+        const size_t next = text.find(p, cur);
+        if (next == std::string::npos || !only_item_gap(text, cur, next)) return std::string::npos;
+        cur = next + p.size();
+    }
+    return cur;
+}
+
+// Where each drawing of Dynamic Hit Window row `w` ends in `text`: each place
+// its pieces (window_pieces) run from its label with nothing else between.
+std::vector<size_t> window_line_ends(const std::string& text, const hydra::app::WindowRowView& w) {
+    const std::vector<std::string> pieces = window_pieces(w);
+    std::vector<size_t> ends;
+    for (size_t p = text.find(pieces[0]); p != std::string::npos; p = text.find(pieces[0], p + 1))
+        if (const size_t end = run_at(text, pieces, p); end != std::string::npos) ends.push_back(end);
+    return ends;
+}
+
+// Whether an Effective line is the next thing drawn after `end`, the end of a
+// Dynamic Hit Window line: its label with nothing else before it.
+bool effective_label_follows(const std::string& text, size_t end) {
+    return run_at(text, {hydra::app::kEffectiveLabel}, end) != std::string::npos;
+}
+
+// A squeeze whose priced side the engine says is worth showing
+// (squeeze_window_ends' PricedScale::shown()), and where it is: the song's
+// title, the path button it is on, and the activation and squeeze indexes.
+struct ShownSqueeze {
+    std::string title;
+    size_t button = 0;
+    size_t act = 0;
+    size_t k = 0;
+};
+
+// The first squeeze of the open song, on any path button, whose priced side
+// is shown, read from the engine (squeeze_window_ends) on each path's own
+// activations.
+std::optional<ShownSqueeze> shown_squeeze_in_open_song(hydra::ui::AppState& app) {
+    const hydra::app::PathButtonsView& list = shown_buttons(app);
+    for (size_t b = 0; b < list.buttons.size(); ++b) {
+        const hydra::Path* path = list.buttons[b].path;
+        if (path == nullptr) continue;
+        const hydra::ActivationWalk acts = path->walk_activations();
+        for (size_t a = 0; a < acts.size(); ++a)
+            for (size_t k = 0; k < acts[a].sqinouts.size(); ++k) {
+                const std::optional<hydra::WindowEnds> ends =
+                    hydra::squeeze_window_ends(acts[a], k, *app.viewed.chords);
+                if (ends && ends->priced && ends->priced->shown())
+                    return ShownSqueeze{app.selected ? app.selected->title : "", b, a, k};
+            }
+    }
+    return std::nullopt;
+}
+
+// The Effective line (WindowRowView::effective) on screen. A scan at test
+// time opens each corpus song and asks the engine for a squeeze whose priced
+// side is shown (shown_squeeze_in_open_song); the corpus has no song picked
+// for it ahead of time. On that squeeze's activation, opened, every squeeze
+// box's Dynamic Hit Window line is followed directly by an Effective line
+// exactly when the engine's priced side is shown, and the found squeeze's
+// line reads the engine's own product (WindowEnds::frontend_effective_ms) in
+// the frontend's word. An early fill's box draws no Effective line: Tapped
+// Out's activation 3 is an early fill with a window row.
+void test_paths_effective_line(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    std::vector<std::string> titles;
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+        titles.push_back(h.app->library_row_at(i).title);
+
+    std::optional<ShownSqueeze> found;
+    for (const std::string& title : titles) {
+        open_titled(ctx, title, title);
+        if (ctx->IsError()) return;
+        wait_song_analyzed(ctx);
+        if (ctx->IsError()) return;
+        found = shown_squeeze_in_open_song(*h.app);
+        if (found) break;
+    }
+    if (!found) {
+        IM_ERRORF("none of the %zu corpus songs has a squeeze whose priced side is shown "
+                  "(PricedScale::shown()) on any path; the plan's P21 does not hold",
+                  titles.size());
+        return;
+    }
+    ctx->LogInfo("\"%s\": path button %zu, activation %zu, squeeze %zu", found->title.c_str(),
+                 found->button, found->act + 1, found->k);
+    IM_CHECK(h.app->selected && h.app->selected->title == found->title);
+
+    // Show its path and open its activation.
+    const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
+    IM_CHECK_LT(found->button, list.buttons.size());
+    if (ctx->IsError()) return;
+    const hydra::Path* path = list.buttons[found->button].path;
+    ctx->ItemClick(path_button_ref(found->button).c_str());
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.selected_path == path);
+    if (ctx->IsError()) return;
+    const hydra::ActivationWalk acts = path->walk_activations();
+    const std::vector<hydra::app::ActivationRowView> view = shown_activations(*h.app).acts;
+    IM_CHECK_EQ(acts.size(), view.size());
+    if (ctx->IsError()) return;
+    const hydra::Activation& act = acts[found->act];
+    const hydra::app::ActivationRowView& av = view[found->act];
+    const std::string row_ref = "**/##act" + std::to_string(av.number);
+    ctx->ItemClick(row_ref.c_str());
+    ctx->Yield(2);
+    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), found->act));
+    if (ctx->IsError()) return;
+
+    // The found squeeze's view holds the engine's product in the frontend's
+    // word, and its box draws it right under its Dynamic Hit Window line.
+    const std::optional<hydra::WindowEnds> ends =
+        hydra::squeeze_window_ends(act, found->k, *h.app->viewed.chords);
+    IM_CHECK(ends && ends->frontend_effective_ms);
+    IM_CHECK_EQ(av.squeeze_windows.size(), act.sqinouts.size());
+    if (ctx->IsError()) return;
+    const std::optional<hydra::app::WindowRowView>& w = av.squeeze_windows[found->k];
+    IM_CHECK(w && w->effective);
+    if (ctx->IsError()) return;
+    const std::string word = hydra::role_word(hydra::EndRole::Frontend);
+    const std::string figure = hydra::format_ms(*ends->frontend_effective_ms);
+    IM_CHECK_STR_EQ(w->effective->word.c_str(), word.c_str());
+    IM_CHECK_STR_EQ(w->effective->figure.c_str(), figure.c_str());
+    {
+        const std::string text = visible_text(h);
+        const std::vector<size_t> line_ends = window_line_ends(text, *w);
+        IM_CHECK(!line_ends.empty());
+        for (const size_t end : line_ends)
+            IM_CHECK(run_at(text, {hydra::app::kEffectiveLabel, word, figure}, end) !=
+                     std::string::npos);
+    }
+
+    // Every squeeze box of the activation: an Effective line follows its
+    // Dynamic Hit Window line exactly when the engine's priced side is shown.
+    {
+        const std::string text = visible_text(h);
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            if (!av.squeeze_windows[k]) continue;
+            const std::optional<hydra::WindowEnds> e =
+                hydra::squeeze_window_ends(act, k, *h.app->viewed.chords);
+            const bool shown = e && e->priced && e->priced->shown();
+            const std::vector<size_t> line_ends = window_line_ends(text, *av.squeeze_windows[k]);
+            IM_CHECK(!line_ends.empty());
+            for (const size_t end : line_ends) IM_CHECK(effective_label_follows(text, end) == shown);
+        }
+    }
+
+    // An early fill's box: Tapped Out's activation 3.
+    if (!open_tapped_out(ctx)) return;
+    const std::vector<hydra::app::ActivationRowView> tapped = shown_activations(*h.app).acts;
+    IM_CHECK_GE(tapped.size(), static_cast<size_t>(3));
+    if (tapped.size() < 3) return;
+    const hydra::app::ActivationRowView& act3 = tapped[2];
+    IM_CHECK(!act3.early_fill.empty() && act3.early_fill_window.has_value());
+    if (ctx->IsError()) return;
+    IM_CHECK(!act3.early_fill_window->effective.has_value());
+    ctx->ItemClick("**/##act3");
+    ctx->Yield(2);
+    IM_CHECK(window_named("##ef3") != nullptr);
+    {
+        const std::string text = visible_text(h);
+        const std::vector<size_t> line_ends = window_line_ends(text, *act3.early_fill_window);
+        IM_CHECK(!line_ends.empty());
+        for (const size_t end : line_ends) IM_CHECK(!effective_label_follows(text, end));
+    }
+}
+
 }  // namespace
 
 // Registers this file's tests; register_tests() (uitest_tests.cpp) calls it.
@@ -1482,6 +1668,7 @@ void register_paths_tests(Harness& h) {
         {"paths-length-from-click", test_paths_length_from_click},
         {"paths-hit-window", test_paths_hit_window},
         {"paths-hit-window-narrow", test_paths_hit_window_narrow},
+        {"paths-effective-line", test_paths_effective_line},
     };
     for (const Entry& e : entries) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
