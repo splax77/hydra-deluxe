@@ -27,7 +27,15 @@
 
 namespace hydra {
 
-// combo -> score multiplier: x1 below 10, x2 below 20, x3 below 30, else x4.
+// The combos at which the score multiplier steps up by one: x2 from the
+// first, x3 from the second and x4 from the third, which is the top. These
+// are Clone Hero's values, SC-05 in docs/clone-hero/06-scoring.md.
+inline constexpr int kX2StartCombo = 10;
+inline constexpr int kX3StartCombo = 20;
+inline constexpr int kX4StartCombo = 30;
+
+// combo -> score multiplier: x1 below kX2StartCombo, then one more at each
+// step above, up to x4.
 int to_multiplier(int combo);
 
 // The combo multiplier at each end of a chord of `note_count` notes hit at

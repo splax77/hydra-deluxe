@@ -10,9 +10,9 @@
 namespace hydra {
 
 int to_multiplier(int combo) {
-    if (combo < 10) return 1;
-    if (combo < 20) return 2;
-    if (combo < 30) return 3;
+    if (combo < kX2StartCombo) return 1;
+    if (combo < kX3StartCombo) return 2;
+    if (combo < kX4StartCombo) return 3;
     return 4;
 }
 
