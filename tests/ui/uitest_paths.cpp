@@ -146,6 +146,139 @@ std::string path_button_ref(size_t i) {
     return "**/##path" + std::to_string(i);
 }
 
+// Whether text[from, to) holds only what ImGui's text log puts between two
+// items it drew: spaces, line breaks and a Separator's dashes. So no other
+// drawn text sits there.
+bool only_item_gap(const std::string& text, size_t from, size_t to) {
+    for (size_t i = from; i < to; ++i) {
+        const char c = text[i];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != '-') return false;
+    }
+    return true;
+}
+
+// Where `pieces`, in order, end in `text` when the first starts at `at` or
+// later with only an item gap (only_item_gap) before it and between each two.
+// npos when they are not drawn that way.
+size_t run_at(const std::string& text, const std::vector<std::string>& pieces, size_t at) {
+    size_t cur = at;
+    for (const std::string& p : pieces) {
+        const size_t next = text.find(p, cur);
+        if (next == std::string::npos || !only_item_gap(text, cur, next)) return std::string::npos;
+        cur = next + p.size();
+    }
+    return cur;
+}
+
+// ---- the Effective figures switch ---------------------------------------------
+
+// The Effective figures switch beside Expand all / Collapse all, by its label.
+constexpr const char* kEffectiveSwitchRef = "**/Effective figures";
+
+// Whether the Paths tab draws its effective figures now
+// (PathsTabUi::effective_figures).
+bool effective_figures_on(Harness& h) {
+    return h.app->details_ui.paths_tab.ui().effective_figures;
+}
+
+// Clicks the Effective figures switch once. Fails if the checkbox is not
+// drawn, or if the click leaves PathsTabUi::effective_figures as it was.
+bool click_effective_switch(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const bool before = effective_figures_on(h);
+    ctx->ItemClick(kEffectiveSwitchRef);
+    ctx->Yield(2);
+    IM_CHECK_RETV(!ctx->IsError(), false);
+    IM_CHECK_RETV(effective_figures_on(h) == !before, false);
+    return true;
+}
+
+// Puts the switch in state `on`, clicking it only when it is not there.
+bool set_effective_switch(ImGuiTestContext* ctx, bool on) {
+    if (effective_figures_on(harness(ctx)) == on) return true;
+    return click_effective_switch(ctx);
+}
+
+// A view text's runs (sentence_runs, rating_runs) for a test's log: each run
+// quoted, in order.
+std::string describe_runs(const std::vector<hydra::app::InkRun>& runs) {
+    std::string out;
+    for (const hydra::app::InkRun& r : runs) out += (out.empty() ? "\"" : " + \"") + r.text + "\"";
+    return out;
+}
+
+// Whether a view text, given as the runs the view hands the tab for switch
+// state `on`, is drawn in `text` (visible_text). With the switch off the tab
+// draws the text whole, its figure left out, so the runs are found back to
+// back with nothing between them. With it on a text holding a figure is drawn
+// run by run, and a run that wraps is drawn a line at a time, so each run's
+// words are found in order with only an item gap between them (run_at). A
+// word is a piece of a run between its spaces, and a wrap breaks a line only
+// at a space.
+bool runs_drawn(const std::string& text, const std::vector<hydra::app::InkRun>& runs, bool on) {
+    if (runs.empty()) return false;
+    if (!on) {
+        for (size_t p = text.find(runs[0].text); p != std::string::npos;
+             p = text.find(runs[0].text, p + 1)) {
+            size_t cur = p;
+            bool whole = true;
+            for (const hydra::app::InkRun& r : runs) {
+                whole = whole && text.compare(cur, r.text.size(), r.text) == 0;
+                cur += r.text.size();
+            }
+            if (whole) return true;
+        }
+        return false;
+    }
+    std::vector<std::string> pieces;
+    for (const hydra::app::InkRun& r : runs) {
+        size_t from = 0;
+        while (from <= r.text.size()) {
+            const size_t space = (std::min)(r.text.find(' ', from), r.text.size());
+            if (space > from) pieces.push_back(r.text.substr(from, space - from));
+            from = space + 1;
+        }
+    }
+    if (pieces.empty()) return false;
+    for (size_t p = text.find(pieces[0]); p != std::string::npos; p = text.find(pieces[0], p + 1))
+        if (run_at(text, pieces, p) != std::string::npos) return true;
+    return false;
+}
+
+// The effective figures opened activation row `a` holds inside its texts:
+// each squeeze sentence's and each backend row's "(eff. ...)", cut from the
+// view's own string at the view's own span (TextLine::eff,
+// BackendRowView::rating_eff).
+std::vector<std::string> span_texts(const hydra::app::ActivationRowView& a) {
+    std::vector<std::string> out;
+    for (const hydra::app::TextLine& s : a.squeeze_sentences)
+        if (!s.eff.empty()) out.push_back(s.text.substr(s.eff.start, s.eff.length));
+    for (const hydra::app::BackendRowView& r : a.backends)
+        if (!r.rating_eff.empty()) out.push_back(r.rating.substr(r.rating_eff.start, r.rating_eff.length));
+    return out;
+}
+
+// Whether activation row `a` holds an Effective line under any squeeze's
+// Dynamic Hit Window row (WindowRowView::effective).
+bool holds_effective_line(const hydra::app::ActivationRowView& a) {
+    for (const std::optional<hydra::app::WindowRowView>& w : a.squeeze_windows)
+        if (w && w->effective) return true;
+    return false;
+}
+
+// The scale lines activation row `a` holds: the lines the view gives for the
+// switch on (scale_lines), unless they are the unknown-scale guard, which is
+// no effective figure.
+std::vector<hydra::app::InkRun> held_scale_lines(const hydra::app::ActivationRowView& a) {
+    if (a.scale_unknown) return {};
+    return hydra::app::scale_lines(a, /*effective_figures=*/true);
+}
+
+// Whether activation row `a` holds any effective figure the switch hides.
+bool holds_effective_figure(const hydra::app::ActivationRowView& a) {
+    return holds_effective_line(a) || !held_scale_lines(a).empty() || !span_texts(a).empty();
+}
+
 // The path list: its headings, every button the list view holds with its own
 // title, timing and detail line, and clicks that change the shared selection.
 // Every expected text is the list view's (app::build_path_buttons) and every
@@ -380,8 +513,15 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(!row1.squeeze_sentences.empty());
     if (row1.squeeze_sentences.empty()) return;
     // Every row starts closed: no chord, sentence or backend heading shows.
+    // The switch is off, as a fresh app has it, so a sentence is drawn as
+    // the view's text with its "(eff. ...)" left out (sentence_runs).
+    IM_CHECK(!effective_figures_on(h));
     IM_CHECK(!on_screen(h, row1.chord));
-    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(!on_screen(h, s.text));
+    {
+        const std::string text = visible_text(h);
+        for (const hydra::app::TextLine& s : row1.squeeze_sentences)
+            IM_CHECK(!runs_drawn(text, hydra::app::sentence_runs(s, false), false));
+    }
     for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(!on_screen(h, a.backends_label));
     IM_CHECK(!ctx->ItemExists("**/Show in Preview >##showact1"));
     // A click opens row 1: its chord, sentences and backend heading show; the
@@ -389,7 +529,11 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(on_screen(h, row1.chord));
-    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+    {
+        const std::string text = visible_text(h);
+        for (const hydra::app::TextLine& s : row1.squeeze_sentences)
+            IM_CHECK(runs_drawn(text, hydra::app::sentence_runs(s, false), false));
+    }
     IM_CHECK(on_screen(h, row1.backends_label));
     for (size_t i = 1; i < acts.size(); ++i)
         if (acts[i].backends_label != row1.backends_label)
@@ -467,25 +611,30 @@ void test_paths_rows(ImGuiTestContext* ctx) {
 }
 
 // The Rating cell of activation 1's squeezed-out row that costs points, the
-// one row build_activations warn-colours, as the view the tab drew holds it.
-// Empty when the row has no such row.
-std::string costly_sqout_rating(hydra::ui::AppState& app) {
+// one row build_activations warn-colours, as the tab draws it with the
+// Effective figures switch off: the view's Rating with its "(eff. ...)" left
+// out (rating_runs). Empty when the row has no such row.
+std::vector<hydra::app::InkRun> costly_sqout_rating(hydra::ui::AppState& app) {
     const hydra::app::ActivationsView& view = shown_activations(app);
-    if (view.acts.empty()) return "";
+    if (view.acts.empty()) return {};
     for (const hydra::app::BackendRowView& row : view.acts[0].backends)
-        if (row.warn) return row.rating;
-    return "";
+        if (row.warn) return hydra::app::rating_runs(row, false);
+    return {};
 }
 
 // The backend table folds per activation, and the Backend limit on the Paths
-// tab hides rows from it. Every expected text is the activations view's.
+// tab hides rows from it. Every expected text is the activations view's. The
+// test leaves the Effective figures switch off, as a fresh app has it.
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
+    IM_CHECK(!effective_figures_on(h));
     // Burnout's activation 1 squeezes out a row that costs points.
-    const std::string sqout = costly_sqout_rating(*h.app);
+    const std::vector<hydra::app::InkRun> sqout = costly_sqout_rating(*h.app);
     IM_CHECK(!sqout.empty());
     if (sqout.empty()) return;
+    // Whether that Rating is drawn, as the switch off draws it.
+    auto sqout_drawn = [&] { return runs_drawn(visible_text(h), sqout, false); };
     const std::string label_all = shown_activations(*h.app).acts[0].backends_label;
     const size_t rows_all = shown_activations(*h.app).acts[0].backends.size();
     // Row 1 opens with its backend table open; its fold closes, reopens and
@@ -494,15 +643,15 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     IM_CHECK(on_screen(h, label_all));  // the fold's heading
-    IM_CHECK(on_screen(h, sqout));
+    IM_CHECK(sqout_drawn());
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, sqout));
+    IM_CHECK(!sqout_drawn());
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, sqout));
+    IM_CHECK(sqout_drawn());
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
@@ -511,12 +660,12 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, sqout));
+    IM_CHECK(!sqout_drawn());
     // The rest of this test reads the table, so it opens again.
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, sqout));
+    IM_CHECK(sqout_drawn());
     // The table has no explanation paragraph above it.
     IM_CHECK(!on_screen(h, "Timing is how far each note sits"));
 
@@ -545,8 +694,8 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
         IM_CHECK(on_screen(h, limited.backends_label));
         IM_CHECK(on_screen(h, hidden_line));
     }
-    IM_CHECK_STR_EQ(costly_sqout_rating(*h.app).c_str(), sqout.c_str());
-    IM_CHECK(on_screen(h, sqout));
+    IM_CHECK_STR_EQ(describe_runs(costly_sqout_rating(*h.app)).c_str(), describe_runs(sqout).c_str());
+    IM_CHECK(sqout_drawn());
 
     // The limit reaches the engine's whole squeeze window (kSqueezeWindowMs)
     // and no further: the box clamps a larger value as Settings::clamp does,
@@ -674,6 +823,8 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
+    // The switch is off, as a fresh app has it.
+    IM_CHECK(!effective_figures_on(h));
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
     // With no backend limit every rated row is shown, in the engine's order.
@@ -703,10 +854,16 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
                          counted, row.rating.c_str());
             IM_CHECK_EQ(row.rating.rfind(word, 0), static_cast<size_t>(0));
             IM_CHECK_EQ(row.warn, counted);
-            IM_CHECK(on_screen(h, row.rating));
+            // With the switch off the Rating is drawn with its "(eff. ...)"
+            // left out (rating_runs); the engine's word still starts it.
+            const std::vector<hydra::app::InkRun> drawn = hydra::app::rating_runs(row, false);
+            IM_CHECK(!drawn.empty() && drawn[0].text.rfind(word, 0) == 0);
+            IM_CHECK(runs_drawn(visible_text(h), drawn, false));
             if (!counted) ++uncounted;
         }
-        for (const hydra::app::TextLine& s : av.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+        const std::string text = visible_text(h);
+        for (const hydra::app::TextLine& s : av.squeeze_sentences)
+            IM_CHECK(runs_drawn(text, hydra::app::sentence_runs(s, false), false));
     }
     IM_CHECK_GT(uncounted, static_cast<size_t>(0));
     IM_CHECK(!on_screen(h, "costs no points"));
@@ -732,18 +889,38 @@ void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Expand all");  // every row
     ctx->Yield(1);
     open_paths_folds(ctx);  // every backend table and both folds
-    ctx->ItemClick("**/Copy path");
-    ctx->Yield(2);
-    // The flash is up: Copy path started it, and it lasts kCopiedSeconds.
-    const double copied_at = h.app->details_ui.copied_at;
-    IM_CHECK_GE(copied_at, 0.0);
-    IM_CHECK_LT(ImGui::GetTime() - copied_at, hydra::ui::AppState::kCopiedSeconds);
-    ImGuiWindow* details = window_named("##pathdetails");
-    ImGuiWindow* list = window_named("##pathlist");
-    IM_CHECK(details != nullptr && list != nullptr);
-    if (ctx->IsError()) return;
-    IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
-    IM_CHECK_GE(list->Size.x, hydra::ui::px(hydra::ui::kMinPathListW) - 0.5f);
+    {
+        // How much the switch adds to the tab here; logged, so a run shows
+        // whether the switch-on half below drew any effective figure.
+        const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
+        int holding = 0;
+        if (d)
+            for (const hydra::app::ActivationRowView& a : d->activations.acts)
+                holding += holds_effective_figure(a) ? 1 : 0;
+        ctx->LogInfo("%d activations hold an effective figure", holding);
+    }
+    // The rule holds with the Effective figures switch off, as a fresh app has
+    // it, and again with it on, when the Effective lines, the scale lines and
+    // every "(eff. ...)" are drawn too. Fails if either state runs past the
+    // column's edge, the switch and Expand all on the heading's line among it.
+    IM_CHECK(!effective_figures_on(h));
+    for (const bool on : {false, true}) {
+        if (!set_effective_switch(ctx, on)) return;
+        ctx->ItemClick("**/Copy path");
+        ctx->Yield(2);
+        // The flash is up: Copy path started it, and it lasts kCopiedSeconds.
+        const double copied_at = h.app->details_ui.copied_at;
+        IM_CHECK_GE(copied_at, 0.0);
+        IM_CHECK_LT(ImGui::GetTime() - copied_at, hydra::ui::AppState::kCopiedSeconds);
+        ImGuiWindow* details = window_named("##pathdetails");
+        ImGuiWindow* list = window_named("##pathlist");
+        IM_CHECK(details != nullptr && list != nullptr);
+        if (ctx->IsError()) return;
+        ctx->LogInfo("switch %s: details content %.1f in %.1f", on ? "on" : "off",
+                     details->ContentSize.x, details->ContentRegionRect.GetWidth());
+        IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
+        IM_CHECK_GE(list->Size.x, hydra::ui::px(hydra::ui::kMinPathListW) - 0.5f);
+    }
 }
 
 // The scratch library's longest path (9 activations): the path list takes at
@@ -815,26 +992,34 @@ ImGuiTable* backend_table() {
     return found;
 }
 
-// At the narrowest panel, Burnout's first backend table: Timing, Chord and
-// Points are as wide as their text, and the table's longest Rating line wraps
-// inside its Rating cell instead of running past it.
-void test_paths_backend_fit(ImGuiTestContext* ctx) {
+// The body of test_paths_backend_fit, in switch state `on`, with Burnout's row
+// 1 open at the narrowest panel.
+void check_backend_fit(ImGuiTestContext* ctx, bool on) {
     Harness& h = harness(ctx);
-    if (!open_burnout(ctx)) return;
-    if (!narrowest_panel(ctx)) return;
-    ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
-    ctx->Yield(3);
     const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
     IM_CHECK(d != nullptr && !d->activations.acts.empty());
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
-    // The table's longest Rating line, from the rows the tab drew, measured in
-    // the Figure role the cells are drawn in.
-    std::string longest;
-    for (const hydra::app::BackendRowView& r : rows)
-        if (figure_w(r.rating) > figure_w(longest)) longest = r.rating;
+    // The table's longest Rating line, from the rows the tab drew as the tab
+    // draws them in this switch state (rating_runs), each run measured in the
+    // Figure role the cells are drawn in.
+    auto runs_w = [](const std::vector<hydra::app::InkRun>& runs) {
+        float w = 0.0f;
+        for (const hydra::app::InkRun& r : runs) w += figure_w(r.text);
+        return w;
+    };
+    std::vector<hydra::app::InkRun> longest;
+    int with_figure = 0;
+    for (const hydra::app::BackendRowView& r : rows) {
+        with_figure += r.rating_eff.empty() ? 0 : 1;
+        std::vector<hydra::app::InkRun> runs = hydra::app::rating_runs(r, on);
+        if (runs_w(runs) > runs_w(longest)) longest = std::move(runs);
+    }
+    // Logged, so a run shows whether the switch changes this table at all.
+    ctx->LogInfo("%d of %zu Ratings hold an effective figure; longest %s", with_figure,
+                 rows.size(), describe_runs(longest).c_str());
     IM_CHECK(!longest.empty());
-    IM_CHECK(on_screen(h, longest));
+    IM_CHECK(runs_drawn(visible_text(h), longest, on));
     ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -844,9 +1029,11 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     ctx->LogInfo("rating column %.1f..%.1f, content to %.1f", rating.WorkMinX, rating.WorkMaxX,
                  content_max);
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
-    // The longest line is longer than the cell, the case this test is for,
-    // so it did wrap: the cell is narrower than the line.
-    IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, figure_w(longest));
+    // With the switch on the longest line is the view's whole Rating, longer
+    // than the cell, the case this test is for, so it did wrap: the cell is
+    // narrower than the line. With it off the line is shorter by its figure
+    // and may fit, so only the edge check above applies.
+    if (on) IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, runs_w(longest));
     // The three fixed columns fit their text: no cell runs past its column,
     // and each is as wide as the width rule gives it for the rows the tab
     // drew, its header measured as a Label and its cells in the role the tab
@@ -881,6 +1068,27 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
     ctx->LogInfo("fixed widths %.1f %.1f %.1f", t->Columns[0].WidthGiven, t->Columns[1].WidthGiven,
                  t->Columns[2].WidthGiven);
+}
+
+// At the narrowest panel, Burnout's first backend table: Timing, Chord and
+// Points are as wide as their text, and the table's longest Rating line wraps
+// inside its Rating cell instead of running past it (check_backend_fit). It
+// holds with the Effective figures switch off, as a fresh app has it, and
+// again with it on.
+void test_paths_backend_fit(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_burnout(ctx)) return;
+    if (!narrowest_panel(ctx)) return;
+    ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
+    ctx->Yield(3);
+    IM_CHECK(!effective_figures_on(h));
+    for (const bool on : {false, true}) {
+        if (!set_effective_switch(ctx, on)) return;
+        ctx->Yield(3);
+        ctx->LogInfo("switch %s", on ? "on" : "off");
+        check_backend_fit(ctx, on);
+        if (ctx->IsError()) return;
+    }
 }
 
 // The pills the Paths tab drew last frame inside `band` (one row's rect), in
@@ -1239,6 +1447,29 @@ std::vector<std::string> window_pieces(const hydra::app::WindowRowView& w) {
     return out;
 }
 
+// Where each drawing of Dynamic Hit Window row `w` ends in `text`: each place
+// its pieces (window_pieces) run from its label with nothing else between.
+std::vector<size_t> window_line_ends(const std::string& text, const hydra::app::WindowRowView& w) {
+    const std::vector<std::string> pieces = window_pieces(w);
+    std::vector<size_t> ends;
+    for (size_t p = text.find(pieces[0]); p != std::string::npos; p = text.find(pieces[0], p + 1))
+        if (const size_t end = run_at(text, pieces, p); end != std::string::npos) ends.push_back(end);
+    return ends;
+}
+
+// Whether `text` draws Dynamic Hit Window row `w`'s Effective line
+// (WindowRowView::effective) right under one drawing of the row: its label,
+// word and figure, with nothing else before them. False when the view holds
+// no Effective line for the row.
+bool effective_line_drawn_under(const std::string& text, const hydra::app::WindowRowView& w) {
+    if (!w.effective) return false;
+    for (const size_t end : window_line_ends(text, w))
+        if (run_at(text, {hydra::app::kEffectiveLabel, w.effective->word, w.effective->figure}, end) !=
+            std::string::npos)
+            return true;
+    return false;
+}
+
 // Two pill edges or sizes that come to the same pixel can differ by float
 // rounding alone. The allowance is the one the row-pill width checks in
 // test_paths_row_layout already use for "the same width".
@@ -1440,7 +1671,9 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
 // At the narrowest panel, every piece of the Dynamic Hit Window row of Tapped
 // Out (Mike Orlando)'s activation 4 squeeze is still on screen, and the row
 // stays inside its box. The pieces are the row view the tab drew
-// (window_pieces).
+// (window_pieces). It holds with the Effective figures switch off, as a fresh
+// app has it, and again with it on, when the box also draws the squeeze's
+// Effective line if the view holds one.
 void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1456,43 +1689,21 @@ void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
     const hydra::app::ActivationRowView& act4 = tapped[3];
     IM_CHECK(!act4.squeeze_windows.empty() && act4.squeeze_windows[0].has_value());
     if (ctx->IsError()) return;
-    for (const std::string& piece : window_pieces(*act4.squeeze_windows[0]))
-        IM_CHECK(on_screen(h, piece));
-    check_tapped_out_box_fits();
-}
-
-// Whether text[from, to) holds only what ImGui's text log puts between two
-// items it drew: spaces, line breaks and a Separator's dashes. So no other
-// drawn text sits there.
-bool only_item_gap(const std::string& text, size_t from, size_t to) {
-    for (size_t i = from; i < to; ++i) {
-        const char c = text[i];
-        if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != '-') return false;
+    const hydra::app::WindowRowView& w = *act4.squeeze_windows[0];
+    // Logged, so a run shows whether the switch changes this box at all.
+    ctx->LogInfo("the box's view holds an Effective line: %d", w.effective.has_value());
+    IM_CHECK(!effective_figures_on(h));
+    for (const bool on : {false, true}) {
+        if (!set_effective_switch(ctx, on)) return;
+        ctx->Yield(3);
+        ctx->LogInfo("switch %s", on ? "on" : "off");
+        for (const std::string& piece : window_pieces(w)) IM_CHECK(on_screen(h, piece));
+        // Fails if the switch on hides the box's Effective line, so the fit
+        // below was measured without it.
+        if (on && w.effective) IM_CHECK(effective_line_drawn_under(visible_text(h), w));
+        check_tapped_out_box_fits();
+        if (ctx->IsError()) return;
     }
-    return true;
-}
-
-// Where `pieces`, in order, end in `text` when the first starts at `at` or
-// later with only an item gap (only_item_gap) before it and between each two.
-// npos when they are not drawn that way.
-size_t run_at(const std::string& text, const std::vector<std::string>& pieces, size_t at) {
-    size_t cur = at;
-    for (const std::string& p : pieces) {
-        const size_t next = text.find(p, cur);
-        if (next == std::string::npos || !only_item_gap(text, cur, next)) return std::string::npos;
-        cur = next + p.size();
-    }
-    return cur;
-}
-
-// Where each drawing of Dynamic Hit Window row `w` ends in `text`: each place
-// its pieces (window_pieces) run from its label with nothing else between.
-std::vector<size_t> window_line_ends(const std::string& text, const hydra::app::WindowRowView& w) {
-    const std::vector<std::string> pieces = window_pieces(w);
-    std::vector<size_t> ends;
-    for (size_t p = text.find(pieces[0]); p != std::string::npos; p = text.find(pieces[0], p + 1))
-        if (const size_t end = run_at(text, pieces, p); end != std::string::npos) ends.push_back(end);
-    return ends;
 }
 
 // Whether an Effective line is the next thing drawn after `end`, the end of a
@@ -1531,67 +1742,187 @@ std::optional<ShownSqueeze> shown_squeeze_in_open_song(hydra::ui::AppState& app)
     return std::nullopt;
 }
 
-// The Effective line (WindowRowView::effective) on screen. A scan at test
-// time opens each corpus song and asks the engine for a squeeze whose priced
-// side is shown (shown_squeeze_in_open_song); the corpus has no song picked
-// for it ahead of time. On that squeeze's activation, opened, every squeeze
-// box's Dynamic Hit Window line is followed directly by an Effective line
-// exactly when the engine's priced side is shown, and the found squeeze's
-// line reads the engine's own product (WindowEnds::frontend_effective_ms) in
-// the frontend's word. An early fill's box draws no Effective line: Tapped
-// Out's activation 3 is an early fill with a window row.
-void test_paths_effective_line(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
+// The library's song titles, each once, in the order the library lists them.
+std::vector<std::string> library_titles(Harness& h) {
     std::vector<std::string> titles;
     for (size_t i = 0; i < h.app->library_shown_count(); ++i) {
         const std::string& title = h.app->library_row_at(i).title;
         if (std::find(titles.begin(), titles.end(), title) == titles.end()) titles.push_back(title);
     }
+    return titles;
+}
 
-    // Each song is opened by searching its title; the scan stops at the first
-    // song with a shown squeeze.
-    std::optional<ShownSqueeze> found;
+// Opens each of `titles` by searching its title, never by scrolling the
+// library, and stops at the first song the engine gives a squeeze whose
+// priced side is shown (shown_squeeze_in_open_song); that song stays open.
+// The corpus has no song picked for it ahead of time. When no song has one
+// the test fails loudly, naming how many songs it tried.
+std::optional<ShownSqueeze> open_first_shown_squeeze(ImGuiTestContext* ctx,
+                                                     const std::vector<std::string>& titles) {
+    Harness& h = harness(ctx);
     for (const std::string& title : titles) {
         open_titled(ctx, title, title);
-        if (ctx->IsError()) return;
+        if (ctx->IsError()) return std::nullopt;
         wait_song_analyzed(ctx);
-        if (ctx->IsError()) return;
-        found = shown_squeeze_in_open_song(*h.app);
-        if (found) break;
+        if (ctx->IsError()) return std::nullopt;
+        if (std::optional<ShownSqueeze> found = shown_squeeze_in_open_song(*h.app)) {
+            ctx->LogInfo("\"%s\": path button %zu, activation %zu, squeeze %zu",
+                         found->title.c_str(), found->button, found->act + 1, found->k);
+            IM_CHECK_RETV(h.app->selected && h.app->selected->title == found->title, std::nullopt);
+            return found;
+        }
     }
-    if (!found) {
-        IM_ERRORF("none of the %zu corpus songs has a squeeze whose priced side is shown "
-                  "(PricedScale::shown()) on any path, so there is no scaled squeeze to check",
-                  titles.size());
-        return;
+    IM_ERRORF("none of the %zu corpus songs has a squeeze whose priced side is shown "
+              "(PricedScale::shown()) on any path, so there is no scaled squeeze to check",
+              titles.size());
+    return std::nullopt;
+}
+
+// On the open song, shows `found`'s path and opens its activation's row
+// alone. False when a step failed.
+bool open_shown_squeeze(ImGuiTestContext* ctx, const ShownSqueeze& found) {
+    Harness& h = harness(ctx);
+    const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
+    IM_CHECK_RETV(found.button < list.buttons.size(), false);
+    const hydra::Path* path = list.buttons[found.button].path;
+    ctx->ItemClick(path_button_ref(found.button).c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->details_ui.selected_path == path, false);
+    const hydra::app::ActivationsView& view = shown_activations(*h.app);
+    IM_CHECK_RETV(found.act < view.acts.size(), false);
+    // A click on an open row closes it, so only a closed row is clicked.
+    const hydra::app::PathsTabUi& ui = h.app->details_ui.paths_tab.ui();
+    if (found.act >= ui.act_open.size() || !ui.act_open[found.act]) {
+        const std::string row_ref = "**/##act" + std::to_string(view.acts[found.act].number);
+        ctx->ItemClick(row_ref.c_str());
+        ctx->Yield(2);
     }
-    ctx->LogInfo("\"%s\": path button %zu, activation %zu, squeeze %zu", found->title.c_str(),
-                 found->button, found->act + 1, found->k);
-    IM_CHECK(h.app->selected && h.app->selected->title == found->title);
+    IM_CHECK_RETV(only_row_open(h.app->details_ui.paths_tab.ui(), found.act), false);
+    return true;
+}
+
+// With the switch off, opened activation row `a` (the view the tab drew, its
+// backend table open) draws none of its effective figures and every other
+// word of its sentences and Ratings.
+void check_effective_off(ImGuiTestContext* ctx, Harness& h, const hydra::app::ActivationRowView& a) {
+    const std::string text = visible_text(h);
+    // Fails if the Effective line is drawn with the switch off.
+    IM_CHECK(text.find(hydra::app::kEffectiveLabel) == std::string::npos);
+    // Fails if a scale line is drawn with the switch off.
+    for (const hydra::app::InkRun& line : held_scale_lines(a)) {
+        ctx->LogInfo("scale line \"%s\"", line.text.c_str());
+        IM_CHECK(text.find(line.text) == std::string::npos);
+    }
+    // Fails if the switch off still hides a line it must not, the
+    // unknown-scale guard: what the view gives for the switch off is drawn.
+    for (const hydra::app::InkRun& line : hydra::app::scale_lines(a, false))
+        IM_CHECK(text.find(line.text) != std::string::npos);
+    // Fails if an "(eff. ...)" is drawn in a sentence or a Rating.
+    for (const std::string& s : span_texts(a)) {
+        ctx->LogInfo("figure \"%s\"", s.c_str());
+        IM_CHECK(text.find(s) == std::string::npos);
+    }
+    // Fails if hiding the figure lost, moved or cut the words around it: each
+    // sentence and each Rating is drawn whole with only its figure left out.
+    // The Rating words are the view's, so they are those of the switch on.
+    for (const hydra::app::TextLine& s : a.squeeze_sentences) {
+        const std::vector<hydra::app::InkRun> runs = hydra::app::sentence_runs(s, false);
+        ctx->LogInfo("sentence %s", describe_runs(runs).c_str());
+        IM_CHECK(runs_drawn(text, runs, false));
+    }
+    for (const hydra::app::BackendRowView& r : a.backends) {
+        const std::vector<hydra::app::InkRun> runs = hydra::app::rating_runs(r, false);
+        ctx->LogInfo("rating %s", describe_runs(runs).c_str());
+        IM_CHECK(runs_drawn(text, runs, false));
+    }
+}
+
+// With the switch on, opened activation row `a` (the view the tab drew, its
+// backend table open) draws every effective figure it holds where it belongs.
+void check_effective_on(ImGuiTestContext* ctx, Harness& h, const hydra::app::ActivationRowView& a) {
+    const std::string text = visible_text(h);
+    // Fails if an Effective line the view holds is not drawn right under its
+    // squeeze's Dynamic Hit Window line as its label, word and figure.
+    for (const std::optional<hydra::app::WindowRowView>& w : a.squeeze_windows) {
+        if (!w || !w->effective) continue;
+        const bool under = effective_line_drawn_under(text, *w);
+        ctx->LogInfo("Effective line \"%s %s\" under its window line: %d",
+                     w->effective->word.c_str(), w->effective->figure.c_str(), under);
+        IM_CHECK(under);
+    }
+    // Fails if a scale line the view gives for the switch on is not drawn.
+    for (const hydra::app::InkRun& line : hydra::app::scale_lines(a, true)) {
+        ctx->LogInfo("scale line \"%s\"", line.text.c_str());
+        IM_CHECK(text.find(line.text) != std::string::npos);
+    }
+    // Fails if a sentence or a Rating is not drawn as its runs for the switch
+    // on, in order: its "(eff. ...)" still hidden, or drawn away from its words.
+    for (const hydra::app::TextLine& s : a.squeeze_sentences) {
+        ctx->LogInfo("sentence \"%s\"", s.text.c_str());
+        IM_CHECK(runs_drawn(text, hydra::app::sentence_runs(s, true), true));
+    }
+    for (const hydra::app::BackendRowView& r : a.backends) {
+        ctx->LogInfo("rating \"%s\"", r.rating.c_str());
+        IM_CHECK(runs_drawn(text, hydra::app::rating_runs(r, true), true));
+    }
+}
+
+// With the switch on, on the path the tab shows: opens the first activation
+// whose view holds an effective figure (holds_effective_figure) and checks
+// they are all drawn (check_effective_on). Returns whether the path had one;
+// a path with none has nothing to draw.
+bool check_first_holding_drawn(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK_RETV(d != nullptr, false);
+    const std::vector<hydra::app::ActivationRowView> acts = d->activations.acts;
+    for (size_t i = 0; i < acts.size(); ++i) {
+        if (!holds_effective_figure(acts[i])) continue;
+        const hydra::app::PathsTabUi& ui = h.app->details_ui.paths_tab.ui();
+        if (i >= ui.act_open.size() || !ui.act_open[i]) {
+            const std::string row_ref = "**/##act" + std::to_string(acts[i].number);
+            ctx->ItemClick(row_ref.c_str());
+            ctx->Yield(2);
+        }
+        IM_CHECK_RETV(only_row_open(h.app->details_ui.paths_tab.ui(), i), false);
+        IM_CHECK_RETV(h.app->details_ui.paths_tab.ui().backends_open[i] != 0, false);
+        ctx->LogInfo("activation %d holds an effective figure", acts[i].number);
+        check_effective_on(ctx, h, acts[i]);
+        return true;
+    }
+    ctx->LogInfo("no activation on this path holds an effective figure");
+    return false;
+}
+
+// The Effective line (WindowRowView::effective) on screen, with the Effective
+// figures switch on. A scan at test time opens each corpus song and asks the
+// engine for a squeeze whose priced side is shown (open_first_shown_squeeze).
+// On that squeeze's activation, opened, every squeeze box's Dynamic Hit
+// Window line is followed directly by an Effective line exactly when the
+// engine's priced side is shown, and the found squeeze's line reads the
+// engine's own product (WindowEnds::frontend_effective_ms) in the frontend's
+// word. An early fill's box draws no Effective line, with the switch still
+// on: Tapped Out's activation 3 is an early fill with a window row.
+void test_paths_effective_line(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    const std::optional<ShownSqueeze> found = open_first_shown_squeeze(ctx, library_titles(h));
+    if (!found) return;
 
     // Show its path and open its activation.
-    const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
-    IM_CHECK_LT(found->button, list.buttons.size());
-    if (ctx->IsError()) return;
-    const hydra::Path* path = list.buttons[found->button].path;
-    ctx->ItemClick(path_button_ref(found->button).c_str());
-    ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path == path);
-    if (ctx->IsError()) return;
+    if (!open_shown_squeeze(ctx, *found)) return;
+    const hydra::Path* path = h.app->details_ui.selected_path;
     const hydra::ActivationWalk acts = path->walk_activations();
     const std::vector<hydra::app::ActivationRowView> view = shown_activations(*h.app).acts;
     IM_CHECK_EQ(acts.size(), view.size());
     if (ctx->IsError()) return;
     const hydra::Activation& act = acts[found->act];
     const hydra::app::ActivationRowView& av = view[found->act];
-    const std::string row_ref = "**/##act" + std::to_string(av.number);
-    ctx->ItemClick(row_ref.c_str());
-    ctx->Yield(2);
-    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), found->act));
-    if (ctx->IsError()) return;
+    // The Effective line is an effective figure: it is drawn only with the
+    // switch on.
+    if (!set_effective_switch(ctx, true)) return;
 
     // The found squeeze's view holds the engine's product in the frontend's
     // word, and its box draws it right under its Dynamic Hit Window line.
@@ -1631,8 +1962,11 @@ void test_paths_effective_line(ImGuiTestContext* ctx) {
         }
     }
 
-    // An early fill's box: Tapped Out's activation 3.
+    // An early fill's box: Tapped Out's activation 3. The switch is still on,
+    // so a missing Effective line there is the early fill having none, not
+    // the switch hiding it.
     if (!open_tapped_out(ctx)) return;
+    IM_CHECK(effective_figures_on(h));
     const std::vector<hydra::app::ActivationRowView> tapped = shown_activations(*h.app).acts;
     IM_CHECK_GE(tapped.size(), static_cast<size_t>(3));
     if (tapped.size() < 3) return;
@@ -1649,6 +1983,120 @@ void test_paths_effective_line(ImGuiTestContext* ctx) {
         IM_CHECK(!line_ends.empty());
         for (const size_t end : line_ends) IM_CHECK(!effective_label_follows(text, end));
     }
+}
+
+// The Effective figures switch, all by clicking. A fresh app starts with it
+// off. On the first corpus song with a squeeze whose priced side is shown
+// (open_first_shown_squeeze), that squeeze's activation, opened, draws none
+// of its effective figures with the switch off and every other word whole
+// (check_effective_off); a click draws them all (check_effective_on); a
+// second click hides them again. The clicks rebuild nothing. With the switch
+// on, the choice is kept on another path and on another song, and the
+// figures are drawn there. Every expected text is the view the tab drew
+// (built_details) or the view's own runs (sentence_runs, rating_runs,
+// scale_lines).
+void test_paths_effective_switch(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    // Fails if the switch starts on.
+    IM_CHECK(!effective_figures_on(h));
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    const std::vector<std::string> titles = library_titles(h);
+    const std::optional<ShownSqueeze> found = open_first_shown_squeeze(ctx, titles);
+    if (!found) return;
+    if (!open_shown_squeeze(ctx, *found)) return;
+    // Opening songs, a path and a row leaves it off.
+    IM_CHECK(!effective_figures_on(h));
+
+    const hydra::app::PathsTabCache& cache = h.app->details_ui.paths_tab;
+    const hydra::app::PathsTabCache::Details* d = cache.built_details();
+    IM_CHECK(d != nullptr && found->act < d->activations.acts.size());
+    if (ctx->IsError()) return;
+    const hydra::app::ActivationRowView av = d->activations.acts[found->act];
+    // The activation has something to hide, so the checks below cannot pass
+    // on an activation with nothing to hide: an Effective line, a scale line
+    // and an "(eff. ...)" in a sentence or a Rating. Its backend table is
+    // open, so its Ratings are drawn.
+    IM_CHECK(holds_effective_line(av));
+    IM_CHECK(!held_scale_lines(av).empty());
+    IM_CHECK(!span_texts(av).empty());
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[found->act] != 0);
+    if (ctx->IsError()) return;
+
+    check_effective_off(ctx, h, av);
+    if (ctx->IsError()) return;
+    const int builds = cache.details_builds();
+    // One click turns it on and draws every figure; a second turns it off and
+    // hides them again, the Rating words unmoved.
+    if (!click_effective_switch(ctx)) return;
+    IM_CHECK(effective_figures_on(h));
+    check_effective_on(ctx, h, av);
+    if (!click_effective_switch(ctx)) return;
+    IM_CHECK(!effective_figures_on(h));
+    check_effective_off(ctx, h, av);
+    // Fails if a click rebuilt the details: the switch only chooses what is
+    // drawn from the view already built.
+    IM_CHECK_EQ(cache.details_builds(), builds);
+    if (ctx->IsError()) return;
+
+    // On again, then another path: the switch keeps the choice.
+    if (!click_effective_switch(ctx)) return;
+    IM_CHECK_EQ(cache.details_builds(), builds);
+    {
+        const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
+        IM_CHECK_GE(list.buttons.size(), static_cast<size_t>(2));
+        if (ctx->IsError()) return;
+        const size_t other = found->button == 0 ? 1 : 0;
+        const hydra::Path* other_path = list.buttons[other].path;
+        ctx->ItemClick(path_button_ref(other).c_str());
+        ctx->Yield(2);
+        IM_CHECK(h.app->details_ui.selected_path == other_path);
+    }
+    // Fails if a path change turns the switch off.
+    IM_CHECK(effective_figures_on(h));
+    check_first_holding_drawn(ctx);
+    if (ctx->IsError()) return;
+    // Back on the found path, its figures are drawn with no click.
+    if (!open_shown_squeeze(ctx, *found)) return;
+    IM_CHECK(effective_figures_on(h));
+    {
+        const hydra::app::PathsTabCache::Details* back = cache.built_details();
+        IM_CHECK(back != nullptr && found->act < back->activations.acts.size());
+        if (ctx->IsError()) return;
+        check_effective_on(ctx, h, back->activations.acts[found->act]);
+    }
+    if (ctx->IsError()) return;
+
+    // Another song: the switch keeps the choice.
+    const auto other_title = std::find_if(titles.begin(), titles.end(),
+                                          [&](const std::string& t) { return t != found->title; });
+    IM_CHECK(other_title != titles.end());
+    if (ctx->IsError()) return;
+    open_titled(ctx, *other_title, *other_title);
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    IM_CHECK(h.app->selected && h.app->selected->title == *other_title);
+    // Fails if a song change turns the switch off.
+    IM_CHECK(effective_figures_on(h));
+    check_first_holding_drawn(ctx);
+    if (ctx->IsError()) return;
+    // Back on the found song, the found activation draws its figures with no
+    // click.
+    open_titled(ctx, found->title, found->title);
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    IM_CHECK(effective_figures_on(h));
+    if (!open_shown_squeeze(ctx, *found)) return;
+    const hydra::app::PathsTabCache::Details* again = cache.built_details();
+    IM_CHECK(again != nullptr && found->act < again->activations.acts.size());
+    if (ctx->IsError()) return;
+    IM_CHECK(holds_effective_figure(again->activations.acts[found->act]));
+    check_effective_on(ctx, h, again->activations.acts[found->act]);
 }
 
 }  // namespace
@@ -1673,6 +2121,7 @@ void register_paths_tests(Harness& h) {
         {"paths-hit-window", test_paths_hit_window},
         {"paths-hit-window-narrow", test_paths_hit_window_narrow},
         {"paths-effective-line", test_paths_effective_line},
+        {"paths-effective-switch", test_paths_effective_switch},
     };
     for (const Entry& e : entries) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
