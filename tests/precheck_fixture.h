@@ -67,4 +67,48 @@ inline std::vector<std::string> exe_item_lines(const std::string& repo, const st
     return lines;
 }
 
+// A fixture repo whose main branch holds `base`; commit_tip() commits the tip
+// on top, so the range "HEAD" is that one commit.
+struct FixtureRepo {
+    std::string dir;
+    FixtureRepo(const std::string& name, const std::map<std::string, std::string>& base)
+        : dir(testtemp::temp_dir(name)) {
+        namespace fs = std::filesystem;
+        testtemp::remove_dir(dir);
+        fs::create_directories(hydra::os_path(dir));
+        fixture_git(dir, {"init", "-q", "-b", "main"});
+        commit_texts(dir, base, "base");
+    }
+    ~FixtureRepo() { testtemp::remove_dir(dir); }
+    void commit_tip(const std::map<std::string, std::string>& tip) const { commit_texts(dir, tip, "tip"); }
+    // Deletes `rel` and commits that alone.
+    void commit_delete(const std::string& rel) const {
+        namespace fs = std::filesystem;
+        fs::remove(fs::path(hydra::os_path(dir)) / fs::u8path(rel));
+        commit_all(dir, "delete");
+    }
+};
+
+// What one run of the hydra_precheck exe printed: its stdout lines, its
+// stderr and its exit code.
+struct ExeRun {
+    std::vector<std::string> lines;
+    std::string err;
+    int code = -1;
+};
+
+// Runs the exe as `--repo <repo> <mode> <range>` (mode is "--tests" or
+// "--changed-tests").
+inline ExeRun run_exe_mode(const std::string& repo, const std::string& mode, const std::string& range) {
+    precheck::ChildProcess p({HYDRA_PRECHECK_EXE, "--repo", repo, mode, range});
+    ExeRun r;
+    std::istringstream text(p.read_all());
+    for (std::string l; std::getline(text, l);) {
+        if (!l.empty() && l.back() == '\r') l.pop_back();
+        r.lines.push_back(l);
+    }
+    r.code = p.wait(r.err);
+    return r;
+}
+
 }  // namespace precheck_fixture
