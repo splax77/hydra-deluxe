@@ -98,7 +98,7 @@ struct ExeOutput {
 };
 
 // Runs the exe with `args` after its path.
-inline ExeOutput run_exe(const std::vector<std::string>& args) {
+inline ExeOutput run_precheck_exe(const std::vector<std::string>& args) {
     std::vector<std::string> full = {HYDRA_PRECHECK_EXE};
     full.insert(full.end(), args.begin(), args.end());
     precheck::ChildProcess p(full);
@@ -119,7 +119,7 @@ struct ExeRun {
 // Runs the exe as `--repo <repo> <mode> <range>` (mode is "--tests" or
 // "--changed-tests").
 inline ExeRun run_exe_mode(const std::string& repo, const std::string& mode, const std::string& range) {
-    const ExeOutput o = run_exe({"--repo", repo, mode, range});
+    const ExeOutput o = run_precheck_exe({"--repo", repo, mode, range});
     ExeRun r;
     std::istringstream text(o.out);
     for (std::string l; std::getline(text, l);) {

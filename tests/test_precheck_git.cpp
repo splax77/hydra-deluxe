@@ -479,7 +479,7 @@ TEST_CASE("precheck: items print in kind order, then file, line and text") {
 
     // The exe prints the same, and its summary names each kind's count, the
     // range and the tip as git abbreviates it.
-    const ExeOutput r = run_exe({"--repo", source_root(), "--range", kRealRange});
+    const ExeOutput r = run_precheck_exe({"--repo", source_root(), "--range", kRealRange});
     CHECK(r.exit_code == 0);
     CHECK(r.out == once.out);
     const std::string summary = summary_line(sorted, range);
@@ -523,7 +523,7 @@ TEST_CASE("precheck: --disable takes only check numbers 1 to the number of check
     // The exe prints parse_disable's refusal on stderr and nothing else.
     Fixture fx;
     const std::string past_last = "1," + std::to_string(n + 1);
-    const ExeOutput bad = run_exe({"--repo", fx.dir, "--range", "main...feature", "--disable", past_last});
+    const ExeOutput bad = run_precheck_exe({"--repo", fx.dir, "--range", "main...feature", "--disable", past_last});
     CHECK(bad.exit_code != 0);
     const std::string refusal = disable_refusal({past_last});
     REQUIRE_FALSE(refusal.empty());
@@ -536,7 +536,7 @@ TEST_CASE("precheck: the exe prints what the library gives for a range and the w
     Repo repo(fx.dir);
     const std::string short_tip = run_git(fx.dir, {"rev-parse", "--short=7", "feature"}).at(0);
 
-    const ExeOutput r = run_exe({"--repo", fx.dir, "--range", "main...feature", "--disable", "2"});
+    const ExeOutput r = run_precheck_exe({"--repo", fx.dir, "--range", "main...feature", "--disable", "2"});
     CHECK(r.exit_code == 0);
     CHECK(r.err.empty());
     const Range range = resolve_range(repo, "main...feature", false, "");
@@ -544,7 +544,7 @@ TEST_CASE("precheck: the exe prints what the library gives for a range and the w
     CHECK(r.out.find(std::string("\n") + kSizePrefix) != std::string::npos);
     CHECK(hydra::ends_with(r.out, " " + short_tip + "\n"));
 
-    const ExeOutput whole = run_exe({"--repo", fx.dir, "--whole-tree", "feature"});
+    const ExeOutput whole = run_precheck_exe({"--repo", fx.dir, "--whole-tree", "feature"});
     CHECK(whole.exit_code == 0);
     const Range whole_range = resolve_range(repo, "feature", true, "");
     CHECK(whole.out == library_run(repo, whole_range, {}, 1).out);
@@ -556,7 +556,7 @@ TEST_CASE("precheck: the exe prints what the library gives for a range and the w
 }
 
 TEST_CASE("precheck: --list-checks prints each check's number and name") {
-    const ExeOutput list = run_exe({"--list-checks"});
+    const ExeOutput list = run_precheck_exe({"--list-checks"});
     CHECK(list.exit_code == 0);
     std::string expected;
     for (size_t i = 0; i < kChecks.size(); ++i) expected += std::to_string(i + 1) + " " + kChecks[i].name + "\n";
@@ -572,7 +572,7 @@ TEST_CASE("precheck: the exe refuses a folder outside any git repository") {
         refusal = e.what();
     }
     REQUIRE_FALSE(refusal.empty());
-    const ExeOutput no_repo = run_exe({"--repo", plain});
+    const ExeOutput no_repo = run_precheck_exe({"--repo", plain});
     CHECK(no_repo.exit_code != 0);
     CHECK(no_repo.err == refusal + "\n");
     testtemp::remove_dir(plain);
@@ -603,7 +603,7 @@ TEST_CASE("precheck: --code-mask blanks comments and string text and keeps every
 
     const std::string dir = testtemp::temp_dir("precheck_code_mask");
     write_fixture_file(dir,"x.cpp", src);
-    const ExeOutput r = run_exe({"--code-mask", dir + "\\x.cpp"});
+    const ExeOutput r = run_precheck_exe({"--code-mask", dir + "\\x.cpp"});
     CHECK(r.exit_code == 0);
     CHECK(r.out == want);
     testtemp::remove_dir(dir);
