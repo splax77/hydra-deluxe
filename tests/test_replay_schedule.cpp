@@ -209,15 +209,15 @@ TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
             CHECK(q[k]["end_tick"] == (end ? json(*end) : json(nullptr)));
             CHECK(q[k]["anchor_tick"] == (anchor ? json(*anchor) : json(nullptr)));
             CHECK(q[k]["chord_tick"] == (chord ? json(*chord) : json(nullptr)));
-            const bool is_in = act.sqinouts[k].kind == SqueezeKind::SqIn;
-            const std::optional<TransferScale>& stored = is_in ? act.sqinouts[k].transfer : act.transfer_post;
+            const std::optional<TransferScale>& stored = stored_scale(act, k);
             if (stored) {
                 CHECK(q[k]["ratio"]["early"].get<double>() == stored->early);
                 CHECK(q[k]["ratio"]["late"].get<double>() == stored->late);
             } else {
                 CHECK(q[k]["ratio"]["early"].is_null());
                 CHECK(q[k]["ratio"]["late"].is_null());
-                const std::string field = is_in ? "SPSqueeze::transfer" : "Activation::transfer_post";
+                const std::string field =
+                    &stored == &act.transfer_post ? "Activation::transfer_post" : "SPSqueeze::transfer";
                 CHECK(std::any_of(refusals.begin(), refusals.end(),
                                   [&](const std::string& r) { return r.find(field) != std::string::npos; }));
             }
@@ -226,6 +226,53 @@ TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
     // The ends_sp test below meets early squeeze-outs on this same corpus, so
     // the sweep holds squeezes; none read means the walk lost them.
     CHECK(squeezes > 0);
+}
+
+TEST_CASE("schedule: a squeeze's ratio and anchor press are the owner's") {
+    // On every corpus path: each squeeze's written ratio is stored_scale's, and
+    // each timed squeeze's anchor is pressed on squeeze_multiplier's side, the
+    // side the badge's safe sum is priced on (core/squeeze_rating).
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int ratios = 0;
+    int presses = 0;
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song&, const std::vector<const Activation*>& acts,
+                                      const PathReplay&, const json& sch) {
+        const json& list = sch["activations"];
+        REQUIRE(list.size() == acts.size());
+        for (size_t a = 0; a < acts.size(); ++a) {
+            const Activation& act = *acts[a];
+            INFO(path << ": the activation at tick " << act.timecode.ticks());
+            REQUIRE(list[a]["squeezes"].size() == act.sqinouts.size());
+            for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+                INFO("squeeze " << k);
+                const json& q = list[a]["squeezes"][k];
+                const std::optional<TransferScale>& stored = stored_scale(act, k);
+                const std::optional<PricedScale> priced = squeeze_multiplier(act, k);
+                CHECK(priced.has_value() == stored.has_value());
+                if (stored) {
+                    ++ratios;
+                    CHECK(q["ratio"]["early"].get<double>() == stored->early);
+                    CHECK(q["ratio"]["late"].get<double>() == stored->late);
+                } else {
+                    CHECK(q["ratio"]["early"].is_null());
+                    CHECK(q["ratio"]["late"].is_null());
+                }
+                if (!q.contains("anchor_aim_ms")) continue;  // not timed: no anchor press
+                REQUIRE(priced.has_value());
+                ++presses;
+                // split_at_lead writes the anchor's aim as its lead, negative
+                // when the anchor is pressed early. A lead is never below zero
+                // (anchor_lead_ms refuses one), so the sign bit carries the
+                // press even at a lead of zero.
+                const Press written = std::signbit(q["anchor_aim_ms"].get<double>()) ? Press::Early : Press::Late;
+                CHECK(written == priced->press);
+            }
+        }
+    });
+    // A corpus with no stored scale or no timed squeeze would pass every
+    // check above whatever the tool read.
+    CHECK(ratios > 0);
+    CHECK(presses > 0);
 }
 
 TEST_CASE("schedule: paid_by matches in_sp on every corpus path") {
