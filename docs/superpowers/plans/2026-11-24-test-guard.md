@@ -185,7 +185,7 @@ Acceptance criteria:
 
 No one has measured a gate run. The only figures are from the one full run, and they come from a session card, which is a pointer and not a source (premise P17). So this plan gives no per-change cost.
 
-M1 is the main session's step, after the gate phase lands and after question 1 is answered. It runs the gate once on the scans phase's own new tests (S1's and S2's cases), and reports to the user: the mutation build's wall time, the mapping run's wall time, the number of bugs reached, and the bug runs' wall time. Each figure is read from the build record and the run folder's `summary.json`. The stop condition is one run: it ends when the run folder's `summary.json` exists, or when the user says stop, and M1 then reports how far it got. M1's mutation build is handed a pass like any other build: the build gate does not refuse it, and `build_rules.py` in `C:\Users\Patrick\.claude\gates\` owns that rule.
+M1 is the main session's step, after the gate phase lands. It runs the gate once on the scans phase's own new tests (S1's and S2's cases), and reports to the user: the mutation build's wall time, the mapping run's wall time, the number of bugs reached, and the bug runs' wall time. Each figure is read from the build's own printed output and the run folder's `summary.json`. The stop condition is one run: it ends when the run folder's `summary.json` exists, or when the user says stop, and M1 then reports how far it got. M1's mutation build is handed a pass like any other build: the build gate does not refuse it, and `build_rules.py` in `C:\Users\Patrick\.claude\gates\` owns that rule.
 
 Acceptance criteria:
 
@@ -202,6 +202,8 @@ Acceptance criteria:
 ## Questions for the user
 
 **Question 1. May a phase compile a second time for the mutation gate?**
+
+No longer open. The gate this question was about was scrapped on 2026-11-24, and the build gate that replaced it never refuses a mutation build (`build_rules.py` in `C:\Users\Patrick\.claude\gates\` owns that rule). The text below is kept as it was asked.
 
 The real rule today, in your words from 2026-11-07, filed under Confirmed in `docs/agents/rulings/agents-and-workflow.md`: "i want a limit of three builds at once, strictly enforced. agents are never allowed to start their own builds, only the main session, with a limit of one build per session." The build gate applies that per plan phase: one build, plus one rebuild only after a new reviewed commit. It counts every recorded build of the phase's branch and does not look at which preset was built (`C:\Users\Patrick\.claude\gates\plan_run_judge.py`, lines 110 to 123 and 182 to 192).
 
