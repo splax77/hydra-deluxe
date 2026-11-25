@@ -128,7 +128,7 @@ there is none. The command looks like this, with the main checkout as
 `<checkout>`:
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; <checkout>\tools\build_slot.ps1 -Repo <folder> -Preset <preset> -Target <targets>
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset <preset> -Target <targets>
 ```
 
 Run it as printed. It runs the main checkout's `tools\build_slot.ps1`, which
@@ -136,8 +136,9 @@ claims the pass, runs the folder's own `build_cpp.ps1`, and records the result.
 It refuses a folder or target other than the pass's before it builds, and
 `build_cpp.ps1` refuses a preset other than the pass's. Another preset needs
 its own pass that names it: the installer's `installer\build_installer.ps1`
-builds the `ship` preset, so it needs a pass asked for with `preset` set to
-`ship`. A session holds one pass at a time. The slot is given back whether the
+builds the `ship` preset with no target, so it needs a pass asked for with
+`preset` set to `ship`. The call still wants `repo` and a `target`; the
+installer's own claim is not held to them, and it writes no build record. A session holds one pass at a time. The slot is given back whether the
 build passed or failed. Without a pass the build stops before configure. A
 pass nobody claims runs out, and a slot whose owner died frees itself;
 `tools\build_slot.ps1` owns those limits.
@@ -667,7 +668,7 @@ with `preset` set to `mutation`, `repo` set to the folder the copies were
 written in and `target` set to `hydra_tests`. Run the command the pass prints:
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; <checkout>\tools\build_slot.ps1 -Repo <folder> -Preset mutation -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset mutation -Target hydra_tests
 ```
 
 That builds into `build-mutation\`. The `HYDRA_MUTATION` block in
@@ -779,7 +780,7 @@ Third, ask `hydra_build_pass` for a pass with `preset` set to `mutation`,
 the command it prints.
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; <checkout>\tools\build_slot.ps1 -Repo <folder> -Preset mutation -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; & '<checkout>\tools\build_slot.ps1' -Repo '<folder>' -Preset mutation -Target hydra_tests
 ```
 
 Fourth, run the mapping run and the bug runs on those test files only.

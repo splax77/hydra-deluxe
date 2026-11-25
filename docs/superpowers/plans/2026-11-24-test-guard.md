@@ -70,7 +70,7 @@ Repo: C:\Users\Patrick\Downloads\Hydra\hydra-test
 | G2 | `claude/test-guard-gate` | gate | `tools/mutate/gate.py`, `tools/mutate/test_gate.py` |
 | G3 | `claude/test-guard-gate-docs` | gate | `docs/development.md`, `docs/agents/derive-once-review.md` |
 
-The docs phase lands first and costs no build. The scans phase costs one build. The gate phase changes only Python tools and two docs pages, so it needs no compile and has a build count of 0 (`docs/agents/plan-runs.md`: 0 is for a phase that needs no compiling). Whether the gate may then be used on C++ tests depends on question 1.
+The docs phase lands first and costs no build. The scans phase costs one build. The gate phase changes only Python tools and two docs pages, so it needs no compile and has a build count of 0 (`docs/agents/plan-runs.md`: 0 is for a phase that needs no compiling). The mutation build is asked for like any other build, and the build gate never refuses it (see question 1).
 
 ### T1: The rubric names every fault kind
 
@@ -173,7 +173,7 @@ Acceptance criteria:
 
 `docs/development.md`, "Mutation testing", gets a short part on the gate: the commands, in order, and that every step is the main session's. `docs/agents/derive-once-review.md`, "For the orchestrator", gets one step after the phase's tests: run the gate on the phase's new and changed tests. A refused test is a failed test. It goes with every other failure to the one fresh executor, and the fresh fix reviewer is given the gate's output for that test (premise P8).
 
-G3 writes the build step exactly as the user answers question 1. Until that answer exists, G3 is not dispatched. Waits for: question 1.
+G3 writes the build step as: the main session asks `hydra_build_pass` for a pass with `preset` set to `mutation`, as for any build, and the build gate does not refuse it (`build_rules.py` in `C:\Users\Patrick\.claude\gates\` owns that rule). Waits for: nothing.
 
 Acceptance criteria:
 
@@ -255,7 +255,7 @@ I have no measured build time to put beside either choice. M1 measures it.
 | The gate's own tests use no hand-typed run folder | G2, criterion 1; Global constraints | G2 | Reviewer reads `test_gate.py`'s setup |
 | A refusal is handled as a test failure, by the main session | G3, criterion 1 | G3 | Reviewer reads the orchestrator step |
 | No cost figure without a source | G3, criterion 1; M1 | M1 | M1's report names the file behind each figure |
-| The gate's build step follows the user's answer | G3, "Waits for" | G3 | G3's brief quotes the answer to question 1 |
+| The gate's build step is an ordinary build pass | G3 | G3 | Reviewer reads the build step for a typed line or a wait |
 
 ## Premise map
 
