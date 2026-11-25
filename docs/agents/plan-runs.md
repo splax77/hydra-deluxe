@@ -65,13 +65,31 @@ The run records each task's owned files. When `--open` finds that another open r
 
 ## The build and the move of `main`
 
-Each task branch goes to its reviewer uncompiled. When every task branch of the phase is reviewed and merged onto the plan branch, and every gated file on it is signed, the main session asks `hydra_build_pass` for the phase's one pass. It builds once, with every target the tests need, and runs the tests (`docs/agents/derive-once-review.md`, "For the orchestrator", gives the order). A phase with build count 0 gets no pass.
+Each task branch goes to its reviewer uncompiled. When every task branch of the phase is reviewed and merged onto the plan branch, and every gated file on it is signed, the main session asks `hydra_build_pass` for the phase's one pass, with `preset` set to the preset it will build, such as `default`. It builds once, with every target the tests need, and runs the tests (`docs/agents/derive-once-review.md`, "For the orchestrator", gives the order). A phase with build count 0 gets no pass.
 
-If the build or a test fails, the main session reads every error, runs every test the binaries can still run, and sends all of it to one fresh executor on the plan branch. A fresh reviewer reads only that fix, and the main session builds once more. That second build is given only when the plan branch has gained a new signed commit since the first. If it fails too, the main session stops and tells the user; the gate never gives a third.
+If the build or a test fails, the main session reads every error, runs every test the binaries can still run, and sends all of it to one fresh executor on the plan branch. A fresh reviewer reads only that fix, and the main session builds once more. That second build is given only when the plan branch has gained a new signed commit since the first. If it fails too, the main session stops and tells the user; the gate never gives a third normal build. A normal build is any build of a preset other than `mutation`, and the extra mutation build below is never that third.
 
 `main` then takes the phase once: either the plan branch's tip itself, or git's own clean merge of `main` and that tip. For a phase that builds, the build of that tip must have passed on a clean tree. If `main` moved after the build and git cannot merge cleanly, merge `main` into the plan branch and resolve the conflict by hand. That resolution is a new commit, so it gets its review, and the phase's second build covers it.
 
 These checks apply only to a move of `main` that gains gated code, and only in a repo whose `main` holds a `.plan-run-gate` file. A session card, a plan or a ruling lands on `main` as before.
+
+### Every pass names its preset
+
+A preset is the named build setup in `CMakePresets.json`, such as `default`, `ship` or `mutation`. Every call to `hydra_build_pass` names one, and there is no default. A call with no preset is refused, whoever makes it, and that includes a session using a typed `allow build`. The pass is then good for that preset only: `build_cpp.ps1` refuses to build any other with it. The two words must match letter for letter, so `Mutation` is not `mutation`.
+
+A session started before this rule landed still has the old `hydra_build_pass`, which cannot name a preset. It is refused a pass until it restarts.
+
+### The extra mutation build
+
+On 2026-11-24 the user was asked "May a phase compile a second time for the mutation gate?" and chose "Allow it", whose text was "One extra mutation-only build per phase that touches a C++ test." That answer was given in a question box in session `b885c6f8`. It is a session record, not a filed ruling.
+
+So a phase that changed at least one C++ test file may take one more build, of the `mutation` preset only. It is given at the plan branch's tip, and only once a normal build of that same tip has passed on a clean tree. `plan_run_judge.py` in the hooks owns the full rule; the refusal names the condition that failed.
+
+The main session asks for it last, after the phase's tests pass. There is one per phase, not one per commit. If it is taken early and a later fix changes the tests, no second one is given.
+
+The extra build stands outside the phase's count. Normal builds are counted alone: a mutation build never counts as the phase's build or its rebuild, and never gives one back. A phase whose first build and rebuild both failed is still refused a third normal build, whether or not a mutation build is in the record.
+
+This holds on a plan branch whose tip has the `.build-pass-preset` file at the repo root. That file says the branch's build scripts tie a pass to its preset, and every branch cut from `main` after this rule landed has it. An older branch gets no mutation pass, and its builds are counted as before, every preset alike.
 
 ## The lines the user types
 
