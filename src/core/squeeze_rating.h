@@ -237,9 +237,6 @@ struct ActivationRating {
     // anything on an activation with unknown scales, reads nothing.
     SidesRead post_read;
     std::vector<SidesRead> sqins_read;
-    // True when a multiplier that isn't 1 governs at least one row or SqIn
-    // on this activation: the scale line turns orange.
-    bool scale_governs = false;
     // True when the SP cap clamped this activation's window AND the frontend
     // decides at least one of its squeezes: any SqIn/SqOut, or any row
     // is_frontend_decided accepts. Drives the overfill warning.
