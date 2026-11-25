@@ -89,6 +89,25 @@ struct FixtureRepo {
     }
 };
 
+// What one run of the hydra_precheck exe printed, as raw text: its stdout,
+// its stderr and its exit code.
+struct ExeOutput {
+    int exit_code = -1;
+    std::string out;
+    std::string err;
+};
+
+// Runs the exe with `args` after its path.
+inline ExeOutput run_exe(const std::vector<std::string>& args) {
+    std::vector<std::string> full = {HYDRA_PRECHECK_EXE};
+    full.insert(full.end(), args.begin(), args.end());
+    precheck::ChildProcess p(full);
+    ExeOutput r;
+    r.out = p.read_all();
+    r.exit_code = p.wait(r.err);
+    return r;
+}
+
 // What one run of the hydra_precheck exe printed: its stdout lines, its
 // stderr and its exit code.
 struct ExeRun {
@@ -100,14 +119,15 @@ struct ExeRun {
 // Runs the exe as `--repo <repo> <mode> <range>` (mode is "--tests" or
 // "--changed-tests").
 inline ExeRun run_exe_mode(const std::string& repo, const std::string& mode, const std::string& range) {
-    precheck::ChildProcess p({HYDRA_PRECHECK_EXE, "--repo", repo, mode, range});
+    const ExeOutput o = run_exe({"--repo", repo, mode, range});
     ExeRun r;
-    std::istringstream text(p.read_all());
+    std::istringstream text(o.out);
     for (std::string l; std::getline(text, l);) {
         if (!l.empty() && l.back() == '\r') l.pop_back();
         r.lines.push_back(l);
     }
-    r.code = p.wait(r.err);
+    r.err = o.err;
+    r.code = o.exit_code;
     return r;
 }
 
