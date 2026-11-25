@@ -141,10 +141,6 @@ itself; `tools\build_slot.ps1` owns those limits.
 `tools\build_slot.ps1 -Repo <worktree> -Preset <preset>` builds another
 worktree under the pass the caller already holds, with the pass's preset.
 
-`build_cpp.ps1` records each build it starts, with its commit and whether it
-passed or failed, in `builds.jsonl` in the repo's git common folder;
-`tools\build_record.ps1` owns that record.
-
 A build folder remembers the Visual Studio install and the compiler, linker
 and librarian it was first set up with. A Visual Studio update can remove that
 compiler version or move the install to a new version. CMake then refuses to
