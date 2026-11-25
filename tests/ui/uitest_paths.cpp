@@ -1546,9 +1546,13 @@ void test_paths_effective_line(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     std::vector<std::string> titles;
-    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
-        titles.push_back(h.app->library_row_at(i).title);
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i) {
+        const std::string& title = h.app->library_row_at(i).title;
+        if (std::find(titles.begin(), titles.end(), title) == titles.end()) titles.push_back(title);
+    }
 
+    // Each song is opened by searching its title; the scan stops at the first
+    // song with a shown squeeze.
     std::optional<ShownSqueeze> found;
     for (const std::string& title : titles) {
         open_titled(ctx, title, title);
@@ -1560,7 +1564,7 @@ void test_paths_effective_line(ImGuiTestContext* ctx) {
     }
     if (!found) {
         IM_ERRORF("none of the %zu corpus songs has a squeeze whose priced side is shown "
-                  "(PricedScale::shown()) on any path; the plan's P21 does not hold",
+                  "(PricedScale::shown()) on any path, so there is no scaled squeeze to check",
                   titles.size());
         return;
     }
