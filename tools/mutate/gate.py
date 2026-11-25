@@ -212,7 +212,16 @@ def gate_cpp(run_dir: Path, mutants: Path, repo: Path, rng: str, files: list[str
     r = report.build_report(run_dir, mutants)
     m = r["map"]
     uncounted_bugs = set(r["lists"]["incomplete"]) | set(r["not_run"])
-    tests = [(tid, _in_checkout(m["tests"][tid]["file"], repo), m["tests"][tid]["line"]) for tid in m["order"]]
+    tests = []
+    for tid in m["order"]:
+        try:
+            where = _in_checkout(m["tests"][tid]["file"], repo)
+        except GateError:
+            where = m["tests"][tid]["file"].replace("\\", "/")  # outside the checkout: no given file can match it
+        tests.append((tid, where, m["tests"][tid]["line"]))
+    if tests and not any(not os.path.isabs(t[1]) for t in tests):
+        raise GateError(f"gate.py: no test of {run_dir} lies in the checkout {repo}; the run was built from another "
+                        "checkout, so name that one with --repo")
     wanted = [_in_checkout(f, repo) for f in files]
     in_run = {f for _, f, _ in tests}
     added = added_lines(repo, rng, wanted)

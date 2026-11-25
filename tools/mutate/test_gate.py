@@ -197,6 +197,56 @@ class AddedLines(unittest.TestCase):
         self.assertEqual(added, {"a.txt": {2, 5}, "b.txt": {1}})
 
 
+CPP_SOURCE = ("#include \"doctest.h\"\n"
+              "\n"
+              "TEST_CASE(\"first\") {\n"
+              "    CHECK(1 == 1);\n"
+              "}\n"
+              "\n"
+              "TEST_CASE(\"second\") {\n"
+              "    CHECK(2 == 2);\n"
+              "}\n")
+
+
+class ChangedCppTests(unittest.TestCase):
+    """changed_cpp_tests on a real `git diff -U0`; it needs no run folder."""
+
+    def _tests(self, text):
+        """The tests of a source file as (id, file, line), found by reading its TEST_CASE lines."""
+        return [(f"t.cpp:{i} {line.split(chr(34))[1]}", "t.cpp", i)
+                for i, line in enumerate(text.split("\n"), 1) if line.startswith("TEST_CASE(")]
+
+    def _picked(self, before, after):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            _new_repo(repo)
+            base = _commit(repo, {"t.cpp": before}, "base")
+            head = _commit(repo, {"t.cpp": after}, "change")
+            added = gate.added_lines(repo, f"{base}..{head}", ["t.cpp"])
+        return gate.changed_cpp_tests(self._tests(after), added)
+
+    def test_a_line_added_inside_one_test_picks_that_test(self):
+        after = CPP_SOURCE.replace("    CHECK(2 == 2);\n", "    CHECK(2 == 2);\n    CHECK(3 == 3);\n")
+        self.assertEqual(self._picked(CPP_SOURCE, after), ["t.cpp:7 second"])
+
+    def test_a_line_added_inside_the_first_test_does_not_pick_the_next(self):
+        after = CPP_SOURCE.replace("    CHECK(1 == 1);\n", "    CHECK(1 == 1);\n    CHECK(0 == 0);\n")
+        self.assertEqual(self._picked(CPP_SOURCE, after), ["t.cpp:3 first"])
+
+    def test_a_line_above_the_first_test_picks_none(self):
+        after = CPP_SOURCE.replace("\nTEST_CASE(\"first\")", "// a note\nTEST_CASE(\"first\")", 1)
+        self.assertEqual(self._picked(CPP_SOURCE, after), [])
+
+    def test_a_new_test_is_picked(self):
+        after = CPP_SOURCE + "TEST_CASE(\"third\") {\n    CHECK(3 == 3);\n}\n"
+        self.assertEqual(self._picked(CPP_SOURCE, after), ["t.cpp:10 third"])
+
+    def test_a_change_that_only_deletes_lines_picks_none(self):
+        # The plan counts added lines, so a test weakened by deleting a check is not judged.
+        after = CPP_SOURCE.replace("    CHECK(2 == 2);\n", "")
+        self.assertEqual(self._picked(CPP_SOURCE, after), [])
+
+
 def _source_lines(path):
     return path.read_text(encoding="utf-8").split("\n")
 
