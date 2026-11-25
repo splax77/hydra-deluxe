@@ -185,7 +185,7 @@ Acceptance criteria:
 
 No one has measured a gate run. The only figures are from the one full run, and they come from a session card, which is a pointer and not a source (premise P17). So this plan gives no per-change cost.
 
-M1 is the main session's step, after the gate phase lands and after question 1 is answered. It runs the gate once on the scans phase's own new tests (S1's and S2's cases), and reports to the user: the mutation build's wall time, the mapping run's wall time, the number of bugs reached, and the bug runs' wall time. Each figure is read from the build record and the run folder's `summary.json`. The stop condition is one run: it ends when the run folder's `summary.json` exists, or when the user says stop, and M1 then reports how far it got. M1's mutation build is a build the build gate counts, so it goes ahead only under the user's answer to question 1 or a typed `allow build`.
+M1 is the main session's step, after the gate phase lands and after question 1 is answered. It runs the gate once on the scans phase's own new tests (S1's and S2's cases), and reports to the user: the mutation build's wall time, the mapping run's wall time, the number of bugs reached, and the bug runs' wall time. Each figure is read from the build record and the run folder's `summary.json`. The stop condition is one run: it ends when the run folder's `summary.json` exists, or when the user says stop, and M1 then reports how far it got. M1's mutation build is handed a pass like any other build: the build gate does not refuse it, and `build_rules.py` in `C:\Users\Patrick\.claude\gates\` owns that rule.
 
 Acceptance criteria:
 
