@@ -977,7 +977,7 @@ def build_server():
         None has a default, and the pass builds those only. It never waits:
         the reply is the pass and the command to build with, or a refusal
         saying why. tools/build_slot.ps1 owns the slot and pass rules, and the
-        hooks' C:SERSPATRICK.CLAUDEGATESBUILD_RULES.PY OWNS when a build is not needed."""
+        hooks' C:/Users/Patrick/.claude/gates/build_rules.py owns when a build is not needed."""
         return build_pass(preset, repo, target)
 
     return server
