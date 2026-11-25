@@ -5,11 +5,21 @@ the mutation build folder, and the main session builds hydra_tests from them
 with the mutation preset. This script then drives that one build:
 
     py -I tools/mutate/run.py [--build build-mutation] [--processes N] [--out <run folder>]
+                              [--test-files FILE [FILE ...]]
+
+--test-files limits the whole run to the named test files. Each is the path
+doctest registered for the file, the one its console output prints before
+each test's line number (for example tests\\test_run_guard.cpp). The
+mapping run and every bug run then take only those files (run_args builds
+each run's arguments), and a bug's verdict follows the same rules as in a
+run of every file.
 
 1. The mapping run. hydra_tests.exe runs once with HYDRA_MUTANT unset, so
    every switch is off, with HYDRA_MUTANT_OUT naming a result file, and
    with doctest's --duration=true, so its console output gives each test's
-   own time (parse_durations). The listener (listener.cpp, whose header is
+   own time (parse_durations). With --test-files it also takes the filter
+   naming them, and a named file it recorded no test from stops the run
+   (check_test_files). The listener (listener.cpp, whose header is
    the file format's one home) writes which switches each test reached. A
    test that fails here is "red with no bug": its verdict is left out of
    every bug run.
@@ -17,7 +27,8 @@ with the mutation preset. This script then drives that one build:
    hydra_tests.exe starts with HYDRA_MUTANT=<switch> and a doctest source-file
    filter naming only the test files that hold a reaching test (filter_arg).
    A switch noted outside any test, such as in static start-up, is set before
-   any test begins, so its run takes every test file. --processes runs that
+   any test begins, so its run takes every test file the whole run takes:
+   every file, or the --test-files ones (files_for). --processes runs that
    many side by side; the default is the machine's physical core count, read
    at run time. Each run has the time limit test_timeout_seconds gives for
    its own clean time (clean_seconds), and its verdict is the bug's: a bug
@@ -45,7 +56,8 @@ What it writes, in the run folder (default <build>/runs/<date-time>):
     map.json              the parsed map: each test, its verdict, its own
                           seconds, the switches it reached, the switches
                           noted outside any test, the run's seconds and
-                          exit code
+                          exit code, and "test_files" when --test-files
+                          was given (stored_test_files reads it back)
     red_with_no_bug.txt   the tests that failed in the mapping run
     bugs/<n>.out, .log    each bug run's listener file and console output
     bugs/<n>.json         each bug's result (bug_result says the fields)
@@ -278,14 +290,18 @@ def reached_switches(m: dict) -> list[int]:
     return sorted(set(m["reach"]) | set(m["outside"]))
 
 
-def files_for(n: int, m: dict) -> Optional[list[str]]:
+def files_for(n: int, m: dict, test_files: Optional[list[str]] = None) -> Optional[list[str]]:
     """The test files a run of switch n takes, or None for every test file.
 
-    A switch noted outside any test is set before any test starts, so no one
-    test file can be named for it.
+    `test_files` is --test-files, or None when it was not given. A switch
+    noted outside any test is set before any test starts, so no one test
+    file can be named for it: its run takes every file the whole run takes,
+    which is `test_files` when given. A switch tests reach takes the files
+    of those tests; with --test-files the map holds tests from the named
+    files only (check_test_files), so those files are among them.
     """
     if n in m["outside"]:
-        return None
+        return None if test_files is None else sorted(set(test_files))
     return sorted({m["tests"][tid]["file"] for tid in m["reach"].get(n, [])})
 
 
@@ -309,6 +325,42 @@ def filter_arg(files: Optional[list[str]]) -> list[str]:
             raise RunError(f"run.py: the test file {f} holds a doctest wildcard, so no filter names it alone")
         parts.append(f.replace("\\", "\\\\").replace(",", "\\,"))
     return ["-sf=" + ",".join(parts)]
+
+
+def check_test_files(test_files: Optional[list[str]], m: dict) -> None:
+    """Stops when the mapping run's tests do not match --test-files.
+
+    A named file the mapping run recorded no test from is most likely a path
+    other than the one doctest registered, and the run would judge nothing
+    in it. A test recorded from a file not named means the filter did not
+    do what files_for counts on.
+    """
+    if test_files is None:
+        return
+    named = set(test_files)
+    recorded = {m["tests"][tid]["file"] for tid in m["order"]}
+    empty = sorted(named - recorded)
+    if empty:
+        raise RunError(f"run.py: the mapping run recorded no test from {empty}; give each file as the "
+                       "path doctest registered for it, as a test header in map.log "
+                       "prints it")
+    unnamed = sorted(recorded - named)
+    if unnamed:
+        raise RunError(f"run.py: the mapping run recorded tests from {unnamed}, which --test-files does "
+                       "not name")
+
+
+def run_args(n: Optional[int], m: Optional[dict], test_files: Optional[list[str]]) -> list[str]:
+    """The doctest arguments of one hydra_tests run: the mapping run when n is None, else switch n's bug run.
+
+    `test_files` is --test-files, or None when it was not given. The
+    mapping run takes DURATION_ARG, then filter_arg of `test_files` when
+    given. A bug run takes filter_arg of files_for, with `m` the mapping
+    run's map.
+    """
+    if n is None:
+        return [DURATION_ARG] + filter_arg(None if test_files is None else sorted(set(test_files)))
+    return filter_arg(files_for(n, m, test_files))
 
 
 def expected_tests(files: Optional[list[str]], m: dict) -> list[str]:
@@ -663,16 +715,17 @@ def result_from_files(n: int, m: dict, files: Optional[list[str]], out_file: Pat
     return bug_result(n, m, files, parsed, exit_code, seconds, timed_out, log, parse_error)
 
 
-def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, clean: float) -> dict:
+def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, clean: float,
+            test_files: Optional[list[str]] = None) -> dict:
     """The bug's run on the test files that hold a reaching test (files_for).
 
     `clean` is those files' clean time (clean_seconds); the run's limit is
-    test_timeout_seconds of it.
+    test_timeout_seconds of it. `test_files` is --test-files, or None.
     """
-    files = files_for(n, m)
+    files = files_for(n, m, test_files)
     limit = test_timeout_seconds(clean)
     out_file, log_file = bugs_dir / f"{n}.out", bugs_dir / f"{n}.log"
-    code, seconds, timed_out = run_tests(exe, filter_arg(files), out_file, log_file, cwd, n, limit)
+    code, seconds, timed_out = run_tests(exe, run_args(n, m, test_files), out_file, log_file, cwd, n, limit)
     result = result_from_files(n, m, files, out_file, log_file, code, seconds, timed_out)
     result["clean_seconds"] = round(clean, 3)
     result["time_limit_seconds"] = round(limit, 3)
@@ -743,6 +796,19 @@ def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, process
     }
 
 
+def stored_test_files(run_dir: Path) -> Optional[list[str]]:
+    """The --test-files a run folder's run was given, read from its map.json, or None.
+
+    _run writes "test_files" into map.json only when --test-files was given,
+    so a map.json without it was a run of every file. So was a run folder
+    with no map.json: its mapping run stopped before any bug ran.
+    """
+    path = run_dir / "map.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8")).get("test_files")
+
+
 def rescore(run_dir: Path, listing: dict) -> list[dict]:
     """Score a run folder again with this run.py, from the files the run left.
 
@@ -762,13 +828,14 @@ def rescore(run_dir: Path, listing: dict) -> list[dict]:
     if parsed is None:
         raise RunError(f"run.py: no {run_dir / 'map.out'}; {run_dir} is not a run folder")
     m = build_map(parsed, listing)
+    test_files = stored_test_files(run_dir)
     bugs_dir = run_dir / "bugs"
     olds = []
     for path in bugs_dir.glob("*.json"):
         old = json.loads(path.read_text(encoding="utf-8"))
         if path.stem != str(old["number"]):
             raise RunError(f"run.py: {path} holds bug {old['number']}")
-        files = files_for(old["number"], m)
+        files = files_for(old["number"], m, test_files)
         if files != old["files"]:
             raise RunError(f"run.py: bug {old['number']} was run on {old['files']}, but the map now gives "
                            f"{files}; its run cannot be scored again")
@@ -822,6 +889,7 @@ def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int)
     if parsed is None:
         raise RunError(f"run.py: {map_out} holds no result; {run_dir} is not a run folder")
     m = build_map(parsed, listing)
+    test_files = stored_test_files(run_dir)
     stored = json.loads(map_json.read_text(encoding="utf-8"))
     durations = {t["id"]: t["seconds"] for t in stored["tests"] if "seconds" in t}
     add_test_seconds(m, durations)
@@ -836,18 +904,19 @@ def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int)
             raise RunError(f"run.py: {path} is not readable json ({e}); delete it to run that bug again") from e
         if path.stem != str(old["number"]):
             raise RunError(f"run.py: {path} holds bug {old['number']}")
-        if files_for(old["number"], m) != old["files"]:
+        if files_for(old["number"], m, test_files) != old["files"]:
             raise RunError(f"run.py: bug {old['number']} was run on {old['files']}, but the map now gives "
-                           f"{files_for(old['number'], m)}; the run cannot be finished")
+                           f"{files_for(old['number'], m, test_files)}; the run cannot be finished")
         kept[old["number"]] = old
     left = [n for n in reached_switches(m) if n not in kept]
-    cleans = {n: clean_seconds(files_for(n, m), m, map_seconds) for n in reached_switches(m)}
+    cleans = {n: clean_seconds(files_for(n, m, test_files), m, map_seconds) for n in reached_switches(m)}
     limits = [test_timeout_seconds(c) for c in cleans.values()]
     print(f"run.py: resuming {run_dir}: {len(kept)} bug runs kept, {len(left)} to run, {processes} side by side")
     results = list(kept.values())
     t0 = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=processes) as pool:
-        futures = [pool.submit(run_bug, n, m, exe, bugs_dir, build.parent, cleans[n]) for n in left]
+        futures = [pool.submit(run_bug, n, m, exe, bugs_dir, build.parent, cleans[n], test_files)
+                   for n in left]
         for f in concurrent.futures.as_completed(futures):
             results.append(f.result())
     wall = time.perf_counter() - t0
@@ -875,10 +944,14 @@ def main(argv=None) -> int:
     ap.add_argument("--resume", type=Path, default=None, metavar="RUN_FOLDER",
                     help="finish a stopped run folder: run only the bugs with no result yet, with its own "
                          "mapping run (resume says how)")
+    ap.add_argument("--test-files", nargs="+", default=None, metavar="FILE",
+                    help="run only these test files, each the path doctest registered for it, as its "
+                         "console output prints it (for example tests\\test_run_guard.cpp); the mapping run "
+                         "and every bug run take only them")
     a = ap.parse_args(argv)
     try:
         if a.resume is not None:
-            if a.out is not None or a.map_only or a.rescore is not None:
+            if a.out is not None or a.map_only or a.rescore is not None or a.test_files is not None:
                 raise RunError("run.py: --resume takes only --build and --processes")
             build = a.build.resolve()
             listing = read_mutants(build / "mutants.json")
@@ -893,7 +966,7 @@ def main(argv=None) -> int:
             print(f"run.py: {len(results)} bug runs in {a.resume}: {json.dumps(states)}")
             return 0
         if a.rescore is not None:
-            if a.out is not None or a.map_only or a.processes is not None:
+            if a.out is not None or a.map_only or a.processes is not None or a.test_files is not None:
                 raise RunError("run.py: --rescore takes only --build")
             results = rescore(a.rescore.resolve(), read_mutants(a.build.resolve() / "mutants.json"))
             states: dict[str, int] = {}
@@ -901,13 +974,14 @@ def main(argv=None) -> int:
                 states[r["state"]] = states.get(r["state"], 0) + 1
             print(f"run.py: re-scored {len(results)} bug runs in {a.rescore}: {json.dumps(states)}")
             return 0
-        return _run(a)
+        return _run(a, a.test_files)
     except RunError as e:
         print(e, file=sys.stderr)
         return 1
 
 
-def _run(a) -> int:
+def _run(a, test_files: Optional[list[str]] = None) -> int:
+    """A new run, of every test file, or of only `test_files` (--test-files) when given."""
     build = a.build.resolve()
     mutants_path = build / "mutants.json"
     listing = read_mutants(mutants_path)
@@ -926,25 +1000,29 @@ def _run(a) -> int:
     map_log = run_dir / "map.log"
     # The tests' stderr writes go to their own file, so they never break
     # into the lines parse_durations reads.
-    map_exit, map_seconds, _ = run_tests(exe, [DURATION_ARG], map_out, map_log, cwd, None, None,
-                                         run_dir / "map.err")
+    map_exit, map_seconds, _ = run_tests(exe, run_args(None, None, test_files), map_out, map_log, cwd,
+                                         None, None, run_dir / "map.err")
     parsed = read_listener(map_out)
     if parsed is None:
         raise RunError(f"run.py: the mapping run wrote no result file; see {run_dir / 'map.log'}")
     if parsed["partial_line"] or parsed["unended"]:
         raise RunError(f"run.py: the mapping run was cut short; see {run_dir / 'map.log'}")
     m = build_map(parsed, listing)
+    check_test_files(test_files, m)
     any_red = bool(m["red_with_no_bug"])
     if map_exit not in (EXIT_PASSED, EXIT_FAILED) or (map_exit == EXIT_FAILED) != any_red:
         raise RunError(f"run.py: the mapping run ended with exit code {map_exit}, which does not match its "
                        f"{len(m['red_with_no_bug'])} failed tests; see {run_dir / 'map.log'}")
     add_test_seconds(m, parse_durations(read_log(map_log) or "", m))
-    (run_dir / "map.json").write_text(json.dumps({
+    stored_map = {
         "seconds": round(map_seconds, 3), "exit_code": map_exit,
         "tests": [dict(m["tests"][t], id=t) for t in m["order"]],
         "outside": parsed["outside"],
         "reach": {str(n): m["reach"][n] for n in sorted(m["reach"])},
-    }, indent=1) + "\n", encoding="utf-8")
+    }
+    if test_files is not None:
+        stored_map["test_files"] = sorted(set(test_files))
+    (run_dir / "map.json").write_text(json.dumps(stored_map, indent=1) + "\n", encoding="utf-8")
     (run_dir / "red_with_no_bug.txt").write_text("".join(t + "\n" for t in m["red_with_no_bug"]),
                                                   encoding="utf-8")
     reached = reached_switches(m)
@@ -958,7 +1036,7 @@ def _run(a) -> int:
     wall = 0.0
     limits: list[float] = []
     if not a.map_only:
-        cleans = {n: clean_seconds(files_for(n, m), m, map_seconds) for n in reached}
+        cleans = {n: clean_seconds(files_for(n, m, test_files), m, map_seconds) for n in reached}
         limits = [test_timeout_seconds(c) for c in cleans.values()]
         bugs_dir = run_dir / "bugs"
         bugs_dir.mkdir()
@@ -967,7 +1045,7 @@ def _run(a) -> int:
               "(each run's clean time plus 5 s)")
         t0 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=processes) as pool:
-            futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, cleans[n]) for n in reached]
+            futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, cleans[n], test_files) for n in reached]
             for f in concurrent.futures.as_completed(futures):
                 results.append(f.result())
         wall = time.perf_counter() - t0
