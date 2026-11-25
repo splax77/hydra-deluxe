@@ -1,4 +1,4 @@
-"""Tests for run.py's verdicts: a crash doctest caught, and a survived bug.
+"""Tests for run.py's verdicts, a crash doctest caught and a survived bug, and its --test-files runs.
 
     py -I -m unittest discover -s tools/mutate -p test_run.py
 
@@ -450,6 +450,91 @@ class Rescore(unittest.TestCase):
         # The same call with no files is what the stored facts alone give,
         # so the new verdict came from the run's files.
         self.assertEqual(expected["state"], "incomplete")
+
+
+class NamedTestFiles(unittest.TestCase):
+    """--test-files: the mapping run and each bug run take only the named files.
+
+    Each check builds the real arguments with run_args from a map
+    parse_listener reads, and reads the file list back out of the one -sf
+    argument. The file names hold no comma and no backslash, so filter_arg
+    escapes nothing in them and a split at each comma gives the list.
+    """
+
+    A, B, C = "tests/test_a.cpp", "tests/test_b.cpp", "tests/test_c.cpp"
+    REACHED, OUTSIDE = 5, 6
+    TWO = {"format": run.MUTANTS_FORMAT, "complete": True,
+           "mutants": [{"number": REACHED}, {"number": OUTSIDE}], "skipped": []}
+
+    def _map_of_files(self, files):
+        """One passing test per file. The first file's test reaches REACHED;
+        OUTSIDE is noted before any test starts."""
+        text = _line("outside", "startup", self.OUTSIDE)
+        for i, f in enumerate(files):
+            name = f"test {i}"
+            reached = self.REACHED if i == 0 else ""
+            text += _line("start", name, f, 10) + _line("test", name, f, 10, "passed", reached)
+        return run.build_map(run.parse_listener(text), self.TWO)
+
+    def _filter_files(self, args):
+        sf = [a for a in args if a.startswith("-sf=")]
+        self.assertEqual(len(sf), 1, args)
+        return set(sf[0][len("-sf="):].split(","))
+
+    def test_every_run_takes_only_the_named_files(self):
+        named = [self.B, self.A]
+        m = self._map_of_files([self.A, self.B])
+        run.check_test_files(named, m)
+        map_args = run.run_args(None, None, named)
+        self.assertIn(run.DURATION_ARG, map_args)
+        self.assertEqual(self._filter_files(map_args), set(named))
+        # The reached switch's run takes the one file whose test reaches it.
+        self.assertEqual(self._filter_files(run.run_args(self.REACHED, m, named)), {self.A})
+        # A switch noted outside any test takes every named file, and no other.
+        self.assertEqual(self._filter_files(run.run_args(self.OUTSIDE, m, named)), set(named))
+
+    def test_with_no_named_files_the_runs_are_as_before(self):
+        m = self._map_of_files([self.A, self.B, self.C])
+        self.assertEqual(run.run_args(None, None, None), [run.DURATION_ARG])
+        self.assertEqual(run.run_args(self.REACHED, m, None), run.filter_arg(run.files_for(self.REACHED, m)))
+        # The outside switch runs every file: no filter at all.
+        self.assertEqual(run.run_args(self.OUTSIDE, m, None), [])
+
+    def test_the_outside_switch_verdict_counts_every_named_files_test(self):
+        named = [self.A, self.B]
+        m = self._map_of_files(named)
+        files = run.files_for(self.OUTSIDE, m, named)
+        # Every test passed again with the switch on, so the bug survived.
+        rerun = run.parse_listener("".join(
+            _line("start", m["tests"][t]["name"], m["tests"][t]["file"], 10)
+            + _line("test", m["tests"][t]["name"], m["tests"][t]["file"], 10, "passed", "") for t in m["order"]))
+        r = run.bug_result(self.OUTSIDE, m, files, rerun, run.EXIT_PASSED, 0.5, False, "")
+        self.assertEqual(r["state"], "survived")
+        # Dropping one named file's test leaves the run incomplete, so the
+        # named files' tests are what it must report.
+        short = run.parse_listener(_line("start", "test 0", self.A, 10) + _line("test", "test 0", self.A, 10,
+                                                                               "passed", ""))
+        r = run.bug_result(self.OUTSIDE, m, files, short, run.EXIT_PASSED, 0.5, False, "")
+        self.assertEqual(r["state"], "incomplete")
+
+    def test_a_backslash_path_reaches_doctest_whole(self):
+        # doctest reads a doubled backslash in -sf as one (parseCommaSepArgs),
+        # so the path it matches is the one registered, backslashes single.
+        named = ["tests\\test_a.cpp", "tests\\test_b.cpp"]
+        self.assertEqual(run.run_args(None, None, named)[1:],
+                         ["-sf=tests\\\\test_a.cpp,tests\\\\test_b.cpp"])
+
+    def test_a_named_file_the_mapping_run_did_not_record_stops(self):
+        m = self._map_of_files([self.A])
+        with self.assertRaises(run.RunError) as caught:
+            run.check_test_files([self.A, self.B], m)
+        self.assertIn(self.B, str(caught.exception))
+
+    def test_a_recorded_file_that_was_not_named_stops(self):
+        m = self._map_of_files([self.A, self.C])
+        with self.assertRaises(run.RunError) as caught:
+            run.check_test_files([self.A], m)
+        self.assertIn(self.C, str(caught.exception))
 
 
 if __name__ == "__main__":

@@ -738,6 +738,110 @@ by side (one unless you say), and `--map-only` stops after the mapping run.
 It writes its own report, `summary.txt`, in the run folder; `report.py`
 reads only the C++ runs.
 
+### The gate on a phase's new tests
+
+The gate asks one question of the tests a plan phase added or changed: did
+each one catch a planted bug? It runs once per phase, after the phase's
+build and tests pass. Every step is the main session's. The C++ side needs
+one build, and the gate reads results only a built `hydra_tests` writes
+(agent rule 14). The gate never decides what "caught" means. It reads the
+verdicts `run.py` stored, and `bug_result` in `run.py` is the one place that
+decides them.
+
+For a phase that changed a C++ test file, the steps go in this order.
+
+First, list the C++ test files the phase changed. The precheck's
+`--changed-tests` mode prints them, one per line, using the precheck's own
+rule for what a test file is. A file the range deletes is not printed.
+
+```
+build-cpp\Release\hydra_precheck.exe --repo <folder> --changed-tests main...<tip>
+```
+
+Second, write the switched copies with `rewrite.py`, as "Running it" says.
+It switches only the source files you name on its command line, and it has
+no default list. A test reaches a planted bug only through a source file you
+named, so name every source file the phase's tests check. A test that
+reaches no switched source file is "not judged", and the gate says so.
+
+Third, ask `hydra_build_pass` for a pass with `preset` set to `mutation`, and
+build `hydra_tests` with the mutation preset. A phase gets one such build,
+outside its normal build count, so ask for it last.
+`docs/agents/plan-runs.md` says when it is given.
+
+```
+$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
+```
+
+Fourth, run the mapping run and the bug runs on those test files only.
+`--test-files` names them, so the mapping run takes only them and the bug
+runs cover only the switches they reach. Each name is the path doctest
+registered, with backslashes as doctest prints it on Windows, for example
+`tests\test_run_guard.cpp`. The precheck prints the same path with forward
+slashes, so swap them.
+
+```
+py -I tools/mutate/run.py --test-files tests\test_a.cpp [more test files...]
+```
+
+Last, run the gate on the run folder, the phase's range and the same test
+files. `--files` takes either kind of slash. The gate judges only the tests
+whose own line in the run's test list falls on a line the range added. A
+test runs from its own line to the next test's line in the same file.
+
+```
+py -I tools/mutate/gate.py cpp build-mutation\runs\<run> --range main...<tip> --files tests/test_a.cpp [more test files...]
+```
+
+`--repo <checkout>` names the checkout when it is not the one holding the
+script, `--mutants <mutants.json>` names the build's list of switches when it
+is not two folders above the run folder, and `--out <folder>` moves
+`gate.txt`.
+
+For Python tests there is no build. Run `py_mutate.py` on the folder the
+tests live in, as its own docstring says, then run the gate on its run
+folder. Give `--target` the same folder you gave `py_mutate.py`, as a path
+in the checkout. A Python test name carries no line, so the gate judges
+every test of a test module the range added a line to, and its output says
+so. Give it the phase's Python test files; a file the range added no line to
+is reported as "unchanged".
+
+```
+py -I tools/mutate/gate.py py <run folder> --range main...<tip> --files tools/test_a.py [more test files...] --target tools
+```
+
+The gate prints one line per judged test, then one line for each file it
+could not look into, then a last line with the counts. The lines start with
+these words:
+
+- `passed:` The test caught at least one planted bug. The line says how many
+  it caught and how many it reaches.
+- `refused:` The test reached planted bugs and caught none. The line names
+  the test, how many bugs it reached, and `gate.txt`, which lists them.
+- `not judged:` The gate has nothing to say about the test, and the line
+  gives the reason. The reasons are these: the test reaches no planted bug;
+  it reaches bugs but none has a run that counted; it was red with no bug in
+  the mapping run; or the run holds no test from the file. A test in
+  `hydra_uitest` is in that last group, because the mutation build builds
+  only `hydra_tests`. A test the gate did not judge never reads `passed:`.
+- `unchanged:` The file is a named test file, but the range added no line
+  inside any of its tests, so the gate does not judge it.
+
+The last line reads `gate: R refused, P passed, N not judged.` The gate
+exits 0 when no test is refused, 1 when any is, and 2 when it cannot read its
+inputs.
+
+The gate counts lines the range added. A change that only deletes lines
+inside a test adds none, so the gate does not judge it. The reviewer, not
+the gate, catches a test weakened by deletion.
+
+A refused test is a failed test, handled the way
+`docs/agents/derive-once-review.md`, "For the orchestrator", says. A phase
+gets one mutation build, so after a refused C++ test is fixed and the fix is
+rebuilt, the gate cannot run again on the fix. The fix's fresh reviewer reads
+the refused test and the gate's output for it, and says what would make the
+fixed test fail.
+
 ### What the report says
 
 `report.py` writes three files, and every count in them comes from one
