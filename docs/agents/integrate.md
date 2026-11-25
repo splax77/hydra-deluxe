@@ -1,6 +1,6 @@
 # Integrate
 
-You join a wave's task branches onto the wave branch, so the derive-once review and the main session's one build and suite run see a single tree that holds together. The wave branch is the plan run's branch for the phase, `plan/<slug>/<phase>` (`docs/agents/plan-runs.md`). Read `docs/agents/brief-preamble.md` first; its rules apply to you in full. Your brief names the wave branch, its worktree, the task branches in the order to join them, and the fork point (the `main` commit the wave branch started from).
+You join a wave's task branches onto the wave branch, so the derive-once review and the main session's one suite run see a single tree that builds and holds together. Read `docs/agents/brief-preamble.md` first; its rules apply to you in full. Your brief names the wave branch, its worktree, the task branches in the order to join them, and the fork point (the `main` commit the wave branch started from).
 
 You write no new feature code. You only fix what the join itself breaks: a conflict, a renamed function, a scan row or doc line that one task's change made stale for another's.
 
@@ -38,9 +38,11 @@ Run the precheck with the main checkout's exe: `build-cpp\Release\hydra_precheck
 
 Then commit the last merge, with a body saying which task's change broke which line and how you fixed it. Your turn ends there.
 
-After you hand over, the joined branch goes to its review first, uncompiled. Once the reviewer signs off, the main session builds it once, the phase's one build, with every target the tests need. It then runs the scan test, `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`, any test case your brief names, and the merge's tests: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (`docs/agents/agent-rules.md`, rule 1).
+After you hand over, the main session builds the joined branch once with the target your brief names. It runs the scan test, `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`, and any test case your brief names.
 
-When the build or the scan test fails, a fresh executor fixes it on the wave branch from the failure output, a fresh reviewer reads only that fix, and the main session builds once more, the phase's one allowed second build. A common case is one task renaming or moving a name another task's rows still use. Never loosen a scan row to make it pass.
+The main session runs the merge's tests once, after the review: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (`docs/agents/agent-rules.md`, rule 1).
+
+When the build or the scan test fails, a fresh executor fixes it on the wave branch from the failure output. A common case is one task renaming or moving a name another task's rows still use. Never loosen a scan row to make it pass.
 
 If a join break shows up only after an earlier merge is already committed, fix it in the next merge commit instead. Never amend.
 
@@ -48,7 +50,7 @@ If a join break shows up only after an earlier merge is already committed, fix i
 
 Stop changing the tree once the last merge is committed. The gate keys a review on the exact tree, so any later commit voids it.
 
-Report the wave branch's head commit hash and the range `main...<head>`. The main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
+Report the wave branch's head commit hash and the range `main...<head>`. Once the branch builds and its scan test passes, the main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
 
 ## Your report
 

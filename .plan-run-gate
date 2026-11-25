@@ -1,4 +1,0 @@
-This repo is gated by the plan-run gate: a move of main that gains gated code
-must be an open plan run's branch tip after its one passed build, or one move
-the user allowed by typing exactly: allow merge
-The hook reads only that this file exists. See docs/agents/plan-runs.md.

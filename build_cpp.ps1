@@ -15,9 +15,6 @@
 # Under Claude Code a build needs a build pass, in HYDRA_BUILD_PASS, for this
 # build's preset, and stops before configure without one. tools/build_slot.ps1
 # owns that rule.
-#
-# Every build, gated or not, adds a line to the build record when it starts
-# and when it ends. tools/build_record.ps1 owns that record.
 
 param(
     [switch]$Configure,
@@ -77,44 +74,15 @@ $targets = @($Target | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tr
 $all = if ($ninja) { "all" } else { "ALL_BUILD" }
 $defaultTargets = @($all, "hydra_bench", "hydra_replay")
 
-# tools/build_record.ps1 owns the build record. A line that cannot be written
-# is reported, and never changes or hides the build's own result.
-$buildId = [guid]::NewGuid().ToString('N')
-# A line says what HEAD was when it was written, so a build whose HEAD moved
-# while it ran is recorded as failed, never as passed.
-function Get-BuildHead {
-    $exitBefore = $global:LASTEXITCODE
-    try {
-        $h = & git -C $root rev-parse HEAD 2>$null
-        if ($LASTEXITCODE -eq 0) { "$h".Trim() } else { $null }
-    } catch { $null } finally { $global:LASTEXITCODE = $exitBefore }
-}
-$startHead = Get-BuildHead
-function Write-BuildRecord([string]$BuildEvent) {
-    $exitBefore = $global:LASTEXITCODE
-    try {
-        $named = if ($targets.Count -gt 0) { $targets } else { $defaultTargets }
-        & (Join-Path $root "tools\build_record.ps1") -Repo $root -Event $BuildEvent -Preset $Preset -Targets $named -Build $buildId
-    } catch {
-        [Console]::Error.WriteLine("build record: the '$BuildEvent' line was not written, and the build goes on as if it were: $_")
-    }
-    $global:LASTEXITCODE = $exitBefore
-}
-
 # cmake reads CMakePresets.json from the current folder, so run it from the
 # script's own checkout; otherwise a call from another worktree builds that one.
 Push-Location $root
 $pass = $null
-$claimed = $false
-$built = $false
 try {
     # A long-lived shell keeps its process id after this script ends, so the
     # finally below is what frees the slot, not the owner's death.
     # A pass builds the preset it was asked for; build_slot.ps1 refuses another.
     $pass = & (Join-Path $root "tools\build_slot.ps1") -Claim -Owner $root -Preset $Preset
-    # Only a build that got this far is recorded: a refused claim built nothing.
-    $claimed = $true
-    Write-BuildRecord "started"
 
     # The installer's build always configures, so it always takes its preset's
     # settings (link-time optimization on, GUI tests out), even in a build
@@ -170,12 +138,7 @@ try {
         }
         Write-Host "Package written to $buildDir\package\"
     }
-    $built = $true
 } finally {
     Pop-Location
-    if ($claimed) {
-        $moved = $built -and ((Get-BuildHead) -ne $startHead)
-        Write-BuildRecord $(if ($built -and -not $moved) { "passed" } else { "failed" })
-    }
     if ($pass.Lock) { & (Join-Path $root "tools\build_slot.ps1") -Release $pass.Lock }
 }
