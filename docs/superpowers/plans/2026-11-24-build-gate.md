@@ -236,6 +236,8 @@ The real rule it would use is the review gate's own list of code files: anything
 
 You will see: nothing in Hydra changes. With "yes", a session that asks for a build after a docs commit is told none is needed.
 
+The user's answer (2026-11-25, session 2eba124d): chose "Yes (Recommended)". K1 keeps the docs-only kind of rule 4 and its tests.
+
 **Question 2. Two kinds of file the build reads are not on the code list.**
 
 The review gate's list is the one answer to "which files are code", and the build gate uses it. Two groups of files feed the build and are not on it.
@@ -250,6 +252,8 @@ Under question 1, an edit to any of these after a build would count as a "docs c
 - Leave them: an edit to them needs no review, as today, and the gate treats it as a docs commit, so the build is refused as covered.
 
 You will see: nothing in Hydra changes. With "add them", the next change to a file under `assets/` or `resource/`, or to `Directory.Build.targets`, needs a reviewer, where today it needs none.
+
+The user's answer (2026-11-25, session 2eba124d): chose "Leave them". K3 does not run, and the code list is unchanged.
 
 ## Out of scope
 
