@@ -358,8 +358,7 @@ constexpr float kWindowRowGap = 14.0f;  // unscaled
 constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's #c9b39b
 const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
-// The Effective line under a Dynamic Hit Window row, as the mockups draw it
-// (docs/superpowers/specs/2026-11-24-effective-line-mockup/): its own divider,
+// The Effective line under a Dynamic Hit Window row: its own divider,
 // the label in the box's text colour, then the view's word and figure in the
 // row's word and figure colours. The word and the figure are the view's
 // (WindowRowView::effective), which also decides whether the line is drawn.

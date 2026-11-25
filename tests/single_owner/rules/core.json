@@ -832,7 +832,7 @@
       "owner_file": "src/core/squeeze_rating.cpp",
       "owner_symbol": "stored_scale",
       "date": "2026-11-24",
-      "decision": "the user's words of 2026-11-24, \"why are you even offering an option that would make the display wrong?\", in docs/superpowers/plans/2026-11-24-one-multiplier.md (task M6)",
+      "decision": "the user's words of 2026-11-24, \"why are you even offering an option that would make the display wrong?\", in docs/superpowers/plans/2026-11-24-one-multiplier.md (task M6; removed, git show 014838d30:docs/superpowers/plans/2026-11-24-one-multiplier.md)",
       "added_by": "one-multiplier M6",
       "pattern": "\\?\\s*\\*?\\w+(\\.|->)(transfer_post\\s*:\\s*\\*?\\w+(\\.|->)transfer\\b|transfer\\s*:\\s*\\*?\\w+(\\.|->)transfer_post\\b)",
       "anchor": "transfer",
