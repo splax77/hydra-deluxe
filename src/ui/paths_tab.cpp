@@ -84,8 +84,9 @@ std::string joined_text(const std::vector<app::InkRun>& runs) {
     return out;
 }
 
-// Draws `runs` as one text wrapped at the line's right edge, each piece in
-// its ink's colour (ink_color). A text in one ink is ImGui's own wrapped
+// Draws `runs` as one text in `role`'s font, wrapped at the line's right
+// edge, each piece in its ink's colour (ink_color). A text in one ink is
+// ImGui's own wrapped
 // TextUnformatted. A text in several inks breaks its lines exactly where
 // that call would break the joined text, because it asks the same ImGui
 // functions TextEx and ImFont::RenderText use: the item is placed, sized and
@@ -95,7 +96,8 @@ std::string joined_text(const std::vector<app::InkRun>& runs) {
 // lands where the one-colour call would put it. Each run is then told to the
 // text log whole, in order, at the place its first piece was drawn, so the
 // GUI tests read the pieces in order with only an item gap between them.
-void draw_runs(const std::vector<app::InkRun>& in) {
+void draw_runs(const std::vector<app::InkRun>& in, TextRole role) {
+    ScopedFont scoped(role);
     const std::vector<app::InkRun> runs = merged_runs(in);
     if (runs.size() <= 1) {
         const app::InkRun one = runs.empty() ? app::InkRun{} : runs.front();
@@ -126,8 +128,9 @@ void draw_runs(const std::vector<app::InkRun>& in) {
     // ImFont::RenderText snaps the text's origin to a pixel once, then lays
     // glyphs at unrounded advances. The pieces are drawn unsnapped from that
     // same origin, so they do not each snap again.
-    ImFont* const font = ImGui::GetFont();
+    ImFont* const font = font_for(role).font;
     const float font_size = ImGui::GetFontSize();
+    const WidthOf width_of = measure_in_role(role);  // unrounded, as RenderText lays glyphs
     ImDrawList* const dl = window->DrawList;
     const ImDrawListFlags flags = dl->Flags;
     const bool snap = (flags & ImDrawListFlags_TextNoPixelSnap) == 0;
@@ -142,7 +145,7 @@ void draw_runs(const std::vector<app::InkRun>& in) {
             const char* const piece = std::max(begin + (r == 0 ? 0 : ends[r - 1]), s);
             const char* const piece_end = std::min(begin + ends[r], eol);
             if (piece >= piece_end) continue;
-            const float x = x0 + font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s, piece).x;
+            const float x = x0 + width_of(std::string_view(s, static_cast<size_t>(piece - s)));
             dl->AddText(font, font_size, ImVec2(x, y), ImGui::GetColorU32(ink_color(runs[r].ink)),
                         piece, piece_end);
             if (!log_at[r]) log_at[r] = ImVec2(x, log_y);
@@ -530,7 +533,7 @@ void timing_box(const char* id, const std::vector<app::InkRun>& text, bool warn,
     ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
                           ImGuiChildFlags_AlwaysUseWindowPadding);
-    draw_runs(text);
+    draw_runs(text, TextRole::Prose);
     if (window) window_row(*window, effective_figures);
     ImGui::EndChild();
     ImGui::PopStyleColor(3);
@@ -647,11 +650,10 @@ void render_backend_table(const app::ActivationRowView& a, bool effective_figure
                 }
             }
             ImGui::TableSetColumnIndex(kRatingColumn);
-            ScopedFont font(kBackendCellRole[kRatingColumn]);
             // Rating wraps inside its cell: at the narrowest panel the
             // squeezed-out note is longer than the column is wide. Its runs
             // carry the warning ink of a row that costs points.
-            draw_runs(app::rating_runs(row, effective_figures));
+            draw_runs(app::rating_runs(row, effective_figures), kBackendCellRole[kRatingColumn]);
         }
         ImGui::EndTable();
     }
@@ -682,7 +684,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     // The lines under the boxes, each with its hover hint: the view says
     // which lines the switch leaves and in which ink (scale_lines).
     for (const app::InkRun& line : app::scale_lines(a, eff)) {
-        draw_runs({line});
+        draw_runs({line}, TextRole::Prose);
         overflow_tooltip(app::kTransferScaleHint);
     }
     if (!a.overfill_warning.empty()) {
