@@ -6,10 +6,14 @@
 //   hydra_precheck --list-checks
 //   hydra_precheck --code-mask <file>
 //   hydra_precheck [--repo <folder>] --tests [range]
+//   hydra_precheck [--repo <folder>] --changed-tests [range]
 //
 // --range defaults to main...HEAD and --repo to the current folder. A single
 // bare argument is read as the range. It never writes to the repository.
 // --tests runs the merge-test picker (test_pick.h) instead of the checks.
+// --changed-tests prints, one per line in byte order, each file the range
+// touches that test_file and is_cpp (range.h) both accept. A file the range
+// deletes is not printed.
 
 #include <fcntl.h>
 #include <io.h>
@@ -46,6 +50,7 @@ struct Options {
     std::string code_mask_file;
     bool list_checks = false;
     bool tests = false;
+    bool changed_tests = false;
     bool help = false;
 };
 
@@ -54,7 +59,8 @@ const char* const kUsage =
     "                      [--rules-at <commit>] [--disable <N[,N...]>]\n"
     "       hydra_precheck --list-checks\n"
     "       hydra_precheck --code-mask <file>\n"
-    "       hydra_precheck [--repo <folder>] --tests [range]\n";
+    "       hydra_precheck [--repo <folder>] --tests [range]\n"
+    "       hydra_precheck [--repo <folder>] --changed-tests [range]\n";
 
 Options parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -74,6 +80,7 @@ Options parse_options(const std::vector<std::string>& args) {
         else if (a == "--code-mask") o.code_mask_file = value();
         else if (a == "--list-checks") o.list_checks = true;
         else if (a == "--tests") o.tests = true;
+        else if (a == "--changed-tests") o.changed_tests = true;
         else if (a == "--help" || a == "-h") o.help = true;
         else if (!a.empty() && a[0] == '-') throw std::invalid_argument(hydra::unknown_option_line(a));
         else if (!o.range_given) {
@@ -81,6 +88,7 @@ Options parse_options(const std::vector<std::string>& args) {
             o.range_given = true;
         } else throw std::invalid_argument("one range only, not also '" + a + "'");
     }
+    if (o.tests && o.changed_tests) throw std::invalid_argument("--tests and --changed-tests are two modes; give one");
     return o;
 }
 
@@ -91,6 +99,22 @@ int print_code_mask(const std::string& file) {
     const std::optional<std::string> masked = precheck::code_mask(text, file);
     if (!masked) throw std::runtime_error("--code-mask reads C++ and Python files only, not " + file);
     std::cout << *masked;
+    return 0;
+}
+
+// The lines the range adds: every line of `files` for a whole-tree run, else
+// the diff's.
+precheck::AddedLines range_added(const precheck::Repo& repo, const precheck::Range& range,
+                                 const std::vector<std::string>& files) {
+    return range.whole_tree ? precheck::AddedLines::whole(files)
+                            : precheck::AddedLines::from_diff(repo, range.base, range.tip);
+}
+
+// The C++ test files the range touches, in AddedLines::files' order.
+int print_changed_tests(const precheck::Repo& repo, const precheck::Range& range) {
+    const precheck::AddedLines added = range_added(repo, range, precheck::all_files(repo, range.tip));
+    for (const std::string& file : added.files())
+        if (precheck::test_file(file) && precheck::is_cpp(file)) std::cout << file << "\n";
     return 0;
 }
 
@@ -113,9 +137,9 @@ int run(const Options& o) {
         for (const std::string& line : pick_lines(pick_tests(repo, range))) std::cout << line << "\n";
         return 0;
     }
+    if (o.changed_tests) return print_changed_tests(repo, range);
     const std::vector<std::string> files = all_files(repo, range.tip);
-    const AddedLines added =
-        range.whole_tree ? AddedLines::whole(files) : AddedLines::from_diff(repo, range.base, range.tip);
+    const AddedLines added = range_added(repo, range, files);
 
     Items items;
     Context ctx{repo, range, added, files, items, std::cout};
