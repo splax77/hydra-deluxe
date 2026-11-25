@@ -773,6 +773,7 @@ add_executable(hydra_tests
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
     tests/single_owner/special.cpp
+    tests/single_owner/corpus_totals.cpp
 )
 # resource/ beside the test exe, as beside Hydra and HydraPathBuilder: the
 # resource_dir test in test_config.cpp checks that folder, and a build of only
