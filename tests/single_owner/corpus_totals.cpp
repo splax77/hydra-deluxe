@@ -92,7 +92,7 @@ size_t statement_end(const std::string& code, size_t from) {
 }
 
 // The '}' that closes the block holding `from`, or the end of the text.
-size_t block_end(const std::string& code, size_t from) {
+size_t enclosing_block_end(const std::string& code, size_t from) {
     int depth = 0;
     for (size_t i = from; i < code.size(); ++i) {
         if (code[i] == '{') {
@@ -247,7 +247,7 @@ std::vector<CorpusTotal> corpus_totals(const std::string& text) {
             const std::string header = code.substr(open + 1, close - open - 2);
             if (!over_corpus(without_space(range_of(header)), aliases)) continue;
             const size_t body_end = statement_end(code, close);
-            const size_t after_end = block_end(code, body_end);
+            const size_t after_end = enclosing_block_end(code, body_end);
             for (const std::string& counter : counters_in(code, close, body_end))
                 for (const size_t pos : typed_comparisons(code, body_end, after_end, counter)) {
                     CorpusTotal t = total_at(text, pos, counter);
