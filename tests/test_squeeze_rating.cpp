@@ -828,7 +828,7 @@ TEST_CASE("rate_activation: a SqIn on the SP end reads its SqIn scale's late sid
     // anchor is pressed late and the late side counts. Reading the early side
     // because the note is inside Star Power (core::paid_by_sp_walk) fails here.
     REQUIRE(figure(late_only, 0.0).has_value());
-    CHECK(*figure(late_only, 0.0) == 0.0);
+    CHECK(*figure(late_only, 0.0) == doctest::Approx(figure_by_rule(0.0, late_only.late)));
     CHECK_FALSE(figure(early_only, 0.0).has_value());
     // Just before the end: inside Star Power, early side.
     REQUIRE(figure(early_only, -0.5).has_value());
