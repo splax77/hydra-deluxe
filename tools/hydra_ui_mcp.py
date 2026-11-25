@@ -26,9 +26,10 @@ cleanliness, so a main session in the main checkout can leave the real-app
 record for a branch it built in a worktree.
 
 One tool has nothing to do with the GUI. hydra_build_pass hands a main session
-a build pass for the preset it names. It lives here because a hook can then
-refuse that one tool to agents by its name. The rule is tools/build_slot.ps1's;
-build_pass only asks that script, and adds this session's id.
+a build pass for the preset, folder and targets it names. It lives here
+because a hook can then refuse that one tool to agents by its name. The rule
+is tools/build_slot.ps1's; build_pass only asks that script, and adds this
+session's id.
 """
 
 import atexit
@@ -795,11 +796,20 @@ def filtered(line, contains):
     return line if contains is None else f"{line} | {contains}"
 
 
-def build_pass(preset):
-    """Ask tools/build_slot.ps1 for a build pass for `preset` and return what
-    it says. The preset has no default; the script refuses a pass without one
-    and owns what a usable preset is. A refusal is a reply like any other, so
-    this never waits for a slot."""
+def build_pass(preset, repo, target):
+    """Ask tools/build_slot.ps1 for a build pass for `preset`, the folder
+    `repo` and the targets `target` (comma-separated), and return what it
+    says. None of the three has a default. The script owns what a usable
+    preset, folder and target list are. It still hands a pass to a caller
+    that names neither folder nor targets, for old callers, so this refuses a
+    blank folder or target before asking it. A refusal is a reply like any
+    other, so this never waits for a slot."""
+    if not repo.strip():
+        return ("no pass: name the folder this pass builds, the worktree's top folder."
+                " There is no default. Nothing was handed out.")
+    if not target.strip():
+        return ("no pass: name the targets this pass builds, one or more, split on commas."
+                " There is no default. Nothing was handed out.")
     session = os.environ.get(SESSION_ENV, "").strip()
     if not session:
         return (f"no pass: {SESSION_ENV} is not set in this server, so this session cannot"
@@ -808,7 +818,8 @@ def build_pass(preset):
     if not pwsh:
         return "no pass: pwsh is not on this server's PATH, so tools/build_slot.ps1 cannot run."
     args = [pwsh, "-NoProfile", "-File", str(BUILD_SLOT_SCRIPT), "-NewPass",
-            "-Session", session, "-Preset", preset, "-Holder", str(os.getpid())]
+            "-Session", session, "-Preset", preset, "-Repo", repo, "-Target", target,
+            "-Holder", str(os.getpid())]
     try:
         # stdin is the MCP channel, so the child must not inherit it.
         done = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -957,14 +968,17 @@ def build_server():
         return HELPER.run(script)
 
     @server.tool()
-    def hydra_build_pass(preset: str) -> str:
+    def hydra_build_pass(preset: str, repo: str, target: str) -> str:
         """Get the build pass a build under Claude Code needs. Main sessions
         only. `preset` is the build preset to build, such as default or
-        mutation (CMakePresets.json names them); it has no default, and the
-        pass builds that preset only. It never waits: the reply is the pass and
-        the command to build with, or a refusal naming who holds the build
-        slots. tools/build_slot.ps1 owns the rule."""
-        return build_pass(preset)
+        mutation (CMakePresets.json names them). `repo` is the absolute path
+        of the worktree folder to build. `target` is the targets to build, one
+        or more, split on commas, such as hydra_tests or hydra_tests,Hydra.
+        None has a default, and the pass builds those only. It never waits:
+        the reply is the pass and the command to build with, or a refusal
+        saying why. tools/build_slot.ps1 owns the slot and pass rules, and the
+        hooks' build_rules.py owns when a build is not needed."""
+        return build_pass(preset, repo, target)
 
     return server
 

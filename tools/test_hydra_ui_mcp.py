@@ -800,21 +800,41 @@ class BuildPassTool(unittest.TestCase):
     def setUp(self):
         self.slots = Path(tempfile.mkdtemp(prefix="hydra_build_pass_"))
         self.addCleanup(shutil.rmtree, self.slots, ignore_errors=True)
+        # The folder a pass is asked for. The script asking for a pass does
+        # not read it, so it need not exist.
+        self.repo = str(self.slots / "wt")
 
-    def ask(self, session, preset="default"):
+    def ask(self, session, preset="default", repo=None, target="hydra_tests"):
         env = {"HYDRA_BUILD_SLOT_DIR": str(self.slots), hm.SESSION_ENV: session}
         with mock.patch.dict(os.environ, env):
-            return hm.build_pass(preset)
+            return hm.build_pass(preset, self.repo if repo is None else repo, target)
+
+    def lock_fields(self, number=1):
+        """The key=value lines of a slot's lock, as the script wrote them."""
+        lines = (self.slots / f"slot{number}.lock").read_text().split("\n")
+        return dict(ln.split("=", 1) for ln in lines[2:] if "=" in ln)
+
+    def command_line(self, out):
+        command = [ln for ln in out.split("\n")[1:] if "HYDRA_BUILD_PASS" in ln]
+        self.assertEqual(len(command), 1, out)
+        return command[0]
+
+    def test_the_schema_requires_preset_folder_and_targets(self):
+        # None of the three has a default, so a client must send each.
+        tools = asyncio.run(hm.build_server().list_tools())
+        found = next(t for t in tools if t.name == "hydra_build_pass")
+        schema = found.inputSchema if hasattr(found, "inputSchema") else found.input_schema
+        self.assertEqual(set(schema.get("required", [])), {"preset", "repo", "target"}, schema)
+        for name in ("preset", "repo", "target"):
+            self.assertNotIn("default", schema["properties"][name], schema)
 
     def test_the_pass_is_for_the_preset_asked_for(self):
         out = self.ask("session-a", "mutation")
         token = re.match(r"pass: (\w+)\n", out).group(1)
-        lines = (self.slots / "slot1.lock").read_text().split("\n")
-        self.assertIn(f"pass={token}", lines)
-        self.assertIn("preset=mutation", lines)
-        command = [ln for ln in out.split("\n")[1:] if "HYDRA_BUILD_PASS" in ln]
-        self.assertEqual(len(command), 1, out)
-        self.assertIn("-Preset mutation", command[0])
+        fields = self.lock_fields()
+        self.assertEqual(fields["pass"], token)
+        self.assertEqual(fields["preset"], "mutation")
+        self.assertIn("-Preset mutation", self.command_line(out))
 
     def test_a_blank_preset_is_refused_and_hands_out_nothing(self):
         for value in ("", "   "):
@@ -823,16 +843,46 @@ class BuildPassTool(unittest.TestCase):
                 self.assertTrue(out.startswith("no pass: name the build preset"), out)
                 self.assertEqual(list(self.slots.iterdir()), [])
 
+    def test_a_blank_folder_or_target_is_refused_before_the_script_is_asked(self):
+        # The script hands an old caller, which names neither, a pass for
+        # any folder and target; the tool must never ask it that way.
+        cases = [{"repo": value} for value in ("", "   ")] + [{"target": value} for value in ("", "   ")]
+        for case in cases:
+            with self.subTest(**case):
+                with mock.patch.object(hm.subprocess, "run") as run:
+                    out = self.ask("session-a", **case)
+                self.assertTrue(out.startswith("no pass: name the "), out)
+                self.assertIn("Nothing was handed out.", out)
+                run.assert_not_called()
+                self.assertEqual(list(self.slots.iterdir()), [])
+
     def test_the_reply_is_a_pass_and_the_command_to_build_with(self):
-        out = self.ask("session-a")
+        out = self.ask("session-a", target="hydra_tests,Hydra")
         token = re.match(r"pass: (\w+)\n", out).group(1)
-        # The pass the first line names is the one the slot holds, and a
-        # later line sets HYDRA_BUILD_PASS to it, which build_cpp.ps1 claims.
-        self.assertIn(f"pass={token}", (self.slots / "slot1.lock").read_text().split("\n"))
-        command = [ln for ln in out.split("\n")[1:] if "HYDRA_BUILD_PASS" in ln]
-        self.assertEqual(len(command), 1, out)
-        self.assertIn(f"HYDRA_BUILD_PASS='{token}'", command[0])
-        self.assertIn("build_cpp.ps1", command[0])
+        # The pass the first line names is the one the slot holds, for the
+        # folder and targets asked for. The command sets HYDRA_BUILD_PASS to
+        # it and runs this checkout's build_slot.ps1 on that folder and those
+        # targets, which is the -Repo mode that claims the pass.
+        fields = self.lock_fields()
+        self.assertEqual(fields["pass"], token)
+        self.assertEqual(fields["repo"], self.repo)
+        self.assertEqual(fields["target"], "hydra_tests,Hydra")
+        self.assertEqual(self.command_line(out),
+                         f"$env:HYDRA_BUILD_PASS='{token}'; & '{hm.BUILD_SLOT_SCRIPT}'"
+                         f" -Repo '{self.repo}' -Preset default -Target hydra_tests,Hydra")
+
+    def test_a_slot_refusal_comes_back_word_for_word(self):
+        # A claimed pass of this session's, held by this live process, so the
+        # refusal names no seconds left and reads the same twice.
+        (self.slots / "slot1.lock").write_text("\n".join(
+            [str(os.getpid()), "a build", "pass=held", "session=session-a", "preset=default"]))
+        out = self.ask("session-a")
+        direct = subprocess.run(
+            ["pwsh", "-NoProfile", "-File", str(hm.BUILD_SLOT_SCRIPT), "-NewPass", "-Session", "session-a",
+             "-Preset", "default", "-Repo", self.repo, "-Target", "hydra_tests", "-SlotDir", str(self.slots)],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertTrue(out.startswith("no pass: this session already holds one"), out)
+        self.assertEqual(out, (direct.stdout + direct.stderr).strip())
 
     def test_the_lock_holds_this_session_and_this_server(self):
         self.ask("session-a")
@@ -861,7 +911,7 @@ class BuildPassTool(unittest.TestCase):
                 if value is unset:
                     with mock.patch.dict(os.environ, {"HYDRA_BUILD_SLOT_DIR": str(self.slots)}):
                         os.environ.pop(hm.SESSION_ENV, None)
-                        out = hm.build_pass("default")
+                        out = hm.build_pass("default", self.repo, "hydra_tests")
                 else:
                     out = self.ask(value)
                 self.assertTrue(out.startswith("no pass: "), out)
@@ -895,8 +945,8 @@ class SdkClient(unittest.TestCase):
 
         self.assertEqual(asyncio.run(names()), TOOL_NAMES)
 
-    def test_the_build_pass_tool_requires_a_preset(self):
-        # The preset has no default, so a client must send it.
+    def test_the_build_pass_tool_requires_a_preset_folder_and_targets(self):
+        # None of the three has a default, so a client must send each.
         from mcp import Client, StdioServerParameters
 
         async def schema():
@@ -906,8 +956,9 @@ class SdkClient(unittest.TestCase):
                 return next(t.input_schema for t in result.tools if t.name == "hydra_build_pass")
 
         found = asyncio.run(schema())
-        self.assertEqual(found.get("required"), ["preset"], found)
-        self.assertNotIn("default", found["properties"]["preset"], found)
+        self.assertEqual(set(found.get("required", [])), {"preset", "repo", "target"}, found)
+        for name in ("preset", "repo", "target"):
+            self.assertNotIn("default", found["properties"][name], found)
 
     def test_open_song_sends_open_and_the_title(self):
         sent = []
