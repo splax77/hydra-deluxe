@@ -435,16 +435,17 @@ function Enter-BuildSlot([string]$What, [string]$Dir, [string]$ForPreset, [switc
 # build's result.
 
 # The paths `git status --porcelain` reports in $Repo. It reads the -z form,
-# which never quotes a path; a rename or copy lists both its paths.
+# which never quotes a path; a rename or copy lists both its paths. Every
+# untracked file is named, not just its new folder, as the hooks' reader does.
 function Get-BuildDirtyPaths([string]$Repo) {
-    $raw = (& git -C $Repo status --porcelain -z 2>$null) -join "`n"
+    $raw = (& git -C $Repo status --porcelain -z --untracked-files=all 2>$null) -join "`n"
     if ($LASTEXITCODE) { throw "git status failed in $Repo" }
     $paths = [System.Collections.Generic.List[string]]::new()
     $entries = @($raw -split "`0" | Where-Object { $_ -ne '' })
     for ($i = 0; $i -lt $entries.Count; $i++) {
         $entry = $entries[$i]
         $paths.Add($entry.Substring(3))
-        if ($entry[0] -in 'R', 'C' -and $i + 1 -lt $entries.Count) {
+        if (($entry[0] -in 'R', 'C' -or $entry[1] -in 'R', 'C') -and $i + 1 -lt $entries.Count) {
             $i++
             $paths.Add($entries[$i])
         }
