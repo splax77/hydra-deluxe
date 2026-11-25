@@ -12,8 +12,9 @@
 # CMake and MSVC ship with Visual Studio, so cmake need not be on PATH.
 # tools/find_cmake.ps1 owns where this looks for it.
 #
-# Under Claude Code a build needs a build pass, in HYDRA_BUILD_PASS, and stops
-# before configure without one. tools/build_slot.ps1 owns that rule.
+# Under Claude Code a build needs a build pass, in HYDRA_BUILD_PASS, for this
+# build's preset, and stops before configure without one. tools/build_slot.ps1
+# owns that rule.
 #
 # Every build, gated or not, adds a line to the build record when it starts
 # and when it ends. tools/build_record.ps1 owns that record.
@@ -109,7 +110,8 @@ $built = $false
 try {
     # A long-lived shell keeps its process id after this script ends, so the
     # finally below is what frees the slot, not the owner's death.
-    $pass = & (Join-Path $root "tools\build_slot.ps1") -Claim -Owner $root
+    # A pass builds the preset it was asked for; build_slot.ps1 refuses another.
+    $pass = & (Join-Path $root "tools\build_slot.ps1") -Claim -Owner $root -Preset $Preset
     # Only a build that got this far is recorded: a refused claim built nothing.
     $claimed = $true
     Write-BuildRecord "started"

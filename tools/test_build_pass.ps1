@@ -11,6 +11,8 @@ build_slot.ps1, cmake_presets.ps1, stale_toolchain.ps1 and CMakePresets.json, wi
 that hands back a fake cmake. The fake writes down its arguments and what the
 slot folder holds at that moment.
 
+Locks are read through build_slot.ps1's own Read-BuildSlot.
+
 tools/test_hydra_ui_mcp.py covers the hydra_build_pass tool. Nothing here runs
 build_slot.ps1 -Hold, which holds one slot across several builds. A real compile,
 and whether MSBuild reads Directory.Build.targets at all, needs a real build,
@@ -55,10 +57,27 @@ function Invoke-Slot([string[]]$SlotArgs) { Invoke-Pwsh $slotScript $SlotArgs }
 
 function Invoke-Build([string[]]$BuildArgs = @('-Target', 'hydra_tests')) { Invoke-Pwsh $fakeRepoBuild $BuildArgs }
 
-# Asks for a pass and returns it, or empty on a refusal.
-function New-Pass([string]$Session, [int]$Holder = $PID) {
-    $r = Invoke-Slot @('-NewPass', '-Session', $Session, '-Holder', "$Holder")
+# Asks for a pass and returns it, or empty on a refusal. Invoke-Build builds
+# the default preset unless it is told another, so that is what a case asks
+# for unless it says otherwise.
+function New-Pass([string]$Session, [int]$Holder = $PID, [string]$Preset = 'default') {
+    $r = Invoke-Slot @('-NewPass', '-Session', $Session, '-Preset', $Preset, '-Holder', "$Holder")
     if ($r.Code -eq 0) { $r.Lines[0] -replace '^pass: ', '' } else { '' }
+}
+
+# The lock reader is build_slot.ps1's own Read-BuildSlot. The script cannot be
+# dot-sourced, because its main part would run, so this takes the one function
+# out of its parsed text.
+$readerAst = [System.Management.Automation.Language.Parser]::ParseFile($slotScript, [ref]$null, [ref]$null).Find({
+        param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Read-BuildSlot' }, $true)
+if (-not $readerAst) { throw "build_slot.ps1 has no Read-BuildSlot function to read locks with" }
+. ([scriptblock]::Create($readerAst.Extent.Text))
+
+# The one lock in the case's slot folder, read by Read-BuildSlot.
+function Read-OnlyLock {
+    $locks = @(Get-Locks)
+    if ($locks.Count -ne 1) { throw "expected one lock in $script:slots, found $($locks.Count)" }
+    Read-BuildSlot $locks[0].FullName
 }
 
 function Get-CMakeLines { @(Get-Content -LiteralPath $cmakeLog) }
@@ -119,14 +138,14 @@ exit 0
     $c = New-Pass 'session-c'
     Check ($a -and $b -and $c -and $a -ne $b -and $b -ne $c) "three sessions: expected three different passes, got '$a' '$b' '$c'"
     Check ((Get-Locks).Count -eq 3) "three passes: expected three locks, got $((Get-Locks).Count)"
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-d')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-d', '-Preset', 'default')
     Check ($r.Code -eq 1 -and $r.Text -match 'all 3 build slots are taken') "fourth pass: expected a refusal, got exit $($r.Code):`n$($r.Text)"
     foreach ($s in 'session-a', 'session-b', 'session-c') { Check ($r.Text -match $s) "fourth pass: the refusal does not name ${s}:`n$($r.Text)" }
     Check ((Get-Locks).Count -eq 3) 'fourth pass: a fourth lock appeared'
 
     New-Case
     $first = New-Pass 'session-a'
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default')
     Check ($first -and $r.Code -eq 1 -and $r.Text -match 'this session already holds one') "second pass for one session: expected a refusal, got exit $($r.Code):`n$($r.Text)"
     Check ((New-Pass 'session-b') -ne '') 'a second session could not get a pass beside the first'
 
@@ -136,7 +155,7 @@ exit 0
     # itself is build_slot.ps1's to choose.
     New-Case
     $asked = [DateTime]::UtcNow
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default')
     $answered = [DateTime]::UtcNow
     $token = $r.Lines[0] -replace '^pass: ', ''
     $named = if ($r.Text -match 'build slot (\d+) of \d+ and runs out if nothing claims it in (\d+) s') { [pscustomobject]@{ Slot = $Matches[1]; Seconds = [int]$Matches[2] } }
@@ -155,7 +174,7 @@ exit 0
 
     New-Case
     foreach ($bad in @(), @('-Session', ''), @('-Session', 'two words')) {
-        $r = Invoke-Slot (@('-NewPass') + $bad)
+        $r = Invoke-Slot (@('-NewPass', '-Preset', 'default') + $bad)
         Check ($r.Code -eq 1 -and $r.Text -match 'cannot be told from another') "unusable session id ($($bad -join ' ')): expected a refusal, got exit $($r.Code):`n$($r.Text)"
     }
     Check ((Get-Locks).Count -eq 0) 'an unusable session id left a lock'
@@ -167,7 +186,7 @@ exit 0
         $runs = @($names.Sessions | ForEach-Object -Begin { $n = 0 } -Process {
                 $n++
                 $outFile = Join-Path $script:slots "..\race$script:caseNumber-$n.txt"
-                [pscustomobject]@{ Out = $outFile; Process = (Start-Process pwsh -ArgumentList '-NoProfile', '-File', $slotScript, '-NewPass', '-Session', $_ -PassThru -NoNewWindow -RedirectStandardOutput $outFile) }
+                [pscustomobject]@{ Out = $outFile; Process = (Start-Process pwsh -ArgumentList '-NoProfile', '-File', $slotScript, '-NewPass', '-Session', $_, '-Preset', 'default' -PassThru -NoNewWindow -RedirectStandardOutput $outFile) }
             })
         foreach ($run in $runs) { $run.Process.WaitForExit() }
         $won = @($runs | Where-Object { (Get-Content -LiteralPath $_.Out -First 1) -like 'pass: *' })
@@ -211,7 +230,7 @@ exit 0
 
     New-Case
     Write-Lock 1 "$PID`nC:\wt\one`npass=aaaa`nsession=session-x"
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-x')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-x', '-Preset', 'default')
     Check ($r.Code -eq 1 -and $r.Text -match "process $PID, building C:\\wt\\one") "a claimed pass does not count for its session:`n$($r.Text)"
 
     # ------------------------------------------------- locks in the old form
@@ -221,7 +240,7 @@ exit 0
     Write-Lock 1 "$PID`nC:\wt\old"
     Write-Lock 2 "$(Get-DeadPid)`nC:\wt\gone"
     Write-Lock 3 ''
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default')
     Check ($r.Code -eq 0) "old-form locks: a live one, a dead one and an empty one should leave room, got exit $($r.Code):`n$($r.Text)"
     Check ((Test-Path (Join-Path $script:slots 'slot1.lock')) -and (Get-Content (Join-Path $script:slots 'slot1.lock') -Raw) -eq "$PID`nC:\wt\old") 'a live old-form lock was touched'
 
@@ -229,7 +248,7 @@ exit 0
     Write-Lock 1 "$PID`nC:\wt\old"
     Write-Lock 2 "$PID`nC:\wt\old2"
     Write-Lock 3 "$PID`nC:\wt\old3"
-    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a', '-Preset', 'default')
     Check ($r.Code -eq 1 -and $r.Text -match "no session, process $PID, building C:\\wt\\old3") "old-form locks: expected a refusal naming them, got exit $($r.Code):`n$($r.Text)"
 
     New-Case
@@ -287,7 +306,7 @@ exit 0
 
     # A Ninja preset has no MSBuild, so no low-priority switch.
     New-Case
-    $env:HYDRA_BUILD_PASS = New-Pass 'session-a'
+    $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset 'coverage-ninja'
     $env:CLAUDECODE = '1'
     $r = Invoke-Build @('-Preset', 'coverage-ninja', '-Target', 'hydra_tests')
     $said = Get-CMakeLines
@@ -313,6 +332,93 @@ exit 0
         Check ($r.Code -ne 0 -and $r.Text -match 'in use' -and (Get-CMakeLines).Count -eq 0) "second build on one pass: expected a refusal, got exit $($r.Code):`n$($r.Text)"
         Check ((Get-Locks).Count -eq 1) 'second build on one pass: the first build''s lock was lost'
     } finally { Stop-Process -Id $bystander.Id -Force -ErrorAction SilentlyContinue }
+
+    # ------------------------------------------------ a pass is for one preset
+
+    # A pass with no preset is refused, and takes no slot.
+    New-Case
+    $r = Invoke-Slot @('-NewPass', '-Session', 'session-a')
+    Check ($r.Code -eq 1 -and $r.Text -match 'name the build preset' -and (Get-Locks).Count -eq 0) "-NewPass with no -Preset: expected a refusal and no lock, got exit $($r.Code), $((Get-Locks).Count) locks:`n$($r.Text)"
+
+    # A pass for mutation, claimed by a mutation build, is claimed and built.
+    New-Case
+    $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset 'mutation'
+    $env:CLAUDECODE = '1'
+    $lock = Read-OnlyLock
+    Check ($lock.HasPreset -and $lock.Preset -ceq 'mutation') "a pass for mutation: the lock does not hold preset=mutation (HasPreset $($lock.HasPreset), '$($lock.Preset)')"
+    $r = Invoke-Build @('-Preset', 'mutation', '-Target', 'hydra_tests')
+    $said = Get-CMakeLines
+    Check ($r.Code -eq 0 -and @($said | Where-Object { Test-TargetBuildLine $_ }).Count -eq 1 -and @($said | Where-Object { $_ -notmatch 'locks=1 claimed=1 ' }).Count -eq 0) "mutation pass, mutation build: expected one claimed build of hydra_tests, got exit $($r.Code):`n$($r.Text)`n$($said -join "`n")"
+
+    # The same pass, claimed by a build of another preset, or of the same word
+    # with a capital, is refused before configure and stays unclaimed.
+    foreach ($other in 'default', 'Mutation') {
+        New-Case
+        $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset 'mutation'
+        $env:CLAUDECODE = '1'
+        $r = Invoke-Build @('-Preset', $other, '-Target', 'hydra_tests')
+        Check ($r.Code -ne 0 -and $r.Text -cmatch "for the preset 'mutation' only" -and (Get-CMakeLines).Count -eq 0) "mutation pass, $other build: expected a refusal before configure, got exit $($r.Code):`n$($r.Text)`n$((Get-CMakeLines) -join "`n")"
+        $lock = Read-OnlyLock
+        Check ($lock.Unclaimed -and $lock.Preset -ceq 'mutation') "mutation pass, $other build: the lock was claimed or lost its preset (Unclaimed $($lock.Unclaimed), '$($lock.Preset)')"
+    }
+
+    # A claim that names no preset is refused under a pass for one. build_cpp.ps1
+    # always names one, so this goes to the script itself.
+    New-Case
+    $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset 'mutation'
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Slot @('-Claim', '-Owner', 'no preset')
+    Check ($r.Code -ne 0 -and $r.Text -cmatch "for the preset 'mutation' only, and this build named no preset") "mutation pass, claim with no preset: expected a refusal, got exit $($r.Code):`n$($r.Text)"
+    Check ((Read-OnlyLock).Unclaimed) 'mutation pass, claim with no preset: the lock was claimed'
+
+    # After a claim the lock keeps its preset line. The claiming process has
+    # ended by the time the test reads it, which leaves the file as it was.
+    New-Case
+    $token = New-Pass 'session-a' -Preset 'mutation'
+    $env:HYDRA_BUILD_PASS = $token
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Slot @('-Claim', '-Owner', 'claimer', '-Preset', 'mutation')
+    $lock = Read-OnlyLock
+    Check ($r.Code -eq 0 -and -not $lock.Unclaimed -and $lock.Pass -eq $token -and $lock.What -eq 'claimer') "mutation pass, mutation claim: expected a claimed lock, got exit $($r.Code), Unclaimed $($lock.Unclaimed), What '$($lock.What)':`n$($r.Text)"
+    Check ($lock.HasPreset -and $lock.Preset -ceq 'mutation') "after a claim the lock lost its preset line (HasPreset $($lock.HasPreset), '$($lock.Preset)')"
+
+    # A nested claim, under a claimed mutation pass held by this test's own
+    # process, is held to the same preset. The same preset rides on the claim.
+    New-Case
+    $env:HYDRA_BUILD_PASS = 'dddd'
+    $env:CLAUDECODE = '1'
+    Write-Lock 1 "$PID`nC:\wt\outer`npass=dddd`nsession=session-a`npreset=mutation"
+    $r = Invoke-Slot @('-Claim', '-Owner', 'inner', '-Preset', 'default')
+    Check ($r.Code -ne 0 -and $r.Text -cmatch "for the preset 'mutation' only") "nested default claim under a mutation claim: expected a refusal, got exit $($r.Code):`n$($r.Text)"
+    $r = Invoke-Slot @('-Claim', '-Owner', 'inner', '-Preset', 'mutation')
+    Check ($r.Code -eq 0) "nested mutation claim under a mutation claim: expected it to ride on the claim, got exit $($r.Code):`n$($r.Text)"
+    Check ((Get-Content -LiteralPath (Join-Path $script:slots 'slot1.lock') -Raw) -eq "$PID`nC:\wt\outer`npass=dddd`nsession=session-a`npreset=mutation") 'a nested claim rewrote the outer claim''s lock'
+
+    # A lock with no preset= line, as a server started before passes named a
+    # preset writes, is claimed with any preset.
+    foreach ($any in 'default', 'mutation', 'Mutation') {
+        New-Case
+        $env:HYDRA_BUILD_PASS = 'eeee'
+        $env:CLAUDECODE = '1'
+        $expires = [DateTime]::UtcNow.AddSeconds(60).ToString('o')
+        Write-Lock 1 "$PID`npass for session session-a`npass=eeee`nsession=session-a`nexpires=$expires"
+        $r = Invoke-Slot @('-Claim', '-Owner', 'old pass', '-Preset', $any)
+        $lock = Read-OnlyLock
+        Check ($r.Code -eq 0 -and -not $lock.Unclaimed -and -not $lock.HasPreset) "a lock with no preset line, claimed with ${any}: expected a claim that adds no preset, got exit $($r.Code), Unclaimed $($lock.Unclaimed), HasPreset $($lock.HasPreset):`n$($r.Text)"
+    }
+
+    # -Repo under a mutation pass must name mutation, and hands it to the build.
+    New-Case
+    $env:HYDRA_BUILD_PASS = New-Pass 'session-a' -Preset 'mutation'
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+    Check ($r.Code -ne 0 -and $r.Text -cmatch "for the preset 'mutation' only" -and (Get-CMakeLines).Count -eq 0) "-Repo -Preset default under a mutation pass: expected a refusal before configure, got exit $($r.Code):`n$($r.Text)"
+    Check ((Read-OnlyLock).Unclaimed) '-Repo -Preset default under a mutation pass: the lock was claimed'
+    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'mutation', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+    $said = Get-CMakeLines
+    Check ($r.Code -eq 0 -and $said.Count -ge 1 -and @($said | Where-Object { $_ -notmatch 'locks=1 claimed=1 ' }).Count -eq 0) "-Repo -Preset mutation under a mutation pass: expected one claimed slot, got exit $($r.Code):`n$($r.Text)`n$($said -join "`n")"
+    Check (@($said | Where-Object { $_ -cmatch '^--build --preset mutation .*--target hydra_tests( |$)' }).Count -eq 1) "-Repo -Preset mutation: the build did not build the mutation preset:`n$($said -join "`n")"
+    Check ((Get-Locks).Count -eq 0) '-Repo -Preset mutation: the slot was not given back'
 
     # ----------------------------- a long-lived shell that builds in-process
 
@@ -342,7 +448,7 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
     New-Case
     $env:HYDRA_BUILD_PASS = New-Pass 'session-a'
     $env:CLAUDECODE = '1'
-    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Target', 'hydra_tests', '-SlotDir', $script:slots)
+    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-Target', 'hydra_tests', '-SlotDir', $script:slots)
     $said = Get-CMakeLines
     Check ($r.Code -eq 0 -and $said.Count -eq 3) "-Repo under a pass: exit $($r.Code):`n$($r.Text)"
     Check (@($said | Where-Object { $_ -notmatch 'locks=1 claimed=1 ' }).Count -eq 0) "-Repo under a pass: expected exactly one slot taken:`n$($said -join "`n")"
@@ -350,7 +456,7 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
 
     New-Case
     $env:CLAUDECODE = '1'
-    $r = Invoke-Slot @('-Repo', $fakeRepo, '-SlotDir', $script:slots)
+    $r = Invoke-Slot @('-Repo', $fakeRepo, '-Preset', 'default', '-SlotDir', $script:slots)
     Check ($r.Code -ne 0 -and $r.Text -match 'no build pass' -and (Get-CMakeLines).Count -eq 0) "-Repo with no pass: expected a refusal, got exit $($r.Code):`n$($r.Text)"
 
     # An old release's build_cpp.ps1 claims nothing, so -Repo's own claim is
@@ -361,7 +467,7 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
     Set-Content (Join-Path $oldRepo 'build_cpp.ps1') "& '$fakeCMake' old-build; exit 5"
     $env:HYDRA_BUILD_PASS = New-Pass 'session-a'
     $env:CLAUDECODE = '1'
-    $r = Invoke-Slot @('-Repo', $oldRepo, '-SlotDir', $script:slots)
+    $r = Invoke-Slot @('-Repo', $oldRepo, '-Preset', 'default', '-SlotDir', $script:slots)
     Check ($r.Code -eq 5) "-Repo on an old release: expected its exit 5, got $($r.Code):`n$($r.Text)"
     Check ((Get-CMakeLines) -match 'locks=1 claimed=1 ') "-Repo on an old release: the claim did not hold through the build:`n$((Get-CMakeLines) -join "`n")"
     Check ((Get-Locks).Count -eq 0) '-Repo on an old release: the slot was not given back'
@@ -431,11 +537,11 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
         Write-Lock 1 "$($bystander.Id)`nplain"
         Write-Lock 2 "$($bystander.Id)`nplain"
         Write-Lock 3 ''
-        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Holder', "$PID")
+        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Preset', 'default', '-Holder', "$PID")
         Check ($r.Code -eq 1) "a young empty lock was cleared, and a pass given:`n$($r.Text)"
         Check (Test-Path (Join-Path $script:slots 'slot3.lock')) 'a young empty lock was deleted'
         (Get-Item (Join-Path $script:slots 'slot3.lock')).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-1)
-        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Holder', "$PID")
+        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Preset', 'default', '-Holder', "$PID")
         Check ($r.Code -eq 0) "an old empty lock still held a slot:`n$($r.Text)"
     } finally { Stop-Process -Id $bystander.Id -Force -ErrorAction SilentlyContinue }
 

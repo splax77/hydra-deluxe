@@ -39,19 +39,9 @@ const std::string kRunBase =
     "void b() { int y = 2; }\n"
     "void run(Mode m) { if (m == Mode::A) a(); else b(); }\n";
 
-// A fixture repo whose main branch holds `base`; commit_tip() commits the
-// tip on top, so the range "HEAD" is that one commit.
-struct ExeRepo {
-    std::string dir;
-    ExeRepo(const std::string& name, const std::map<std::string, std::string>& base)
-        : dir(testtemp::temp_dir(name)) {
-        testtemp::remove_dir(dir);
-        fs::create_directories(hydra::os_path(dir));
-        fixture_git(dir, {"init", "-q", "-b", "main"});
-        commit_texts(dir, base, "base");
-    }
-    ~ExeRepo() { testtemp::remove_dir(dir); }
-    void commit_tip(const std::map<std::string, std::string>& tip) const { commit_texts(dir, tip, "tip"); }
+// The shared fixture repo plus the picker's own answers on it.
+struct ExeRepo : FixtureRepo {
+    using FixtureRepo::FixtureRepo;
 
     // The picker's own result for HEAD, as the exe's --tests mode computes it.
     TestPick pick(const PickLimits& limits = {}) const {
@@ -65,22 +55,8 @@ struct ExeRepo {
     }
 };
 
-struct ExeRun {
-    std::vector<std::string> lines;
-    std::string err;
-    int code = -1;
-};
-
 ExeRun run_tests_mode(const std::string& repo, const std::string& range) {
-    ChildProcess p({HYDRA_PRECHECK_EXE, "--repo", repo, "--tests", range});
-    ExeRun r;
-    std::istringstream text(p.read_all());
-    for (std::string l; std::getline(text, l);) {
-        if (!l.empty() && l.back() == '\r') l.pop_back();
-        r.lines.push_back(l);
-    }
-    r.code = p.wait(r.err);
-    return r;
+    return run_exe_mode(repo, "--tests", range);
 }
 
 // Runs the exe on HEAD, checks it exits 0 and prints exactly pick_lines' lines
