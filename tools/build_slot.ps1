@@ -13,14 +13,16 @@
 # is stale, so the next caller clears it.
 #
 # Ask for a pass (the hydra_build_pass tool does this; it never waits):
-#     pwsh -NoProfile -File tools\build_slot.ps1 -NewPass -Session <session id> [-Holder <process id>]
+#     pwsh -NoProfile -File tools\build_slot.ps1 -NewPass -Session <session id> -Preset <preset> [-Holder <process id>]
 # It prints the pass and exits 0, or names who holds the slots and exits 1.
+# -Preset is the build preset the pass is for, and it has no default. The
+# pass builds that preset and no other: Enter-BuildPass owns that check.
 # -Holder is the process that asks. It goes on the lock's first line, so a
 # script on an old branch, which reads only that line, sees a busy slot.
 #
 # Use a pass. The pass travels in the environment, in HYDRA_BUILD_PASS:
-#     & tools\build_slot.ps1 -Claim -Owner <what is building>
-#     & tools\build_slot.ps1 -Hold -Owner <what is building>
+#     & tools\build_slot.ps1 -Claim -Owner <what is building> -Preset <preset>
+#     & tools\build_slot.ps1 -Hold -Owner <what is building> -Preset <preset>
 #     & tools\build_slot.ps1 -Release <the Lock field of what they returned>
 # Call them with & in the process that builds, because a claim belongs to that
 # process. Each returns an object: Gated says whether the run is under the
@@ -38,7 +40,10 @@
 #     pwsh -NoProfile -File tools\build_slot.ps1 -Check
 #
 # Run a build in another worktree, under the pass the caller holds:
-#     pwsh -NoProfile -File tools\build_slot.ps1 -Repo <worktree> [-Target hydra_tests]
+#     pwsh -NoProfile -File tools\build_slot.ps1 -Repo <worktree> [-Preset <preset>] [-Target hydra_tests]
+# It claims with -Preset and hands it to build_cpp.ps1, so under a pass for a
+# preset it must name that preset. Without -Preset, build_cpp.ps1 gets none
+# and uses its own default.
 # It runs <worktree>\build_cpp.ps1 and exits with the build's result: 0 when
 # it passed, otherwise its exit code, or 1 when it threw. It holds the claim
 # itself, so an old release whose build_cpp.ps1 claims nothing still sits in
@@ -60,6 +65,7 @@ param(
     [switch]$DryRun,
     [switch]$NewPass,
     [string]$Session = '',
+    [string]$Preset = '',
     [int]$Holder = 0,
     [switch]$Claim,
     [switch]$Hold,
@@ -115,13 +121,15 @@ function Use-BuildSlotFolder([string]$Dir, [scriptblock]$Work) {
 
 # What one lock file says. Line 1 is a process id and line 2 says what is
 # building. Those two lines are the whole of a plain slot, and of every lock an
-# old script wrote. A pass adds pass= and session= lines, plus expires= until
-# it is claimed. A lock that cannot be read comes back with no holder.
+# old script wrote. A pass adds pass=, session= and preset= lines, plus
+# expires= until it is claimed. A pass handed out before passes named a
+# preset has no preset= line, and HasPreset says which kind a lock is. A lock
+# that cannot be read comes back with no holder.
 function Read-BuildSlot([string]$Path) {
     $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
     $fields = @{}
     foreach ($line in ($lines | Select-Object -Skip 2)) {
-        if ($line -match '^(pass|session|expires)=(.*)$') { $fields[$Matches[1]] = $Matches[2] }
+        if ($line -match '^(pass|session|preset|expires)=(.*)$') { $fields[$Matches[1]] = $Matches[2] }
     }
     $expires = $null
     if ($fields.ContainsKey('expires')) {
@@ -133,6 +141,8 @@ function Read-BuildSlot([string]$Path) {
         What = $(if ($lines.Count -gt 1) { "$($lines[1])" } else { '' })
         Pass = $fields.pass
         Session = $fields.session
+        HasPreset = $fields.ContainsKey('preset')
+        Preset = $fields.preset
         Unclaimed = $fields.ContainsKey('expires')
         Expires = $expires
     }
@@ -184,9 +194,13 @@ function Write-BuildSlot([string]$Path, [string[]]$Lines, [switch]$Replace) {
 
 # Hands out a pass, or says why not. Never waits for a slot. The result has
 # Pass (empty when refused) and Text, the lines for the caller to show.
-function New-BuildPass([string]$ForSession, [int]$HolderId, [string]$Dir) {
+function New-BuildPass([string]$ForSession, [string]$ForPreset, [int]$HolderId, [string]$Dir) {
     if ($ForSession -notmatch '^\S+$') {
         return [pscustomobject]@{ Pass = ''; Text = @("no pass: the session id '$ForSession' is not usable, so this session cannot be told from another") }
+    }
+    # One word, because it goes on one lock line and into the command below.
+    if ($ForPreset -notmatch '^\S+$') {
+        return [pscustomobject]@{ Pass = ''; Text = @("no pass: name the build preset this pass is for (the preset '$ForPreset' is not usable). A pass builds the preset it names and no other; there is no default.") }
     }
     Use-BuildSlotFolder $Dir {
         $live = @(Get-LiveBuildSlots $Dir)
@@ -201,11 +215,11 @@ function New-BuildPass([string]$ForSession, [int]$HolderId, [string]$Dir) {
         $free = 1..$BuildSlotCount | Where-Object { -not (Test-Path -LiteralPath (Get-BuildSlotPath $Dir $_)) } | Select-Object -First 1
         $token = [guid]::NewGuid().ToString('N')
         $expires = [DateTime]::UtcNow.AddSeconds($BuildPassUnclaimedSeconds).ToString('o')
-        Write-BuildSlot (Get-BuildSlotPath $Dir $free) @("$HolderId", "pass for session $ForSession", "pass=$token", "session=$ForSession", "expires=$expires")
+        Write-BuildSlot (Get-BuildSlotPath $Dir $free) @("$HolderId", "pass for session $ForSession", "pass=$token", "session=$ForSession", "preset=$ForPreset", "expires=$expires")
         [pscustomobject]@{ Pass = $token; Text = @(
                 "pass: $token",
-                "It holds build slot $free of $BuildSlotCount and runs out if nothing claims it in $BuildPassUnclaimedSeconds s. Build with:",
-                "`$env:HYDRA_BUILD_PASS='$token'; .\build_cpp.ps1 -Target hydra_tests") }
+                "It holds build slot $free of $BuildSlotCount and runs out if nothing claims it in $BuildPassUnclaimedSeconds s. It builds the preset $ForPreset only. Build with:",
+                "`$env:HYDRA_BUILD_PASS='$token'; .\build_cpp.ps1 -Preset $ForPreset -Target hydra_tests") }
     }
 }
 
@@ -226,17 +240,28 @@ function Test-BuildPassAncestor([int]$ProcessId) {
 # process or a parent already covers the build, because that claim's owner
 # releases it. Any other live claim on the same pass refuses, which keeps one
 # pass from running two builds side by side.
-function Enter-BuildPass([string]$What, [string]$Dir) {
+# A pass that names a preset builds that preset only. The check runs before the
+# enclosing-claim return, so a nested build is held to it too. The two words
+# must match letter for letter, capitals included, because PowerShell's
+# parameter checks ignore case and the build record keeps the word as typed.
+# A lock with no preset= line is claimed with any preset, or none.
+function Enter-BuildPass([string]$What, [string]$Dir, [string]$ForPreset) {
     $token = $env:HYDRA_BUILD_PASS
     if (-not $token) { throw "no build pass: HYDRA_BUILD_PASS is empty. $BuildPassHowTo" }
     Use-BuildSlotFolder $Dir {
         $lock = @(Get-LiveBuildSlots $Dir | Where-Object { $_.Pass -eq $token }) | Select-Object -First 1
         if (-not $lock) { throw "this build pass is not live: it ran out, was already used, or was never issued. $BuildPassHowTo" }
+        if ($lock.HasPreset -and (-not $ForPreset -or $ForPreset -cne $lock.Preset)) {
+            $asked = if ($ForPreset) { "the preset '$ForPreset'" } else { 'no preset' }
+            throw "this build pass is for the preset '$($lock.Preset)' only, and this build named $asked. Build with -Preset $($lock.Preset), or ask hydra_build_pass for a pass for the preset you want."
+        }
         if (-not $lock.Unclaimed) {
             if (Test-BuildPassAncestor $lock.Holder) { return }
             throw "this build pass is in use: $(Format-BuildSlotHolder $lock)"
         }
-        Write-BuildSlot $lock.Path @("$PID", $What, "pass=$($lock.Pass)", "session=$($lock.Session)") -Replace
+        $claimedLines = @("$PID", $What, "pass=$($lock.Pass)", "session=$($lock.Session)")
+        if ($lock.HasPreset) { $claimedLines += "preset=$($lock.Preset)" }
+        Write-BuildSlot $lock.Path $claimedLines -Replace
         Write-Host "build pass claimed in $($lock.Path)"
         $lock.Path
     }
@@ -294,9 +319,9 @@ function Release-BuildSlot([string]$Slot) {
 
 # The two ways in for a build. -Claim is for build_cpp.ps1, which outside the
 # gate takes nothing. With -Wait, outside the gate it waits for a plain slot.
-function Enter-BuildSlot([string]$What, [string]$Dir, [switch]$Wait) {
+function Enter-BuildSlot([string]$What, [string]$Dir, [string]$ForPreset, [switch]$Wait) {
     if (Test-BuildPassGated) {
-        return [pscustomobject]@{ Gated = $true; Lock = "$(Enter-BuildPass $What $Dir)" }
+        return [pscustomobject]@{ Gated = $true; Lock = "$(Enter-BuildPass $What $Dir $ForPreset)" }
     }
     $lock = if ($Wait) { Get-BuildSlot $What $Dir } else { '' }
     [pscustomobject]@{ Gated = $false; Lock = $lock }
@@ -305,16 +330,16 @@ function Enter-BuildSlot([string]$What, [string]$Dir, [switch]$Wait) {
 $dir = Get-BuildSlotDir $SlotDir
 
 if ($NewPass) {
-    $result = New-BuildPass $Session $Holder $dir
+    $result = New-BuildPass $Session $Preset $Holder $dir
     $result.Text | ForEach-Object { Write-Output $_ }
     exit $(if ($result.Pass) { 0 } else { 1 })
 }
 if ($Claim) {
-    Enter-BuildSlot $Owner $dir
+    Enter-BuildSlot $Owner $dir $Preset
     exit 0
 }
 if ($Hold) {
-    Enter-BuildSlot $Owner $dir -Wait
+    Enter-BuildSlot $Owner $dir $Preset -Wait
     exit 0
 }
 if ($PSBoundParameters.ContainsKey('Release')) {
@@ -338,15 +363,18 @@ if (-not $Repo) { throw 'give -Repo <worktree>, or one of the modes this file de
 
 # The build's own claim must read the same folder as this one.
 if ($SlotDir) { $env:HYDRA_BUILD_SLOT_DIR = $SlotDir }
-$slot = Enter-BuildSlot $Repo $dir -Wait
+$slot = Enter-BuildSlot $Repo $dir $Preset -Wait
 $code = 0
 # Older checkouts' build_cpp.ps1 builds the current folder, so the build runs
 # from inside -Repo; otherwise an old release would rebuild the caller's tree.
 $pushed = $false
+$buildArgs = @{}
+if ($Preset) { $buildArgs.Preset = $Preset }
+if ($Target) { $buildArgs.Target = $Target }
 try {
     Push-Location -LiteralPath $Repo -ErrorAction Stop
     $pushed = $true
-    if ($Target) { & (Join-Path $Repo 'build_cpp.ps1') -Target $Target } else { & (Join-Path $Repo 'build_cpp.ps1') }
+    & (Join-Path $Repo 'build_cpp.ps1') @buildArgs
     if ($LASTEXITCODE) { $code = $LASTEXITCODE }
 } catch {
     Write-Host "build failed in ${Repo}: $_"
