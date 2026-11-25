@@ -104,8 +104,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         // timing() is the edge the sentence below prints. Whether it is a
         // "no more than" limit follows SPSqueeze::needs_no_timing (D302).
         // The note's "early" or "late" is the way squeeze_presses presses
-        // it. The eff. figure's scale side is the rating's, a different
-        // question.
+        // it. The eff. figure's scale side is squeeze_multiplier's
+        // (core/squeeze_rating.h), which rate_activation reads.
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
         const std::string bound = sq.needs_no_timing() ? "no more than " : "more than ";
@@ -197,6 +197,10 @@ WindowRowView window_row_view(const WindowEnds& row, const ChordTimes& chords) {
     }
     v.is_short = row.is_short();
     v.tag = format_ms(std::fabs(row.safe_ms)) + (v.is_short ? " short" : " safe");
+    // The Effective line shows when the owner says the multiplier is shown,
+    // the same answer the scale lines read.
+    if (row.priced && row.priced->shown() && row.frontend_effective_ms)
+        v.effective = WindowFigure{role_word(EndRole::Frontend), format_ms(*row.frontend_effective_ms), ""};
     return v;
 }
 
@@ -258,8 +262,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
         ActivationRating rate = rate_activation(act, rules.backend_leeway_ms);
 
-        // The lines name the sides the activation's rows and squeezes read
-        // (rate_activation records them), when they aren't 1, early first.
+        // The lines name the sides the owner priced for the activation's
+        // rows and squeezes (row_multiplier, squeeze_multiplier; rate_activation
+        // records them), when they are shown (is_scaled), early first.
         // The SqIn's end gets its own line, shown first, when it prints
         // differently from the SP end's. Both lines are orange when one of
         // the scales governs a row or SqIn on this activation.

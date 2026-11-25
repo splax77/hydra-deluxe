@@ -1,6 +1,7 @@
 #include "core/squeeze_rating.h"
 
 #include "core/backend_value.h"
+#include "core/note_window.h"
 
 #include <algorithm>
 #include <cmath>
@@ -54,12 +55,55 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
     if (!act.transfer_post) return std::nullopt;
     ActTransferScales s;
     s.post = *act.transfer_post;
-    for (const SPSqueeze& sq : act.sqinouts) {
-        if (sq.kind != SqueezeKind::SqIn) continue;
-        if (!sq.transfer) return std::nullopt;
-        s.sqins.push_back(*sq.transfer);
+    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+        if (act.sqinouts[k].kind != SqueezeKind::SqIn) continue;
+        const std::optional<TransferScale>& own = stored_scale(act, k);
+        if (!own) return std::nullopt;
+        s.sqins.push_back(*own);
     }
     return s;
+}
+
+// ---- the multiplier a squeeze or a row reads -------------------------------
+
+bool PricedScale::shown() const { return is_scaled(ratio); }
+
+const std::optional<TransferScale>& stored_scale(const Activation& act, size_t k) {
+    static const std::optional<TransferScale> none;
+    if (k >= act.sqinouts.size()) return none;
+    const SPSqueeze& q = act.sqinouts[k];
+    return q.kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer;
+}
+
+namespace {
+
+// `scale` priced on the side `press` names (transfer_side owns that number).
+PricedScale priced_on(const TransferScale& scale, Press press) {
+    return PricedScale{scale, press, transfer_side(scale, press)};
+}
+
+}  // namespace
+
+std::optional<PricedScale> squeeze_multiplier(const Activation& act, size_t k) {
+    const std::optional<TransferScale>& scale = stored_scale(act, k);
+    if (!scale) return std::nullopt;
+    return priced_on(*scale, squeeze_presses(act.sqinouts[k]).anchor);
+}
+
+std::optional<PricedScale> row_multiplier(const Activation& act, const BackendSqueeze& row,
+                                          double leeway_ms) {
+    if (!row.offset_ms) return std::nullopt;
+    if (act.is_sqout_backend(row)) {
+        // The squeezed-out row is its squeeze out's note: one route, so the
+        // row and its badge read one side.
+        for (size_t k = 0; k < act.sqinouts.size(); ++k)
+            if (act.sqinouts[k].kind == SqueezeKind::SqOut) return squeeze_multiplier(act, k);
+        return std::nullopt;
+    }
+    if (!act.transfer_post) return std::nullopt;
+    const Press press =
+        core::counted_without_squeeze(row.offset(), leeway_ms) ? Press::Early : Press::Late;
+    return priced_on(*act.transfer_post, press);
 }
 
 namespace {
@@ -137,20 +181,20 @@ double nominal_budget_ms() {
     return squeeze_budget_ms(kIdentityScale);
 }
 
-NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end) {
+NoteRating rate_note(double offset_ms, const PricedScale& priced) {
     NoteRating n;
-    n.early = inside;
-    n.scale = inside ? at_end.early : at_end.late;
+    n.early = priced.press == Press::Early;
+    n.scale = priced.ratio;
     n.budget_ms = squeeze_budget_ms(n.scale);
-    if (is_scaled(n.scale)) n.effective_ms = effective_backend_ms(offset_ms, n.scale);
+    if (priced.shown()) n.effective_ms = effective_backend_ms(offset_ms, n.scale);
     return n;
 }
 
 namespace {
 
-// Marks the side a rated note read, as rate_note chose it.
-void mark_read(SidesRead& read, const NoteRating& n) {
-    (n.early ? read.early : read.late) = true;
+// Marks the side the owner priced.
+void mark_read(SidesRead& read, const PricedScale& priced) {
+    (priced.press == Press::Early ? read.early : read.late) = true;
 }
 
 }  // namespace
@@ -170,57 +214,51 @@ ActivationRating rate_activation(const Activation& act, double backend_leeway_ms
     out.scales = stored_transfer_scales(act);
 
     // Backend rows: every offset is measured from the deact node D, so they
-    // read `post`. A squeezed-out row is about its phrase, which the SP end
-    // itself decides; every other row is about its points, which the engine
-    // counts up to the leeway.
+    // read `post`. Which side each reads is row_multiplier's answer.
     std::vector<BackendSqueeze> backends = act.display_backends();
     out.backends.reserve(backends.size());
     for (const BackendSqueeze& bsq : backends) {
         BackendRating row;
         row.row = bsq;
         row.squeezed_out = act.is_sqout_backend(bsq);
-        // Unknown scales skip rate_note: the row keeps NoteRating's defaults
-        // (x1.00, budget 0, no figure), which are not real values.
-        if (bsq.offset_ms && out.scales) {
-            const double o = bsq.offset();
-            const bool inside = row.squeezed_out
-                                    ? core::paid_by_sp_walk(o)
-                                    : core::counted_without_squeeze(o, backend_leeway_ms);
-            row.note = rate_note(o, inside, out.scales->post);
-            mark_read(out.post_read, row.note);
-            out.scale_governs |= row.note.effective_ms.has_value();
+        // Unknown scales ask the owner nothing: the row keeps NoteRating's
+        // defaults (x1.00, budget 0, no figure), which are not real values.
+        if (out.scales) {
+            if (const std::optional<PricedScale> priced =
+                    row_multiplier(act, bsq, backend_leeway_ms)) {
+                row.note = rate_note(bsq.offset(), *priced);
+                mark_read(out.post_read, *priced);
+                out.scale_governs |= row.note.effective_ms.has_value();
+            }
         }
         out.backends.push_back(std::move(row));
     }
 
-    // SqIn phrase notes: each offset is measured from the end before its
-    // phrase extended SP, so each reads its own stored scale. A SqOut is not
-    // rated here: its offset is copied from its squeezed-out row
-    // (Activation::set_sqout), and that row was rated above, at the end it
-    // is measured from.
+    // Each squeeze, priced by squeeze_multiplier. A SqIn's offset is
+    // measured from the end before its phrase extended SP, so it reads its
+    // own stored scale and gets its figure here. A SqOut gets no figure here:
+    // its offset is copied from its squeezed-out row (Activation::set_sqout),
+    // and that row was rated above. Its side still goes on post_read, so a
+    // side the owner priced is never missing from the scale line. A SqIn's
+    // side goes on sqins_read in this same walk, so that list pairs with
+    // scales->sqins the way stored_transfer_scales built it: one entry per
+    // SqIn, in list order.
     out.note_effective_ms.reserve(act.sqinouts.size());
-    for (auto it = act.sqinouts.begin(); it != act.sqinouts.end(); ++it) {
-        const SPSqueeze& sq = *it;
-        if (sq.kind == SqueezeKind::SqOut) {
+    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+        // Unknown scales: no rating, no figure (D4).
+        const std::optional<PricedScale> priced =
+            out.scales ? squeeze_multiplier(act, k) : std::optional<PricedScale>();
+        if (act.sqinouts[k].kind == SqueezeKind::SqOut) {
+            if (priced) mark_read(out.post_read, *priced);
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        if (!out.scales) {  // unknown scales: no rate_note, no figure (D4)
+        if (!priced) {
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        // The side of the scale is where the note sits against the one SP
-        // end (core::paid_by_sp_walk), the same answer the squeezed-out row
-        // above reads. Whether the squeeze needs timing is a different
-        // question (SPSqueeze::needs_no_timing): a SqIn on the end is inside
-        // SP yet still needs 0.0 ms (D302). Its stored scale is the one at
-        // its SqIn rank. Its sides go on sqins_read in this same walk, so
-        // that list pairs with scales->sqins the way stored_transfer_scales
-        // built it: one entry per SqIn, in list order.
-        const TransferScale& at_end =
-            out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
-        const NoteRating n = rate_note(sq.offset_ms, core::paid_by_sp_walk(sq.offset_ms), at_end);
-        mark_read(out.sqins_read.emplace_back(), n);
+        const NoteRating n = rate_note(act.sqinouts[k].offset_ms, *priced);
+        mark_read(out.sqins_read.emplace_back(), *priced);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

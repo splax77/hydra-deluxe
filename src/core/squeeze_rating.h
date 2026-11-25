@@ -14,7 +14,9 @@
 // Production code calls rate_activation() for the details display and
 // frontend_transfer_scales() for the engine's copy-out stamp, read from the
 // stored SP-end steps, so a record's stored ratios and a live recompute
-// agree. The details display also reads is_scaled, kScaleIdentityDigits and
+// agree. The Dynamic Hit Window row and the hydra_replay schedule tool read
+// stored_scale and squeeze_multiplier. The details display also reads
+// is_scaled, PricedScale, kScaleIdentityDigits and
 // nominal_budget_ms; the report and Backend rows read the timing tiers
 // (timing_tiers, tier_for, beyond_tier, none_tier, beyond_edge_ms); the
 // replay dump reads steady_spans. Every other function below is internal,
@@ -140,24 +142,61 @@ constexpr int kScaleIdentityDigits = [] {
     return digits;
 }();
 
-// The one rule for a single note near a Star Power end. The side of the end
-// it sits on decides which activation-hit direction moves the end across it:
-// a note inside SP is crossed by an early hit pulling the end back, a note
-// outside by a late hit pushing the end past it. That holds whether the
-// crossing loses the note (a counted row, a free squeeze) or wins it (a
-// squeeze still to earn), so the squeeze kind never enters.
+// ---- the multiplier a squeeze or a row reads -------------------------------
+// The one owner of which stored multiplier belongs to a squeeze or a Backend
+// timings row, which side of it counts, and whether that side is worth
+// showing. The badge's safe sum (squeeze_window_ends), the rating below and
+// the hydra_replay schedule tool all ask it.
+
+// Which way a note is pressed off its chart time. squeeze_presses
+// (core/note_window.h) says which way each of a squeeze's two notes goes, and
+// transfer_side gives the number on that side of a stored scale.
+enum class Press { Early, Late };
+
+// One stored multiplier, priced: the stored scale with both sides, the side
+// that counts, and the number on that side.
+struct PricedScale {
+    TransferScale stored;  // the squeeze's or row's stored scale, both sides
+    Press press;           // the side that counts
+    double ratio;          // the number on that side of `stored`
+    // Whether the screen shows this multiplier: is_scaled of `ratio`. The
+    // scale lines, the eff. figures and the Effective line all read it.
+    bool shown() const;
+};
+
+// Squeeze `k`'s stored scale: Activation::transfer_post for a squeeze out,
+// the squeeze's own SPSqueeze::transfer for a squeeze in. Unset when that
+// scale is unset or `act` has no squeeze `k`.
+const std::optional<TransferScale>& stored_scale(const Activation& act, size_t k);
+
+// Squeeze `k`'s multiplier: its stored_scale, priced on the side of its
+// anchor's press (squeeze_presses). The badge's rule, used as it is. Unset
+// when the stored scale is unset.
+std::optional<PricedScale> squeeze_multiplier(const Activation& act, size_t k);
+
+// One Backend timings row's multiplier. The squeezed-out row
+// (Activation::is_sqout_backend) is its squeeze out's note, so it is that
+// squeeze's squeeze_multiplier. A plain row is priced on
+// Activation::transfer_post, on the early side when the engine counts it
+// without a squeeze (core::counted_without_squeeze, with `leeway_ms`) and on
+// the late side when it does not. Unset when the row has no offset or the
+// scale it reads is unset.
+std::optional<PricedScale> row_multiplier(const Activation& act, const BackendSqueeze& row,
+                                          double leeway_ms);
+
+// One note's rating at a Star Power end. Which side of the end's scale
+// governs is the owner's answer above (squeeze_multiplier, row_multiplier);
+// the rating only reads it.
 struct NoteRating {
     bool early = false;                  // which side of the end's TransferScale governs
     double scale = kIdentityScale;       // that side's stored multiplier, full precision
     double budget_ms = 0.0;              // squeeze_budget_ms(scale)
-    std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
+    std::optional<double> effective_ms;  // set exactly when PricedScale::shown()
 };
 
 // offset_ms: the note's ms minus the deact node's ms (negative = before it).
-// inside: whether the note is inside SP on this path, by the counting rule
-// that owns it (core/backend_value.h). at_end: the multipliers stored for
-// the deact node that offset is measured from.
-NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end);
+// priced: the note's multiplier, from squeeze_multiplier or row_multiplier.
+NoteRating rate_note(double offset_ms, const PricedScale& priced);
 
 // ---- rate_activation ------------------------------------------------------
 
@@ -178,8 +217,8 @@ struct BackendRating {
 // warning fires only for an activation that has such a row or a SqIn/SqOut.
 bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 
-// Which sides of one end's TransferScale a rated note read: rate_note's
-// choice (NoteRating::early), gathered over the notes measured from that end.
+// Which sides of one end's TransferScale the owner priced (PricedScale::press),
+// gathered over the rows and squeezes measured from that end.
 struct SidesRead {
     bool early = false;
     bool late = false;
@@ -192,10 +231,10 @@ struct ActivationRating {
     // each SqIn's transfer), through stored_transfer_scales. Unset when any
     // one is unknown: then no row or SqIn gets a figure (D4).
     std::optional<ActTransferScales> scales;
-    // The sides the backend rows read of scales->post, and one entry per
-    // scales->sqins entry, in the same order, for the sides its SqIn read.
-    // Empty when scales is unset. A row or SqIn that
-    // skips rate_note (no offset, or unknown scales) reads nothing.
+    // The sides the backend rows and the squeeze out read of scales->post,
+    // and one entry per scales->sqins entry, in the same order, for the side
+    // its SqIn read. Empty when scales is unset. A row with no offset, or
+    // anything on an activation with unknown scales, reads nothing.
     SidesRead post_read;
     std::vector<SidesRead> sqins_read;
     // True when a multiplier that isn't 1 governs at least one row or SqIn

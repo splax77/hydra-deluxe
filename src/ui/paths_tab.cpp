@@ -358,9 +358,28 @@ constexpr float kWindowRowGap = 14.0f;  // unscaled
 constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's #c9b39b
 const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
-// One Dynamic Hit Window row, the bottom line of its timing's box: a divider,
+// The Effective line under a Dynamic Hit Window row: its own divider,
+// the label in the box's text colour, then the view's word and figure in the
+// row's word and figure colours. The word and the figure are the view's
+// (WindowRowView::effective), which also decides whether the line is drawn.
+// They start the next line whole when they do not fit beside the label.
+void effective_row(const app::WindowFigure& e) {
+    ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
+    ImGui::Separator();
+    ImGui::PopStyleColor();
+    ImGui::TextUnformatted(app::kEffectiveLabel);
+    const float space = ImGui::CalcTextSize(" ").x;
+    flow_next(ImGui::CalcTextSize(e.word.c_str()).x + space + ImGui::CalcTextSize(e.figure.c_str()).x,
+              space);
+    ImGui::TextColored(pill_vec4(kWindowWordInk), "%s", e.word.c_str());
+    ImGui::SameLine(0.0f, space);
+    ImGui::TextColored(kWindowFigureInk, "%s", e.figure.c_str());
+}
+
+// One Dynamic Hit Window row, at the bottom of its timing's box: a divider,
 // the label, then each end in the Figure role (its word when it has one, its
-// window, its chord). The row's tag is not here: it is drawn under the
+// window, its chord), then the Effective line when the view holds one
+// (effective_row). The row's tag is not here: it is drawn under the
 // timing's badge on the activation row (render_activation_row).
 // An end that does not fit beside the last piece starts the next line whole,
 // so nothing is cut off at the narrowest panel. The chord draws in the box's
@@ -386,6 +405,7 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
+    if (w.effective) effective_row(*w.effective);
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a

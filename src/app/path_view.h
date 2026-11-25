@@ -77,6 +77,9 @@ struct ActivationBadge {
 
 // The label every Dynamic Hit Window row starts with.
 inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
+// The label of the line under a squeeze's Dynamic Hit Window row that shows
+// the frontend's window after the multiplier (WindowRowView::effective).
+inline constexpr const char* kEffectiveLabel = "Effective:";
 
 // One Dynamic Hit Window row: the game's own windows for the notes a timing
 // involves, beside Hydra's fixed one (core/note_window.h owns the numbers and
@@ -98,6 +101,12 @@ struct WindowRowView {
     std::vector<WindowFigure> figures;
     std::string tag;      // "65.9 ms short" or "5.4 ms safe", never a minus sign
     bool is_short = false;  // WindowEnds::is_short: the windows cannot cover the timing
+    // The line under the row, drawn after kEffectiveLabel: the frontend's
+    // window after the multiplier its safe sum used
+    // (WindowEnds::frontend_effective_ms), word "frontend", figure
+    // "29.6 ms", no chord. Set exactly when that multiplier is shown
+    // (PricedScale::shown); unset on an early fill's row, which has none.
+    std::optional<WindowFigure> effective;
 };
 
 // One activation as the Paths tab lists it: a one-line row, and what the row

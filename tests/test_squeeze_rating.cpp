@@ -12,9 +12,12 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/path_view.h"
+#include "core/backend_value.h"
+#include "core/note_window.h"
 #include "core/squeeze_rating.h"
 #include "core/rules.h"
 #include "corpus_util.h"
@@ -83,6 +86,37 @@ const std::vector<ChartActivation>& searched_activations() {
 // (1 + 1 windows) over the budget at this scale (1 + scale windows).
 double figure_by_rule(double offset_ms, double scale) {
     return std::abs(offset_ms) * (1.0 + kIdentityScale) / (1.0 + scale);
+}
+
+// `s` priced on the side `press` names, the number on that side read through
+// transfer_side, so rate_note can be fed a side directly.
+PricedScale priced(const TransferScale& s, Press press) {
+    return PricedScale{s, press, transfer_side(s, press)};
+}
+
+// Whether `read` holds exactly the one side `press` names.
+bool reads_only(const SidesRead& read, Press press) {
+    return read.early == (press == Press::Early) && read.late == (press == Press::Late);
+}
+
+// An activation with one squeeze of `kind` at `offset_ms`. A SqOut also gets
+// its squeezed-out row at the same offset, as Activation::set_sqout writes it.
+// `sqin_scale` is every SqIn's stored scale, `post` the SP end's.
+Activation one_squeeze(SqueezeKind kind, double offset_ms, TransferScale sqin_scale,
+                       TransferScale post) {
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.sqinouts.push_back(SPSqueeze{kind, offset_ms});
+    if (kind == SqueezeKind::SqOut) {
+        BackendSqueeze row;
+        row.timecode = Timecode::raw(5000);
+        row.offset_ms = offset_ms;
+        act.backends.push_back(row);
+        act.sqout_tick = 5000;
+    }
+    test::set_transfer(act, sqin_scale, post);
+    return act;
 }
 
 }  // namespace
@@ -576,15 +610,13 @@ TEST_CASE("is_scaled: less than the tolerance from 1 is no scale") {
     }
 }
 
-TEST_CASE("rate_note: the side of the end picks the multiplier") {
+TEST_CASE("rate_note: the priced side picks the multiplier") {
     const double early_scale = 0.5;
     const double late_scale = 2.0;
     const TransferScale s{early_scale, late_scale};
     const double gap = 50.0;
-    const bool inside_sp = true;
-    // Inside SP an early hit is what moves the end across the note, so the
-    // early scale applies.
-    NoteRating in = rate_note(-gap, inside_sp, s);
+    // Priced on the early side, the early scale applies.
+    NoteRating in = rate_note(-gap, priced(s, Press::Early));
     CHECK(in.early);
     CHECK(in.scale == early_scale);
     // The two-hit budget at that scale: one window for each hit, the
@@ -592,8 +624,8 @@ TEST_CASE("rate_note: the side of the end picks the multiplier") {
     CHECK(in.budget_ms == doctest::Approx(kTimingStepMs * (1.0 + early_scale)));
     REQUIRE(in.effective_ms.has_value());
     CHECK(*in.effective_ms == doctest::Approx(figure_by_rule(gap, early_scale)).epsilon(1e-12));
-    // Outside SP a late hit moves it, so the late scale applies.
-    NoteRating out = rate_note(gap, !inside_sp, s);
+    // Priced on the late side, the late scale applies.
+    NoteRating out = rate_note(gap, priced(s, Press::Late));
     CHECK_FALSE(out.early);
     CHECK(out.scale == late_scale);
     REQUIRE(out.effective_ms.has_value());
@@ -606,21 +638,22 @@ TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close")
     const double gap = 187.5;
     const double r = 0.9912;
     REQUIRE(is_scaled(r));
-    NoteRating n = rate_note(-gap, true, TransferScale{r, kIdentityScale});
+    NoteRating n = rate_note(-gap, priced(TransferScale{r, kIdentityScale}, Press::Early));
     REQUIRE(n.effective_ms.has_value());
     CHECK(*n.effective_ms == doctest::Approx(figure_by_rule(gap, r)).epsilon(1e-12));
     CHECK(std::abs(*n.effective_ms - gap) < 1.0);
     // Exactly 1, or float noise around it: no figure.
-    CHECK_FALSE(
-        rate_note(-gap, true, TransferScale{kIdentityScale, kIdentityScale}).effective_ms.has_value());
-    CHECK_FALSE(rate_note(-gap, true, TransferScale{kIdentityScale + 1e-12, kIdentityScale})
+    CHECK_FALSE(rate_note(-gap, priced(TransferScale{kIdentityScale, kIdentityScale}, Press::Early))
                     .effective_ms.has_value());
+    CHECK_FALSE(
+        rate_note(-gap, priced(TransferScale{kIdentityScale + 1e-12, kIdentityScale}, Press::Early))
+            .effective_ms.has_value());
     // A note on the end itself keeps its figure when scaled: 0 ms. Any scale
     // far from 1 on either side shows it; these two are just that.
     const double far_early = 8.59;
     const double far_late = 8.76;
     REQUIRE(is_scaled(far_early));
-    NoteRating z = rate_note(0.0, true, TransferScale{far_early, far_late});
+    NoteRating z = rate_note(0.0, priced(TransferScale{far_early, far_late}, Press::Early));
     REQUIRE(z.effective_ms.has_value());
     CHECK(*z.effective_ms == 0.0);
 }
@@ -777,26 +810,26 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(r.sqins_read[1].late);
 }
 
-// D302: the side is where the note sits (core::paid_by_sp_walk), not whether
-// the squeeze needs timing.
-TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it reads its SqIn scale's early side") {
+// The user's ruling of 2026-11-24, on the side the screen reads for a squeeze
+// in on the SP end: "why are you even offering an option that would make the
+// display wrong?" So the rating reads the badge's side (squeeze_multiplier,
+// through squeeze_presses), never where the note sits.
+TEST_CASE("rate_activation: a SqIn on the SP end reads its SqIn scale's late side, like its badge") {
     // Only one side scaled, so the figure shows which side was read.
     auto figure = [](TransferScale sqin_scale, double offset) {
-        Activation act;
-        test::set_skips(act, 0);
-        act.e_offset = 300.0;
-        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
-        test::set_transfer(act, sqin_scale, TransferScale{});
+        Activation act = one_squeeze(SqueezeKind::SqIn, offset, sqin_scale, TransferScale{});
         ActivationRating r = rate_activation(act);
         REQUIRE(r.note_effective_ms.size() == 1);
         return r.note_effective_ms[0];
     };
     const TransferScale early_only{1.6, 1.0};
     const TransferScale late_only{1.0, 1.6};
-    // Exactly on the end: inside Star Power, early side.
-    REQUIRE(figure(early_only, 0.0).has_value());
-    CHECK(*figure(early_only, 0.0) == 0.0);
-    CHECK_FALSE(figure(late_only, 0.0).has_value());
+    // Exactly on the end: the squeeze still needs 0.0 ms (D302), so its
+    // anchor is pressed late and the late side counts. Reading the early side
+    // because the note is inside Star Power (core::paid_by_sp_walk) fails here.
+    REQUIRE(figure(late_only, 0.0).has_value());
+    CHECK(*figure(late_only, 0.0) == doctest::Approx(figure_by_rule(0.0, late_only.late)));
+    CHECK_FALSE(figure(early_only, 0.0).has_value());
     // Just before the end: inside Star Power, early side.
     REQUIRE(figure(early_only, -0.5).has_value());
     CHECK(*figure(early_only, -0.5) ==
@@ -809,12 +842,182 @@ TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it rea
           doctest::Approx(figure_by_rule(0.5, late_only.late)).epsilon(1e-12));
 }
 
-// D302: the squeezed-out row's side is read the same way, so both kinds are
-// pinned at the SP end.
+// Offsets just before, on and just past the SP end, where the sides can part.
+const double kAroundTheEnd[] = {-0.5, 0.0, 0.5};
+
+TEST_CASE("rate_activation: each squeeze records the side squeeze_multiplier priced") {
+    // Every side differs, so a side read from anywhere else shows.
+    const TransferScale sqin_scale{1.6, 0.5};
+    const TransferScale post{0.9, 2.25};
+    for (const SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut}) {
+        for (const double offset : kAroundTheEnd) {
+            const bool is_sqin = kind == SqueezeKind::SqIn;
+            CAPTURE(is_sqin);
+            CAPTURE(offset);
+            const Activation act = one_squeeze(kind, offset, sqin_scale, post);
+            const std::optional<PricedScale> owner = squeeze_multiplier(act, 0);
+            REQUIRE(owner.has_value());
+            const ActivationRating r = rate_activation(act);
+            REQUIRE(r.scales.has_value());
+            if (is_sqin) {
+                REQUIRE(r.sqins_read.size() == 1);
+                CHECK(reads_only(r.sqins_read[0], owner->press));
+                CHECK_FALSE(r.post_read.early);
+                CHECK_FALSE(r.post_read.late);
+            } else {
+                // The squeeze out and its row both read the SP end's scale.
+                CHECK(reads_only(r.post_read, owner->press));
+                CHECK(r.sqins_read.empty());
+            }
+        }
+    }
+}
+
+TEST_CASE("rate_activation: the squeezed-out row is rated by its squeeze out's multiplier") {
+    const TransferScale post{0.9, 2.25};
+    for (const double offset : kAroundTheEnd) {
+        CAPTURE(offset);
+        const Activation act = one_squeeze(SqueezeKind::SqOut, offset, TransferScale{}, post);
+        const std::optional<PricedScale> owner = squeeze_multiplier(act, 0);
+        REQUIRE(owner.has_value());
+        const ActivationRating r = rate_activation(act);
+        REQUIRE(r.backends.size() == 1);
+        REQUIRE(r.backends[0].squeezed_out);
+        // The row asks the owner and gets the squeeze's own answer back.
+        const std::optional<PricedScale> row =
+            row_multiplier(act, r.backends[0].row, core::default_rules().backend_leeway_ms);
+        REQUIRE(row.has_value());
+        CHECK(row->press == owner->press);
+        CHECK(row->ratio == owner->ratio);
+        CHECK(row->stored == owner->stored);
+        // And the row's rating is that multiplier's.
+        const NoteRating& note = r.backends[0].note;
+        CHECK(note.early == (owner->press == Press::Early));
+        CHECK(note.scale == owner->ratio);
+        CHECK(note.effective_ms.has_value() == owner->shown());
+    }
+}
+
+TEST_CASE("row_multiplier: a plain row reads the early side exactly when the engine counts it") {
+    const double leeway = core::default_rules().backend_leeway_ms;
+    const double inside_leeway = leeway / 2.0;
+    const double at_leeway = leeway;
+    REQUIRE(core::counted_without_squeeze(inside_leeway, leeway));
+    REQUIRE_FALSE(core::counted_without_squeeze(at_leeway, leeway));
+    const TransferScale post{0.5, 2.0};
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    test::set_transfer(act, post);
+    for (const auto& [offset, want] :
+         {std::pair{inside_leeway, Press::Early}, std::pair{at_leeway, Press::Late}}) {
+        CAPTURE(offset);
+        BackendSqueeze row;
+        row.timecode = Timecode::raw(1000);
+        row.offset_ms = offset;
+        act.backends = {row};
+        const std::optional<PricedScale> owner = row_multiplier(act, row, leeway);
+        REQUIRE(owner.has_value());
+        CHECK(owner->press == want);
+        CHECK(owner->stored == *act.transfer_post);
+        CHECK(owner->ratio == transfer_side(*act.transfer_post, want));
+        // The rating reads the same answer.
+        const ActivationRating r = rate_activation(act, leeway);
+        REQUIRE(r.backends.size() == 1);
+        CHECK(r.backends[0].note.early == (want == Press::Early));
+        CHECK(r.backends[0].note.scale == owner->ratio);
+        CHECK(reads_only(r.post_read, want));
+    }
+}
+
+TEST_CASE("stored_scale: the SP end's scale for a squeeze out, its own for a squeeze in") {
+    const TransferScale sqin_scale{1.6, 0.5};
+    const TransferScale post{0.9, 2.25};
+    Activation act;
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 20.0});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -20.0});
+    test::set_transfer(act, sqin_scale, post);
+    REQUIRE(stored_scale(act, 0).has_value());
+    CHECK(*stored_scale(act, 0) == sqin_scale);
+    REQUIRE(stored_scale(act, 1).has_value());
+    CHECK(*stored_scale(act, 1) == post);
+    // No squeeze there: nothing.
+    CHECK_FALSE(stored_scale(act, 2).has_value());
+    CHECK_FALSE(squeeze_multiplier(act, 2).has_value());
+    // The multiplier carries the scale stored_scale names.
+    REQUIRE(squeeze_multiplier(act, 0).has_value());
+    CHECK(squeeze_multiplier(act, 0)->stored == sqin_scale);
+    REQUIRE(squeeze_multiplier(act, 1).has_value());
+    CHECK(squeeze_multiplier(act, 1)->stored == post);
+
+    // A squeeze in whose own scale is unset has no multiplier, and the
+    // squeeze out keeps its own.
+    act.sqinouts[0].transfer.reset();
+    CHECK_FALSE(stored_scale(act, 0).has_value());
+    CHECK_FALSE(squeeze_multiplier(act, 0).has_value());
+    CHECK(squeeze_multiplier(act, 1).has_value());
+    // A squeeze out on an activation whose SP end scale is unset has none.
+    act.sqinouts[0].transfer = sqin_scale;
+    act.transfer_post.reset();
+    CHECK_FALSE(stored_scale(act, 1).has_value());
+    CHECK_FALSE(squeeze_multiplier(act, 1).has_value());
+    CHECK(squeeze_multiplier(act, 0).has_value());
+}
+
+TEST_CASE("PricedScale::shown: exactly when the priced number is a scale") {
+    // No scale, float noise, the smallest scale either side of 1, and far ones.
+    const double ratios[] = {kIdentityScale,
+                             kIdentityScale + 1e-12,
+                             kIdentityScale + kScaledMinDistance,
+                             kIdentityScale - kScaledMinDistance,
+                             0.4,
+                             2.25};
+    for (const double r : ratios) {
+        CAPTURE(r);
+        for (const Press press : {Press::Early, Press::Late}) {
+            const TransferScale s{r, r};
+            CHECK(priced(s, press).shown() == is_scaled(r));
+        }
+    }
+    // A scale scaled on one side only shows on that side alone.
+    const TransferScale late_only{kIdentityScale, 2.25};
+    CHECK_FALSE(priced(late_only, Press::Early).shown());
+    CHECK(priced(late_only, Press::Late).shown());
+}
+
+TEST_CASE("rate_activation: one SqIn with no stored scale rates nothing") {
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
+    // Every side scaled, so anything rated would show a figure.
+    test::set_transfer(act, TransferScale{1.6, 0.5}, TransferScale{0.9, 2.25});
+    act.sqinouts[1].transfer.reset();
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(1000);
+    row.offset_ms = -10.0;
+    act.backends.push_back(row);
+
+    const ActivationRating r = rate_activation(act);
+    CHECK_FALSE(r.scales.has_value());
+    CHECK_FALSE(r.scale_governs);
+    CHECK_FALSE(r.post_read.early);
+    CHECK_FALSE(r.post_read.late);
+    CHECK(r.sqins_read.empty());
+    REQUIRE(r.backends.size() == 1);
+    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
+    REQUIRE(r.note_effective_ms.size() == 2);
+    CHECK_FALSE(r.note_effective_ms[0].has_value());
+    CHECK_FALSE(r.note_effective_ms[1].has_value());
+}
+
+// The squeezed-out row's side is its squeeze out's (squeeze_multiplier), so
+// both kinds are pinned at the SP end.
 // The search squeezes a phrase out exactly on the SP end on real charts:
 // Evans Blue - Beg [highfine] (testdata/input/common/IB24/T1) does it on its
 // best path's first activation, so the walk below meets at least one.
-TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side too") {
+TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side") {
     int at_end = 0;
     for (const ChartActivation& ca : searched_activations()) {
         CAPTURE(ca.chart);
@@ -823,8 +1026,9 @@ TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side
         for (const BackendRating& br : r.backends) {
             if (!br.squeezed_out || br.row.offset() != 0.0) continue;
             ++at_end;
-            // On the end is inside Star Power, so the early side of the SP
-            // end's stored scale governs it, and it needs no ms to move.
+            // On the end the squeeze out still needs 0.0 ms (D302), so its
+            // anchor is pressed early and the early side of the SP end's
+            // stored scale governs it.
             CHECK(br.note.early);
             CHECK(br.note.scale == r.scales->post.early);
             CHECK(br.note.effective_ms.has_value() == is_scaled(r.scales->post.early));
