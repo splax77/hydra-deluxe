@@ -546,6 +546,27 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
     CHECK(worded_apart > 0);
 }
 
+// The Effective figures switch starts off, and nothing that opens or closes
+// rows, or starts a new path, moves it: it keeps the user's choice from path
+// to path while the app runs.
+TEST_CASE("PathsTabUi: the Effective figures switch starts off and outlives a new path") {
+    PathsTabUi ui;
+    CHECK_FALSE(ui.effective_figures);
+    ui.reset(3);
+    CHECK_FALSE(ui.effective_figures);
+    ui.effective_figures = true;
+    ui.reset(2);
+    CHECK(ui.effective_figures);
+    ui.set_all(true);
+    CHECK(ui.effective_figures);
+    ui.set_all(false);
+    CHECK(ui.effective_figures);
+    ui.click_row(1);
+    CHECK(ui.effective_figures);
+    ui.click_row(1);
+    CHECK(ui.effective_figures);
+}
+
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
     PathsTabUi ui;
     // Both footer folds start open. No row does, but every backend table does,

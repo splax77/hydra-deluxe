@@ -110,8 +110,9 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         const std::string edge = format_ms(std::fabs(t));
         const std::string bound = sq.needs_no_timing() ? "no more than " : "more than ";
         const std::string side = squeeze_presses(sq).squeezed == Press::Late ? " late" : " early";
-        std::string when = bound + edge + side;
+        const std::string when = bound + edge + side;
         std::string text;
+        TextSpan eff;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
@@ -119,13 +120,62 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
         } else {
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
-            // sits on its squeezed-out row), so the sentence carries it.
-            if (i < note_effective_ms.size() && note_effective_ms[i])
-                when += eff_suffix(*note_effective_ms[i]);
-            text = "Hit the SP phrase's last note " + when + " so it lands before Star Power ends.";
+            // sits on its squeezed-out row), so the sentence carries it,
+            // after the timing, and records where it put it.
+            text = "Hit the SP phrase's last note " + when;
+            if (i < note_effective_ms.size() && note_effective_ms[i]) {
+                const std::string suffix = eff_suffix(*note_effective_ms[i]);
+                eff = TextSpan{text.size(), suffix.size()};
+                text += suffix;
+            }
+            text += " so it lands before Star Power ends.";
         }
-        out.push_back({std::move(text), sq.is_difficult()});
+        out.push_back({std::move(text), sq.is_difficult(), eff});
     }
+    return out;
+}
+
+std::vector<InkRun> effective_runs(const std::string& text, TextSpan eff, Ink around,
+                                   bool effective_figures) {
+    // The span is recorded by the code that wrote the text, so one past the
+    // text's end is that writer's bug; say so rather than draw a wrong cut.
+    if (eff.start > text.size() || eff.length > text.size() - eff.start)
+        throw std::logic_error("effective_runs: the span runs past the text");
+    const size_t start = eff.start;
+    const size_t length = eff.length;
+    std::vector<InkRun> out;
+    auto add = [&](std::string piece, Ink ink) {
+        if (!piece.empty()) out.push_back({std::move(piece), ink});
+    };
+    add(text.substr(0, start), around);
+    if (effective_figures) add(text.substr(start, length), Ink::Effective);
+    add(text.substr(start + length), around);
+    return out;
+}
+
+std::vector<InkRun> sentence_runs(const TextLine& sentence, bool effective_figures) {
+    return effective_runs(sentence.text, sentence.eff, Ink::Plain, effective_figures);
+}
+
+std::vector<InkRun> rating_runs(const BackendRowView& row, bool effective_figures) {
+    // The warning colour marks a row that costs points; the figure inside it
+    // is still an effective figure.
+    return effective_runs(row.rating, row.rating_eff, row.warn ? Ink::Warning : Ink::Plain,
+                          effective_figures);
+}
+
+std::string timing_hover_note(const BackendRowView& row, bool effective_figures) {
+    return effective_figures ? row.tooltip : std::string();
+}
+
+std::vector<InkRun> scale_lines(const ActivationRowView& row, bool effective_figures) {
+    // The guard shows a bug (D4), so it is never hidden and keeps the warning
+    // colour. The scale lines are effective figures.
+    if (row.scale_unknown) return {InkRun{row.scale_warning, Ink::Warning}};
+    std::vector<InkRun> out;
+    if (!effective_figures) return out;
+    for (const std::string* line : {&row.sqin_scale_warning, &row.scale_warning})
+        if (!line->empty()) out.push_back({*line, Ink::Effective});
     return out;
 }
 
@@ -266,8 +316,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         // rows and squeezes (row_multiplier, squeeze_multiplier; rate_activation
         // records them), when they are shown (is_scaled), early first.
         // The SqIn's end gets its own line, shown first, when it prints
-        // differently from the SP end's. Both lines are orange when one of
-        // the scales governs a row or SqIn on this activation.
+        // differently from the SP end's. scale_lines says how they are drawn.
         auto sides = [](const TransferScale& s, const SidesRead& read) {
             std::string out;
             if (read.early && is_scaled(s.early)) out = format_scale(s.early) + " (early)";
@@ -281,7 +330,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // D4: a guard that shows a bug. A test proves fresh records never
             // reach it.
             av.scale_warning = "Transfer scale unknown.";
-            av.scale_warn = true;
+            av.scale_unknown = true;
         } else {
             const std::string post_part = sides(rate.scales->post, rate.post_read);
             // Each SqIn's scale, when it prints differently from the SP
@@ -313,7 +362,6 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
             }
             if (!clauses.empty()) av.sqin_scale_warning = "Frontend timing scales " + clauses + ".";
-            av.scale_warn = rate.scale_governs;
         }
 
         // When the SP window was cap-clamped and this activation lists a
@@ -361,8 +409,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             const BackendSqueeze& bsq = br.row;
 
             // The display window the user asked for. It only drops rows from
-            // the table: the ratings above (and the warns feeding the scale
-            // line) still read every stored row. A squeezed-out note is the
+            // the table: the ratings above (and the scale lines) still read
+            // every stored row. A squeezed-out note is the
             // reason the row matters, so it always shows.
             if (backend_limit_ms && !br.squeezed_out &&
                 std::fabs(bsq.offset()) > *backend_limit_ms) {
@@ -402,8 +450,11 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             row.points = std::to_string(value);
             row.rating =
                 bsq.summarystr(br.squeezed_out, br.note.effective_ms, rules.backend_leeway_ms);
-            if (br.note.effective_ms)
-                row.rating += eff_suffix(*br.note.effective_ms);
+            if (br.note.effective_ms) {
+                const std::string suffix = eff_suffix(*br.note.effective_ms);
+                row.rating_eff = TextSpan{row.rating.size(), suffix.size()};
+                row.rating += suffix;
+            }
             if (br.squeezed_out) {
                 // "(-N)" and the warning colour only when the squeeze-out
                 // really costs points. A row the engine never counted costs
