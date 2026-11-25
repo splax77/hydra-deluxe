@@ -2,7 +2,7 @@
 
 These are real tests from this repo, judged by the questions in `docs/agents/test-rubric.md`. "Q3" means question 3 on that page. Every quoted line was copied from the file at the commit that last changed this page; line numbers are from that commit and will drift. Where a neighbouring line was not read again for this page, the example says so.
 
-Eighteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. B15 to B18 show the four kinds of bad test the 2026-11-14 test audit named, and they quote an older commit, as their section says. Then comes G1, written for this page as a good example and no longer one: it retypes game-rule values from a Clone Hero page. No existing test passes every question, and this page holds no good example today.
+Eighteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. B15 to B18 show the four kinds of bad test the 2026-11-14 test audit named, and they quote an older commit, as their section says. Then comes G1, the page's one good example: it reads the combo multiplier's steps from Hydra by name and checks what the code does with them.
 
 ## Bad examples: the framing is the bug
 
@@ -205,11 +205,11 @@ TEST_CASE("timing: to_multiplier thresholds") {
 }
 ```
 
-Its claim is right (Q1 to Q3, as in G1's record below). It still fails four questions, and G1 does not repair the typed values.
+Its claim is right (Q1 to Q3, as in G1's record below). It still fails four questions.
 
 It fails Q5 on line 81. Nothing says why 1000. The line is there to show the multiplier stops at x4, and 1000 is just a big number somebody picked. It fails Q8 on line 74: every small change to `to_multiplier` in `src/core/timing.cpp` that turns `to_multiplier(0) == 1` red also turns line 75 red, so line 74 guards nothing of its own. It fails Q4 on lines 75, 77 and 79: 9, 19 and 29 are each "one below a step", but the line does not say so. Typing 10, 20 and 30 is also a constant pin: `to_multiplier` in `src/core/timing.cpp` holds them as unnamed literals, so the fix starts in production (name them), and the test reads the names. It fails Q7: the commit that added it, 3b699581, is a bulk checkpoint that names no failure.
 
-The verdict is rewrite. G1 was the first rewrite, and the filed rulings now fail it too.
+The verdict is rewrite. G1 is the rewrite: it reads the three steps by name.
 
 ## Bad examples: the four kinds the audit named
 
@@ -313,67 +313,66 @@ It fails Q9 as a fake stand-in for outside data (`counts/T5-IR6.md` line 34). In
 
 On today's tree the test reads `self.captured()` instead, which loads that saved table, and checks every process in it. This page has not judged today's version.
 
-## A former good example
+## A good example
 
-### G1. The combo multiplier steps up every ten notes and stops at x4
+### G1. The combo multiplier steps up by one at each named step combo and stops at the third
 
-This test was written for this page. It is in `tests/test_timing.cpp` on main, where it replaced "timing: to_multiplier thresholds" (B14). It passes on today's code. Its one review added the check at combo 0, which the first draft had dropped. With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them.
+This test is in `tests/test_timing.cpp`, lines 88 to 109 at commit 60e6aa078. That commit named the three step combos in production and rewrote the test to read them. Nobody had built it when this record was written; the main session builds the phase and runs it. Its name has no commas, because doctest's `-tc` filter splits on them.
 
-**G1 is no longer a good example.** It types 10, 20 and 30 and cites SC-05 in `docs/clone-hero/06-scoring.md` as the reason. The user's rulings say "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." and "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". A Clone Hero page is not code, and Hydra already holds these values, so G1 fails the rulings. Its claim and its checks at each step are sound. Its typed values are the fault. The test is rewritten in this plan's scans phase; the rewrite reads the three values from Hydra by name, which needs them named in `src/core/timing.cpp` first. Until it lands, the test and the record below stay here as the shape of a claim checked on a real chart, not as a model for typed values. This page does not edit the test.
+It has a history. An earlier G1 was written for this page in commit e7de1c7c6. It typed 10, 20 and 30 and cited SC-05 in `docs/clone-hero/06-scoring.md` as the reason, which the user's rulings forbid: "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." and "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong". Commit b5ff8909f then replaced it with a test that walked the combo up and noted where the multiplier changed. That walk typed nothing, but it checked a rule nobody wrote down: that the steps are evenly spaced. Commit 60e6aa078 replaced the walk with the test below.
 
 ```cpp
-TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
+TEST_CASE("timing: the combo multiplier steps up by one at each named step combo and stops at the third") {
+    using hydra::kX2StartCombo;
+    using hydra::kX3StartCombo;
+    using hydra::kX4StartCombo;
     using hydra::to_multiplier;
 
-    // The combo at which each multiplier starts: SC-05 in
-    // docs/clone-hero/06-scoring.md.
-    const int x2_from = 10;
-    const int x3_from = 20;
-    const int x4_from = 30;
+    // A note hit with no combo pays its plain value: a factor of one.
+    const int plain = 1;
+    CHECK(to_multiplier(0) == plain);
 
-    // SC-05: 1x runs from combo 0 up to the combo before x2_from.
-    CHECK(to_multiplier(0) == 1);
-    CHECK(to_multiplier(x2_from - 1) == 1);
-    CHECK(to_multiplier(x2_from) == 2);
-    CHECK(to_multiplier(x3_from - 1) == 2);
-    CHECK(to_multiplier(x3_from) == 3);
-    CHECK(to_multiplier(x4_from - 1) == 3);
-    CHECK(to_multiplier(x4_from) == 4);
+    // Each multiplier holds up to the combo before the next step, and each
+    // step adds one.
+    CHECK(to_multiplier(kX2StartCombo - 1) == plain);
+    CHECK(to_multiplier(kX2StartCombo) == plain + 1);
+    CHECK(to_multiplier(kX3StartCombo - 1) == plain + 1);
+    CHECK(to_multiplier(kX3StartCombo) == plain + 2);
+    CHECK(to_multiplier(kX4StartCombo - 1) == plain + 2);
+    CHECK(to_multiplier(kX4StartCombo) == plain + 3);
 
-    // x4 is the top, however long the combo runs.
-    CHECK(to_multiplier(std::numeric_limits<int>::max()) == 4);
+    // The third step is the top, however long the combo runs.
+    CHECK(to_multiplier((std::numeric_limits<int>::max)()) == plain + 3);
 }
 ```
 
-Every number in it is either typed from SC-05 (10, 20, 30 and the multipliers 1 to 4, the fault above) or written as its working (`x2_from - 1`). The last line's input is the longest combo an `int` can hold, so no big number is picked.
+The three step combos are read by name from `src/core/timing.h` (lines 33 to 35), where `to_multiplier` reads them too. Every other number is the test's own working: `- 1` is the combo before a step, and `+ 1` to `+ 3` count the steps passed. The `1` is the plain factor, the multiplier that leaves a note's value as it is. The last line's input is the longest combo an `int` can hold, so no big number is picked.
 
 The record, in the rubric's own shape:
 
 ```
-timing: the combo multiplier steps up every ten notes and stops at x4
-            (tests/test_timing.cpp)
-Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
-            :12-17); multiplier_step and crosses_multiplier_step (:19-27);
-            category_scores (src/core/scoring.cpp:41-57);
-            MultSqueeze::applies' call (src/core/model.cpp:369); grep
-            to_multiplier in src/ and tools/ (core files only); SC-05
-            (docs/clone-hero/06-scoring.md:53-61); the hydra_replay
-            schedule output for Pitch Dark (testdata/input/
-            test_pitch_dark_ratio), from the main session; where that
-            output's per-note multiplier is written
-            (tools/replay_schedule.cpp:391) and filled from
-            category_scores' per-note answer (src/core/replay.cpp:160,
-            ReplayNote in src/core/replay.h:147-154); the old test
-            (tests/test_timing.cpp:72-82) and its commit, 3b699581; grep
-            to_multiplier and multiplier_step in tests/.
-1 Claim:    The 10th note in a row is the first that pays double, the
-            20th the first that pays triple, the 30th the first that pays
-            four times, and no combo pays more than four times.
+timing: the combo multiplier steps up by one at each named step combo
+            and stops at the third (tests/test_timing.cpp:88-109)
+Read:       the test above, all of it; kX2StartCombo, kX3StartCombo and
+            kX4StartCombo (src/core/timing.h:30-35); to_multiplier
+            (src/core/timing.cpp:12-17); multiplier_step and
+            crosses_multiplier_step (:19-27); category_scores
+            (src/core/scoring.cpp:47 and 58); MultSqueeze::applies' call
+            (src/core/model.cpp:389); grep to_multiplier in src/, tools/
+            and tests/; SC-05 (docs/clone-hero/06-scoring.md:53-61); the
+            hydra_replay schedule output for Pitch Dark (testdata/input/
+            test_pitch_dark_ratio), captured by the main session for the
+            earlier G1; the commits that added this test and the two
+            before it (e7de1c7c6, b5ff8909f, 60e6aa078).
+1 Claim:    The note that brings the combo to the first step combo is the
+            first that pays double, the second step's the first that pays
+            triple, the third step's the first that pays four times, and
+            no combo pays more than four times.
 2 Owner:    to_multiplier works it out. The engine owns it: category_scores
-            calls it for every note it scores (scoring.cpp:57, after
-            combo += 1 on :56), and multiplier_step calls it for
-            category_scores (:46) and for the multiplier squeeze
-            (model.cpp:369). No file under src/app, src/ui or tools calls
+            calls it for every note it scores (scoring.cpp:58), and
+            multiplier_step calls it for category_scores (:47) and, through
+            crosses_multiplier_step, for the multiplier squeeze
+            (model.cpp:389). No file under src/app, src/ui or tools calls
             it.
 3 Real chart: Engine, Pitch Dark, per-note multiplier in the schedule
             output, every note hit from the start: note 9 (chord 4, tick
@@ -381,62 +380,65 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             12, tick 74160) x2; note 20 (chord 13, tick 74400) x3; note 29
             (chord 18, tick 75840) x3; note 30 (chord 19, tick 76000) x4;
             note 31 (chord 20) x4. No Star Power pays these chords.
-            Claim: x2 from the 10th, x3 from the 20th, x4 from the 30th.
-            They agree.
-4 Direct:   Eight checks. The first reads "a combo of 0 pays x1", SC-05's
-            first combo. Six read "at this combo, this multiplier", each
-            combo written as a step SC-05 names or as one below it. The
-            last reads "the longest combo still pays x4". With the three
-            comments covered, the constants' names still say what each
-            number is.
-5 Reason:   Fails. 10, 20, 30 and the multipliers 1 to 4 are typed from
-            SC-05 ("So 1x at 0 to 9, 2x at 10 to 19, 3x at 20 to 29 and
-            4x from 30"). A Clone Hero page is not code, and
-            to_multiplier already holds these values as unnamed literals
-            (timing.cpp:13-15). They are constant pins, and the page
-            citation is cited non-code. Fix: name them in production,
-            read the names in the test. The "- 1" is the test's working,
-            on the line. numeric_limits<int>::max() is the test's own
-            input, and its name says what it is. No other number.
+            Claim: x2 from the first step combo (10), x3 from the second
+            (20), x4 from the third (30). They agree. The output was
+            captured before 60e6aa078; that commit gave the values names
+            and changed none, so to_multiplier returns what it did.
+4 Direct:   Eight checks. The first reads "a combo of 0 pays the plain
+            factor". Six read "at this step combo, or the one before it,
+            this many steps have been passed". The last reads "the longest
+            combo is still three steps up". With the comments covered, the
+            names still say what each line checks.
+5 Reason:   Holds. The step combos are game rule values read from Hydra
+            by name, and the test checks what to_multiplier does with
+            them. "- 1" and "+ 1" to "+ 3" are the test's working, on the
+            line. The 1 is the plain factor, written once under a name
+            that says so. numeric_limits<int>::max() is the test's own
+            input, and its name says what it is. No page is cited; SC-05
+            is cited only by the comment above the names in production.
 6 Display:  Not a display test. Question 2's callers are all in src/core;
             nothing a person reads calls to_multiplier directly.
 7 Failure:  A step that sits one combo early or late, or a missing top.
             Every chord near a step would be scored at the wrong
             multiplier, and a multiplier squeeze would be offered on the
             wrong chord. Still possible: to_multiplier is three
-            hand-typed comparisons. The old test's commit named no
+            hand-written comparisons. None of the three commits names a
             failure, so this one is named here (reasoned).
-8 Deleted:  Each a change to to_multiplier; the (x2_from) == 2 line is confirmed
-            (planted, built, red), the rest reasoned.
-            (0) == 1:           a combo of 0 sent to its own branch that
-                                returns 0, as if no note had been hit.
-            (x2_from - 1) == 1: "combo < 10" typed as "combo < 9".
-            (x2_from) == 2:     "combo < 10" typed as "combo <= 10" (confirmed).
-            (x3_from - 1) == 2: "combo < 20" typed as "combo < 19".
-            (x3_from) == 3:     "combo < 20" typed as "combo <= 20".
-            (x4_from - 1) == 3: "combo < 30" typed as "combo < 29".
-            (x4_from) == 4:     "combo < 30" typed as "combo <= 30".
-            (max) == 4:         the body replaced by SC-05's formula,
-                                1 + combo / 10, without its cap. The six
-                                lines above all still pass on that.
+8 Deleted:  Each a change to to_multiplier; all reasoned. The earlier G1's
+            step check failed with the second bug below planted and built,
+            on a line that checked the same thing with a typed 10; this
+            text has not been run red.
+            (0) == plain:            a combo of 0 sent to its own branch
+                                     that returns 0, as if no note had
+                                     been hit.
+            (kX2StartCombo - 1):     "combo < kX2StartCombo" typed as
+                                     "combo < kX2StartCombo - 1".
+            (kX2StartCombo):         "combo < kX2StartCombo" typed as
+                                     "combo <= kX2StartCombo".
+            (kX3StartCombo - 1):     the same off-by-one on the second step.
+            (kX3StartCombo):         "<" typed as "<=" on the second step.
+            (kX4StartCombo - 1):     the same off-by-one on the third step.
+            (kX4StartCombo):         "<" typed as "<=" on the third step.
+            (max) == plain + 3:      the body replaced by SC-05's formula,
+                                     1 + combo / kX2StartCombo, without its
+                                     cap. The six lines above all still
+                                     pass on that.
             Each line can fail, and no other line catches its bug.
 9 Stand-in: None. The risk is a wrong multiplier at a step, and each line
             asks for the multiplier at a step. It leans on no chart, file
             order, timing or other test. A failure prints the line, and
             the line names the step.
-10 Same rule: tests/test_timing.cpp:72 states it and is replaced by this
-            test (B14). tests/test_model.cpp:249 tests multiplier_step, a
-            different question: what a chord's first and last notes pay.
-            tests/test_stars.cpp (lines 47, 51, 60-63, 134 and 229-236) and
-            tests/test_replay.cpp (lines 1671, 1717 and 1880) call
+10 Same rule: No other test states where the steps sit. tests/test_model.cpp
+            :617 tests multiplier_step, a different question: what a
+            chord's first and last notes pay. tests/test_stars.cpp (lines
+            47, 51, 61-63, 134 and 229-236), tests/test_replay.cpp (lines
+            1672, 1718 and 1881) and tests/test_scoring.cpp:23 call
             to_multiplier for a value or search for a step, and do not
             state where the steps sit.
 11 Real:    Yes. Pitch Dark reaches all three steps in its first 20
             chords. A combo as long as the last line's input cannot
             happen; the line says why it is used (no combo, however long).
-Verdict:    Rewrite. Keep the claim and the eight checks. Read the three
-            step values from Hydra by name, after naming them in
-            production. Type none of them.
+Verdict:    Keep.
 ```
 
 ## The display test that comes with the Preview fix
@@ -447,4 +449,4 @@ Here is the test to write in the same change as the Preview fix. It takes every 
 
 ## What was removed from this page, and why
 
-An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13). The version after that had no good example at all; G1 was written to fill that gap, and the user's rulings on typed constants and cited non-code have since taken it off the good list.
+An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13). The version after that had no good example at all; G1 was written to fill that gap. Its first text typed the step values from a Clone Hero page, which the user's rulings on typed constants and cited non-code rule out, so G1 now holds the rewrite that reads them by name.

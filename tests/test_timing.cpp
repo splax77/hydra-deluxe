@@ -85,44 +85,27 @@ TEST_CASE("timing: corpus conversions are monotone and consistent") {
                                   << off_line_charts << " with a mid-measure meter change");
 }
 
-TEST_CASE("timing: the combo multiplier steps up by one at evenly spaced combos and then stays") {
+TEST_CASE("timing: the combo multiplier steps up by one at each named step combo and stops at the third") {
+    using hydra::kX2StartCombo;
+    using hydra::kX3StartCombo;
+    using hydra::kX4StartCombo;
     using hydra::to_multiplier;
 
-    // A note hit with no combo scores its plain value: a factor of one.
-    const int no_bonus = 1;
-    CHECK(to_multiplier(0) == no_bonus);
+    // A note hit with no combo pays its plain value: a factor of one.
+    const int plain = 1;
+    CHECK(to_multiplier(0) == plain);
 
-    // The top is what the longest combo reads; the multiplier must climb to it.
-    const int top = to_multiplier((std::numeric_limits<int>::max)());
-    REQUIRE(top > to_multiplier(0));
+    // Each multiplier holds up to the combo before the next step, and each
+    // step adds one.
+    CHECK(to_multiplier(kX2StartCombo - 1) == plain);
+    CHECK(to_multiplier(kX2StartCombo) == plain + 1);
+    CHECK(to_multiplier(kX3StartCombo - 1) == plain + 1);
+    CHECK(to_multiplier(kX3StartCombo) == plain + 2);
+    CHECK(to_multiplier(kX4StartCombo - 1) == plain + 2);
+    CHECK(to_multiplier(kX4StartCombo) == plain + 3);
 
-    // The steps come from the owner: walk the combo up until the multiplier
-    // reaches its top, and note each combo where it changes. Each change is a
-    // rise of exactly one, and no run is longer than the first, so a walk that
-    // can no longer reach the top fails at once instead of running on.
-    std::vector<int> steps;
-    for (int combo = 1; to_multiplier(combo - 1) < top; ++combo) {
-        CAPTURE(combo);
-        const int rise = to_multiplier(combo) - to_multiplier(combo - 1);
-        REQUIRE(rise >= 0);
-        REQUIRE(rise <= 1);
-        if (rise == 1) steps.push_back(combo);
-        REQUIRE((steps.empty() || combo - steps.back() <= steps.front()));
-    }
-
-    // Each rise is one, so the top is the start plus the number of steps.
-    REQUIRE_FALSE(steps.empty());
-    CHECK(top == to_multiplier(0) + static_cast<int>(steps.size()));
-    // Every run of one multiplier is as long as the first.
-    for (size_t i = 0; i < steps.size(); ++i) {
-        CAPTURE(i);
-        CHECK(steps[i] == static_cast<int>(i + 1) * steps.front());
-    }
-    // Past the last step the multiplier stays at the top.
-    for (int past : {steps.back(), steps.back() + steps.front(), 2 * steps.back()}) {
-        CAPTURE(past);
-        CHECK(to_multiplier(past) == top);
-    }
+    // The third step is the top, however long the combo runs.
+    CHECK(to_multiplier((std::numeric_limits<int>::max)()) == plain + 3);
 }
 
 TEST_CASE("timing: a map without a tick-0 entry throws") {

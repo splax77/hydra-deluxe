@@ -1247,8 +1247,8 @@
       "date": "2026-10-04",
       "decision": "D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04",
       "added_by": "E2",
-      "pattern": "\\bcombo\\w*\\)?\\s*%\\s*10\\b|\\bcombo\\w*\\s*[<>]=?\\s*(10|20|30)\\b|\\b(10|20|30)\\s*[<>]=?\\s*combo",
-      "anchor": "combo",
+      "pattern": "\\bcombo\\w*\\)?\\s*%\\s*10\\b|\\bcombo\\w*\\s*[<>]=?\\s*(10|20|30)\\b|\\b(10|20|30)\\s*[<>]=?\\s*combo|\\bkX[234]StartCombo\\s*=\\s*\\d+",
+      "anchor": "ombo",
       "must_match": [
         "const int mod = (chord.count() + combo) % 10;",
         "return (combo_ % 10 == 7) ? \"high\" : \"low\";",
@@ -1262,22 +1262,22 @@
       ],
       "owner_lines": [
         {
-          "file": "src/core/timing.cpp",
-          "line_text": "if (combo < 10) return 1;",
-          "why": "to_multiplier, the owner"
+          "file": "src/core/timing.h",
+          "line_text": "inline constexpr int kX2StartCombo = 10;",
+          "why": "kX2StartCombo, the combo where the multiplier reaches x2"
         },
         {
-          "file": "src/core/timing.cpp",
-          "line_text": "if (combo < 20) return 2;",
-          "why": "to_multiplier, the owner"
+          "file": "src/core/timing.h",
+          "line_text": "inline constexpr int kX3StartCombo = 20;",
+          "why": "kX3StartCombo, the combo where the multiplier reaches x3"
         },
         {
-          "file": "src/core/timing.cpp",
-          "line_text": "if (combo < 30) return 3;",
-          "why": "to_multiplier, the owner"
+          "file": "src/core/timing.h",
+          "line_text": "inline constexpr int kX4StartCombo = 30;",
+          "why": "kX4StartCombo, the combo where the multiplier reaches x4, the top"
         }
       ],
-      "note": "The multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer."
+      "note": "The multiplier steps live in to_multiplier, and their three combos in kX2StartCombo, kX3StartCombo and kX4StartCombo. A combo tested against 10, 20 or 30, taken mod 10, or a second constant for a step, is a second answer."
     },
     {
       "question": "What text turns an INI setting on or off?",

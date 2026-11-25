@@ -168,9 +168,9 @@ inline bool within_squeeze_window(double offset_from_sp_end_ms) {
 // ---- note value ----------------------------------------------------------
 // What one note is worth before any multiplier. ChordNote::basescore and
 // category_scores both read these, so the price has one home.
-// The cymbal's +15, the solo's 100 per note, and the multiplier steps at
-// combos 10, 20 and 30 (to_multiplier) are Clone Hero's values, recorded as
-// they are by D51 call 13 (audit finding 335).
+// The cymbal's +15, the solo's 100 per note, and the multiplier steps
+// (kX2StartCombo, kX3StartCombo and kX4StartCombo in timing.h) are Clone
+// Hero's values, recorded as they are by D51 call 13 (audit finding 335).
 inline constexpr int kNoteBasePoints = 50;
 inline constexpr int kCymbalBonusPoints = 15;
 // Solo bonus: this many points per note hit inside a solo section.
