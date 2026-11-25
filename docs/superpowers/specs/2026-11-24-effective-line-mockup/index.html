@@ -1,0 +1,67 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mockup: an Effective line in the squeeze box</title>
+<style>
+  body{background:#1e1e1e;color:#e6e6e6;font:13px/1.35 "Segoe UI",sans-serif;margin:0;padding:18px}
+  .note{max-width:900px;color:#aaa;margin-bottom:14px}
+  .panel{width:900px;background:#232323;border:1px solid #333;padding:10px 12px}
+  h3{font-size:13px;color:#aaa;font-weight:normal;margin:22px 0 6px}
+  .row{display:grid;grid-template-columns:18px 30px 46px 110px 1fr 190px;align-items:start;
+       padding:5px 0;font-family:Consolas,monospace;background:#14504b}
+  .arrow{color:#888;font-size:10px;padding-top:3px}
+  .num{background:#3a3a3e;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:12px}
+  .nota{color:#fad200}.dim{color:#999}
+  .badges{display:flex;flex-direction:column;gap:5px}
+  .pill{border-radius:9px;padding:1px 8px;text-align:center;white-space:nowrap;font-family:Consolas,monospace}
+  .sq{background:#33261a;border:1px solid #6a4520;color:#ff7f00}
+  .tag{background:#2a2410;border:1px solid #f2c300;color:#f2c300}
+  .body{margin:2px 0 8px 48px}
+  .chordline{display:flex;justify-content:space-between;margin:4px 0;font-family:Consolas,monospace}
+  .chordline .lbl{font-family:"Segoe UI",sans-serif;color:#aaa;margin-right:6px}
+  .box{background:#33261a;border:1px solid #ff7f00;color:#e8d6c4;padding:6px 8px;margin:4px 0}
+  .dhw{border-top:1px solid #4a3622;margin-top:6px;padding-top:4px;font-family:Consolas,monospace}
+  .new{background:#3d2f12;outline:1px dashed #f2c300;outline-offset:1px}
+  .w{color:#c9b39b}.f{color:#fff}
+  .scalew{color:#ff7f00;font-size:12px;margin:6px 0 2px}
+  table{border-collapse:collapse;font-family:Consolas,monospace;margin-top:4px;width:100%}
+  th{font-family:"Segoe UI",sans-serif;font-weight:normal;color:#ccc;text-align:left;border-bottom:1px solid #444;padding:1px 6px}
+  td{padding:1px 6px}
+  .bad{color:#ff7f00}
+  .btn{background:#0d7a73;color:#fff;padding:1px 6px;font-size:12px;border:0}
+</style></head><body>
+<div class="note">
+  <b>Mockup, not the app.</b> Gethsemane (Rise Against), the optimal path, activation 3, with every figure taken from your screenshot.
+  The only change is the new <b>Effective</b> line, outlined in yellow, under the Dynamic Hit Window line.
+</div>
+
+<h3>With the Effective line</h3>
+<div class="panel" id="after"></div>
+
+<h3>For comparison, the current box</h3>
+<div class="panel" id="before"></div>
+
+<script>
+function box(withLine){
+  const line = withLine ? `
+      <div class="dhw new">Effective: <span class="w">frontend</span> <span class="f">184.0 ms</span></div>` : "";
+  return `
+  <div class="row"><span class="arrow">▼</span><span class="num">3</span><span class="nota">0-</span><span>m52.1.0</span><span class="dim">2 bars</span>
+    <div class="badges"><span class="pill sq">squeeze out 220.6 ms</span><span class="pill tag">41.7 ms safe</span></div></div>
+  <div class="body">
+    <div class="chordline"><span><span class="lbl">Chord</span>[Kick - Yellow cymbal - Green cymbal]</span><button class="btn">Show in Preview &gt;</button></div>
+    <div class="box">Hit the [ R B ] note more than 220.6 ms late so it lands after Star Power ends.
+      <div class="dhw">Dynamic Hit Window: <span class="w">frontend</span> <span class="f">85.7 ms</span> [K Y G] &nbsp; <span class="w">backend</span> <span class="f">78.3 ms</span> [ R B ]</div>${line}
+    </div>
+    <div class="scalew">Frontend timing scales x2.15 (early) at the SP end.</div>
+    <div class="dim">▼ Backend timings · 3 notes near the SP end</div>
+    <table>
+      <tr><th>Timing</th><th>Chord</th><th>Points</th><th>Rating</th></tr>
+      <tr><td>-441.2</td><td>[K &nbsp;B ]</td><td>460</td><td>Normal (eff. 280.4 ms)</td></tr>
+      <tr><td>-330.9</td><td>[K &nbsp; &nbsp;]</td><td>200</td><td>Normal (eff. 210.3 ms)</td></tr>
+      <tr class="bad"><td>-220.6</td><td>[ R B ]</td><td>260</td><td>Insane+ (eff. 140.2 ms) &lt;-- squeezed out (-200)</td></tr>
+    </table>
+  </div>`;
+}
+document.getElementById("after").innerHTML = box(true);
+document.getElementById("before").innerHTML = box(false);
+</script>
+</body></html>
