@@ -695,7 +695,6 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
         CHECK(*n.effective_ms ==
               doctest::Approx(figure_by_rule(offsets[i], want_scale)).epsilon(1e-12));
     }
-    CHECK(r.scale_governs);
     // Rows on both sides of the end: post reads both; no SqIn, so none recorded.
     CHECK(r.post_read.early);
     CHECK(r.post_read.late);
@@ -799,7 +798,6 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
           doctest::Approx(figure_by_rule(free_gap, sqin_scale.early)).epsilon(1e-12));
     CHECK(*r.note_effective_ms[1] ==
           doctest::Approx(figure_by_rule(earn_gap, sqin_scale.late)).epsilon(1e-12));
-    CHECK(r.scale_governs);
     // Each SqIn marks its own side of its own end; no row reads the SP end.
     CHECK_FALSE(r.post_read.early);
     CHECK_FALSE(r.post_read.late);
@@ -1001,7 +999,6 @@ TEST_CASE("rate_activation: one SqIn with no stored scale rates nothing") {
 
     const ActivationRating r = rate_activation(act);
     CHECK_FALSE(r.scales.has_value());
-    CHECK_FALSE(r.scale_governs);
     CHECK_FALSE(r.post_read.early);
     CHECK_FALSE(r.post_read.late);
     CHECK(r.sqins_read.empty());
@@ -1042,37 +1039,32 @@ TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side
 
 // Real cases of both ends: Pitch Dark (testdata/input/test_pitch_dark_ratio)
 // has an activation whose SqIn sits past its own end at a scaled stored
-// scale, so a scaled side governs it; Evans Blue - Beg [highfine]
+// scale, so it has a figure; Evans Blue - Beg [highfine]
 // (testdata/input/common/IB24/T1) has activations with every stored scale at
 // x1.00.
-TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {
-    int governs = 0, flat = 0;
+TEST_CASE("rate_activation: a rated row has a figure exactly when the side it read is scaled") {
+    int with_figure = 0, flat = 0;
     for (const ChartActivation& ca : searched_activations()) {
         CAPTURE(ca.chart);
         const ActivationRating r = rate_activation(ca.act);
         REQUIRE(r.scales.has_value());
-        // A rated row has a figure exactly when the side it read is scaled,
-        // and the activation governs exactly when a row or SqIn has a figure.
-        bool want = false;
+        bool any_figure = false;
         for (const BackendRating& br : r.backends) {
             CHECK(br.note.effective_ms.has_value() == is_scaled(br.note.scale));
-            want = want || br.note.effective_ms.has_value();
+            any_figure = any_figure || br.note.effective_ms.has_value();
         }
         for (const std::optional<double>& figure : r.note_effective_ms)
-            want = want || figure.has_value();
-        CHECK(r.scale_governs == want);
-        if (r.scale_governs) ++governs;
+            any_figure = any_figure || figure.has_value();
+        if (any_figure) ++with_figure;
 
-        // An activation with no scaled side never governs, whatever its gaps.
         bool any_scaled = is_scaled(r.scales->post.early) || is_scaled(r.scales->post.late);
         for (const TransferScale& s : r.scales->sqins)
             any_scaled = any_scaled || is_scaled(s.early) || is_scaled(s.late);
-        if (!any_scaled) {
-            ++flat;
-            CHECK_FALSE(r.scale_governs);
-        }
+        if (!any_scaled) ++flat;
     }
-    REQUIRE(governs > 0);
+    // The walk meets both kinds of activation, so the check above is not
+    // run on flat scales alone.
+    REQUIRE(with_figure > 0);
     REQUIRE(flat > 0);
 }
 

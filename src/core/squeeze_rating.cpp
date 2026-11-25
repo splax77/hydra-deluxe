@@ -228,7 +228,6 @@ ActivationRating rate_activation(const Activation& act, double backend_leeway_ms
                     row_multiplier(act, bsq, backend_leeway_ms)) {
                 row.note = rate_note(bsq.offset(), *priced);
                 mark_read(out.post_read, *priced);
-                out.scale_governs |= row.note.effective_ms.has_value();
             }
         }
         out.backends.push_back(std::move(row));
@@ -259,7 +258,6 @@ ActivationRating rate_activation(const Activation& act, double backend_leeway_ms
         }
         const NoteRating n = rate_note(act.sqinouts[k].offset_ms, *priced);
         mark_read(out.sqins_read.emplace_back(), *priced);
-        out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }
 

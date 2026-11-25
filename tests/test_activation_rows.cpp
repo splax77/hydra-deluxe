@@ -275,8 +275,10 @@ BackendSqueeze backend_at(double offset_ms) {
 
 // Which sides a row or squeeze reads is rate_activation's (SidesRead). On
 // every corpus activation the SP end's line names a side exactly when that
-// side was read and its stored multiplier is scaled, early before late, and
-// the line is orange exactly when rate_activation says a multiplier governs.
+// side was read and its stored multiplier is scaled, early before late. Every
+// corpus activation stores its scales, so none shows the unknown-scale guard,
+// and scale_lines draws its scale lines, in Effective ink, only with the
+// Effective figures switch on.
 TEST_CASE("build_activations: on every corpus activation the scale line names the sides rate_activation read") {
     int scaled_lines = 0;
     int both_sides = 0;
@@ -307,7 +309,18 @@ TEST_CASE("build_activations: on every corpus activation the scale line names th
             ++read;
         }
         if (!sqin_scaled) CHECK(av.sqin_scale_warning.empty());
-        CHECK(av.scale_warn == rate.scale_governs);
+
+        CHECK_FALSE(av.scale_unknown);
+        CHECK(scale_lines(av, /*effective_figures=*/false).empty());
+        std::vector<std::string> shown;
+        for (const InkRun& line : scale_lines(av, /*effective_figures=*/true)) {
+            CHECK(line.ink == Ink::Effective);
+            shown.push_back(line.text);
+        }
+        std::vector<std::string> nonempty;
+        for (const std::string& line : {av.sqin_scale_warning, av.scale_warning})
+            if (!line.empty()) nonempty.push_back(line);
+        CHECK(shown == nonempty);
     });
     // Pitch Dark's first activation (the next case) has a line with both.
     CHECK(scaled_lines > 0);
@@ -342,7 +355,6 @@ TEST_CASE("build_activations: Pitch Dark's first scale line names both sides and
     CHECK(av.scale_warning.find(" at the SP end.") != std::string::npos);
     // One SqIn, so its clause says "the SqIn's", not a number or "each" (D16).
     CHECK(av.sqin_scale_warning.find("(late) at the SqIn's SP end.") != std::string::npos);
-    CHECK(av.scale_warn == rate.scale_governs);
 }
 
 // The wording cases below build one activation each, because the clause forms
@@ -358,17 +370,24 @@ TEST_CASE("build_activations: the scale line is empty at x1.00 even past the bud
 
 TEST_CASE("build_activations: a row on the SP end reads only the early side") {
     // The only row sits exactly on the SP end. It is inside SP, so the early
-    // side governs it: its 0 ms margin is still 0 ms, and the line is orange
-    // because a shown multiplier governs a row. Nothing reads the late side,
-    // so the line leaves it out.
+    // side governs it: its 0 ms margin is still 0 ms, and a shown multiplier
+    // governs the row. Nothing reads the late side, so the line leaves it out.
     Activation on_end = scale_base();
     test::set_transfer(on_end, TransferScale{8.59, 8.76});
     on_end.backends.push_back(backend_at(0.0));
     const ActivationRowView av = scale_row_of(on_end);
     CHECK(av.scale_warning == "Frontend timing scales x8.59 (early) at the SP end.");
-    CHECK(av.scale_warn);
     REQUIRE(av.backends.size() == 1);
     CHECK(av.backends[0].rating.find(" (eff. 0.0 ms)") != std::string::npos);
+
+    // The scale moves a figure here, and its line is still an effective
+    // figure: Effective ink with the switch on, never the warning colour, and
+    // not drawn with it off.
+    CHECK(scale_lines(av, /*effective_figures=*/false).empty());
+    const std::vector<InkRun> lines = scale_lines(av, /*effective_figures=*/true);
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].text == av.scale_warning);
+    CHECK(lines[0].ink == Ink::Effective);
 }
 
 TEST_CASE("build_activations: the scale line leaves out a side at x1.00") {
@@ -384,13 +403,12 @@ TEST_CASE("build_activations: the scale line leaves out a side at x1.00") {
           "Frontend timing scales x6.33 (late) at the SP end.");
 }
 
-TEST_CASE("build_activations: a backend row the late scale moves turns the line orange") {
+TEST_CASE("build_activations: a backend row the late scale moves gets the line") {
     Activation backend = scale_base();
     test::set_transfer(backend, TransferScale{1.0, 0.5});
     backend.backends.push_back(backend_at(50.0));
     const ActivationRowView av = scale_row_of(backend);
     CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SP end.");
-    CHECK(av.scale_warn);
 }
 
 TEST_CASE("build_activations: a SqIn's scale line reads its own stored end") {
@@ -402,7 +420,6 @@ TEST_CASE("build_activations: a SqIn's scale line reads its own stored end") {
     const ActivationRowView av = scale_row_of(sqin);
     CHECK(av.sqin_scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
     CHECK(av.scale_warning.empty());
-    CHECK(av.scale_warn);
 }
 
 TEST_CASE("build_activations: the SqIn's end and the SP end each get a line") {
@@ -416,6 +433,12 @@ TEST_CASE("build_activations: the SqIn's end and the SP end each get a line") {
     const ActivationRowView av = scale_row_of(both);
     CHECK(av.sqin_scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
     CHECK(av.scale_warning == "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end.");
+    // With the switch on, both are drawn, the SqIn's first.
+    const std::vector<InkRun> lines = scale_lines(av, /*effective_figures=*/true);
+    REQUIRE(lines.size() == 2);
+    CHECK(lines[0].text == av.sqin_scale_warning);
+    CHECK(lines[1].text == av.scale_warning);
+    for (const InkRun& line : lines) CHECK(line.ink == Ink::Effective);
 }
 
 TEST_CASE("build_activations: SqIns that share a scale read as one clause with \"each\"") {
@@ -485,7 +508,6 @@ TEST_CASE("build_activations: rows inside SP read only the early side") {
     inside.backends.push_back(backend_at(-300.0));
     const ActivationRowView av = scale_row_of(inside);
     CHECK(av.scale_warning == "Frontend timing scales x0.83 (early) at the SP end.");
-    CHECK(av.scale_warn);
 }
 
 TEST_CASE("build_activations: rows on both sides of the SP end print both sides, early first") {
@@ -496,10 +518,9 @@ TEST_CASE("build_activations: rows on both sides of the SP end print both sides,
     const ActivationRowView av = scale_row_of(both_sides);
     CHECK(av.scale_warning ==
           "Frontend timing scales x0.83 (early) / x1.20 (late) at the SP end.");
-    CHECK(av.scale_warn);
 }
 
-TEST_CASE("build_activations: scales nothing reads give no line and nothing orange") {
+TEST_CASE("build_activations: scales nothing reads give no line") {
     // There are no backend rows, and the only SqIn sits past its end, where
     // its late side is x1.00.
     Activation unread = scale_base();
@@ -507,7 +528,6 @@ TEST_CASE("build_activations: scales nothing reads give no line and nothing oran
     test::set_transfer(unread, TransferScale{0.7, 1.0}, TransferScale{0.83, 1.20});
     const ActivationRowView av = scale_row_of(unread);
     CHECK(av.scale_warning.empty());
-    CHECK_FALSE(av.scale_warn);
 }
 
 // D17 rules what the hint covers: SP is counted in measures from the
@@ -1213,13 +1233,58 @@ TEST_CASE("longest_activation_badge: the widest wording with the window's figure
 
 namespace {
 
+// The text at `eff` in `text`; REQUIREs the span to lie inside the text.
+std::string text_at(const std::string& text, TextSpan eff) {
+    REQUIRE(eff.start <= text.size());
+    REQUIRE(eff.length <= text.size() - eff.start);
+    return text.substr(eff.start, eff.length);
+}
+
+// The figure as eff_suffix appends it, leading space included, for the
+// engine's own figure.
+std::string eff_text(double effective_ms) { return " (eff. " + format_ms(effective_ms) + ")"; }
+
+// The text of `runs`, in order.
+std::string runs_text(const std::vector<InkRun>& runs) {
+    std::string out;
+    for (const InkRun& r : runs) out += r.text;
+    return out;
+}
+
+// Checks the runs effective_runs gave for `text`, whose figure sits at `eff`
+// and whose other pieces are drawn in `around` ink. Off: the text before the
+// span and the text after it are both there, whole and in order, the span's
+// text is gone, and nothing is Effective ink. On: the whole text, the span's
+// text its one run in Effective ink, every other run in `around` ink.
+void check_runs(const std::string& text, TextSpan eff, Ink around,
+                const std::vector<InkRun>& off, const std::vector<InkRun>& on) {
+    CAPTURE(text);
+    const std::string figure = text_at(text, eff);
+    const std::string before = text.substr(0, eff.start);
+    const std::string after = text.substr(eff.start + eff.length);
+    CHECK(runs_text(off) == before + after);
+    for (const InkRun& r : off) CHECK(r.ink == around);
+    CHECK(runs_text(on) == text);
+    int figures = 0;
+    for (const InkRun& r : on) {
+        if (r.ink == Ink::Effective) {
+            CHECK(r.text == figure);
+            ++figures;
+        } else {
+            CHECK(r.ink == around);
+        }
+    }
+    CHECK(figures == (eff.empty() ? 0 : 1));
+}
+
 // Checks one squeeze's sentence against the engine's answers for it: the
 // edge it prints is the squeeze's timing() as a figure; it is a "no more
 // than" limit exactly when the squeeze needs no timing (D302); the squeezed
 // note goes the way squeeze_presses presses it; a SqOut names its squeezed
 // chord when the rating found the squeezed-out row; a SqIn carries its eff.
-// figure exactly when the rating gave one; orange exactly when the squeeze is
-// difficult.
+// figure exactly when the rating gave one, at its span, and a SqOut's span is
+// empty; orange exactly when the squeeze is difficult. Its runs are cut at
+// that span (check_runs), in Plain ink around the figure.
 void check_sentence(const TextLine& s, const SPSqueeze& sq, const BackendRating* squeezed_out,
                     std::optional<double> effective_ms) {
     CAPTURE(s.text);
@@ -1232,15 +1297,20 @@ void check_sentence(const TextLine& s, const SPSqueeze& sq, const BackendRating*
         if (squeezed_out)
             CHECK(s.text.find(squeezed_out->row.chord.notationstr()) != std::string::npos);
         CHECK(s.text.find("eff.") == std::string::npos);
+        CHECK(s.eff.empty());
     } else {
         CHECK(s.text.find("before Star Power ends.") != std::string::npos);
         if (effective_ms) {
             CHECK(s.text.find("(eff. " + format_ms(*effective_ms) + ")") != std::string::npos);
+            CHECK(text_at(s.text, s.eff) == eff_text(*effective_ms));
         } else {
             CHECK(s.text.find("eff.") == std::string::npos);
+            CHECK(s.eff.empty());
         }
     }
     CHECK(s.warn == sq.is_difficult());
+    check_runs(s.text, s.eff, Ink::Plain, sentence_runs(s, /*effective_figures=*/false),
+               sentence_runs(s, /*effective_figures=*/true));
 }
 
 }  // namespace
@@ -1249,6 +1319,7 @@ void check_sentence(const TextLine& s, const SPSqueeze& sq, const BackendRating*
 // engine's squeeze and rating (check_sentence).
 TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
     int sqins = 0;
+    int sqins_with_eff = 0;
     int sqouts_naming_a_chord = 0;
     for_each_corpus_row([&](const Activation& act, const ActivationRowView& av) {
         const ActivationRating rate = rate_activation(act);
@@ -1260,12 +1331,19 @@ TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
             const std::optional<double> eff =
                 k < rate.note_effective_ms.size() ? rate.note_effective_ms[k] : std::nullopt;
             check_sentence(av.squeeze_sentences[k], act.sqinouts[k], squeezed_out, eff);
-            if (act.sqinouts[k].kind == SqueezeKind::SqIn) ++sqins;
-            else if (squeezed_out) ++sqouts_naming_a_chord;
+            if (act.sqinouts[k].kind == SqueezeKind::SqIn) {
+                ++sqins;
+                if (eff) ++sqins_with_eff;
+            } else if (squeezed_out) {
+                ++sqouts_naming_a_chord;
+            }
         }
     });
     // Pitch Dark has a squeeze in and Beg a squeeze out of a named chord.
+    // Pitch Dark's squeeze in reads a scaled side of its own end (the scale
+    // line case above), so it carries a figure and a span.
     CHECK(sqins > 0);
+    CHECK(sqins_with_eff > 0);
     CHECK(sqouts_naming_a_chord > 0);
 }
 
@@ -1356,14 +1434,71 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
             if (eff) {
                 CHECK(row.rating.find("(eff. " + format_ms(*eff) + ")") != std::string::npos);
                 CHECK(row.tooltip.find(format_ms(*eff)) != std::string::npos);
+                CHECK(text_at(row.rating, row.rating_eff) == eff_text(*eff));
                 ++rows_with_eff;
             } else {
                 CHECK(row.rating.find("eff.") == std::string::npos);
                 CHECK(row.tooltip.empty());
+                CHECK(row.rating_eff.empty());
             }
+            // The Rating's runs are cut at its span, in the warning colour
+            // around the figure exactly on a row that costs points.
+            check_runs(row.rating, row.rating_eff, row.warn ? Ink::Warning : Ink::Plain,
+                       rating_runs(row, /*effective_figures=*/false),
+                       rating_runs(row, /*effective_figures=*/true));
+            // The hover note is an effective figure: none with the switch
+            // off, the row's own tooltip with it on.
+            CHECK(timing_hover_note(row, /*effective_figures=*/false).empty());
+            CHECK(timing_hover_note(row, /*effective_figures=*/true) == row.tooltip);
         }
     });
     CHECK(rows_with_eff > 0);
+}
+
+// A squeezed-out row that costs points, on a scaled side, so its Rating holds
+// both the warning colour and an effective figure. Built the way the scale
+// cases above build theirs: the chord squeezed out 5 ms inside SP, with the
+// early side scaled.
+TEST_CASE("backend table: a costing squeezed-out row keeps its orange, its eff. figure is gray") {
+    Activation act = scale_base();
+    test::set_transfer(act, TransferScale{2.15, 1.0});
+    BackendSqueeze row = backend_at(-5.0);
+    row.timecode = Timecode::raw(3256);
+    row.sp_points = 460;
+    row.sqout_sp_points = 260;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
+    act.sqout_tick = 3256;
+    const ActivationRowView av = scale_row_of(act);
+    REQUIRE(av.backends.size() == 1);
+    const BackendRowView& out = av.backends[0];
+    CAPTURE(out.rating);
+    REQUIRE(out.warn);
+    REQUIRE_FALSE(out.rating_eff.empty());
+    const std::string figure = text_at(out.rating, out.rating_eff);
+
+    // On: the figure alone is Effective ink; the tier word before it and the
+    // squeezed-out note after it keep the warning colour.
+    const std::vector<InkRun> on = rating_runs(out, /*effective_figures=*/true);
+    CHECK(runs_text(on) == out.rating);
+    REQUIRE(on.size() == 3);
+    CHECK(on[0].text == out.rating.substr(0, out.rating_eff.start));
+    CHECK(on[0].ink == Ink::Warning);
+    CHECK(on[1].text == figure);
+    CHECK(on[1].ink == Ink::Effective);
+    CHECK(on[2].ink == Ink::Warning);
+    CHECK(on[2].text.find("<-- squeezed out (-") != std::string::npos);
+
+    // Off: the figure is gone and everything left keeps the warning colour.
+    const std::vector<InkRun> off = rating_runs(out, /*effective_figures=*/false);
+    CHECK(runs_text(off).find(figure) == std::string::npos);
+    CHECK(runs_text(off) == on[0].text + on[2].text);
+    for (const InkRun& r : off) CHECK(r.ink == Ink::Warning);
+
+    // The hover note goes with the switch.
+    REQUIRE_FALSE(out.tooltip.empty());
+    CHECK(timing_hover_note(out, /*effective_figures=*/false).empty());
+    CHECK(timing_hover_note(out, /*effective_figures=*/true) == out.tooltip);
 }
 
 namespace {
@@ -1432,7 +1567,6 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
         const ActivationRowView av = only_row(p);
         check_names_scale(av.scale_warning, "early", early);
         CHECK_FALSE(printed_scale(av.scale_warning, "late").has_value());
-        CHECK(av.scale_warn);
         const ActivationRating rate = rate_activation(p.activations[0]);
         REQUIRE(rate.backends.size() == 1);
         REQUIRE(av.backends.size() == 1);
@@ -1480,7 +1614,6 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
         p.activations[0].backends.push_back(backend_at(50.0));
         const ActivationRowView av = only_row(p);
         CHECK(av.scale_warning.empty());
-        CHECK_FALSE(av.scale_warn);
         REQUIRE(av.backends.size() == 2);
         for (const BackendRowView& row : av.backends) CHECK(row.rating.find("eff.") == std::string::npos);
     }
@@ -1499,9 +1632,19 @@ TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
     ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
-    CHECK(v.acts[0].scale_warn);  // Q6: orange
+    CHECK(v.acts[0].scale_unknown);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
+
+    // The guard is not an effective figure: it shows in the warning colour
+    // (Q6) whatever the Effective figures switch says, and alone.
+    for (const bool on : {false, true}) {
+        CAPTURE(on);
+        const std::vector<InkRun> lines = scale_lines(v.acts[0], on);
+        REQUIRE(lines.size() == 1);
+        CHECK(lines[0].text == v.acts[0].scale_warning);
+        CHECK(lines[0].ink == Ink::Warning);
+    }
 }
 
 // Each note's words are ChordNote::str's, in the Pro Drums setting's words

@@ -546,36 +546,56 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
     CHECK(worded_apart > 0);
 }
 
-TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
+TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all; the Effective figures switch stays put") {
+    // The Effective figures switch rides along with every step below: it
+    // starts off, and nothing that opens or closes rows, or starts a new
+    // path, moves it, so it keeps the user's choice from path to path while
+    // the app runs. Each switch check sits right after a step whose effect on
+    // the rows is checked too, so the line names the step that moved it.
     PathsTabUi ui;
     // Both footer folds start open. No row does, but every backend table does,
     // so a row shows its table as soon as the user opens it.
     CHECK(ui.mult_open);
     CHECK(ui.breakdown_open);
+    // Fails if the switch starts on.
+    CHECK_FALSE(ui.effective_figures);
     ui.reset(3);
     CHECK(ui.act_open == std::vector<char>{0, 0, 0});
     CHECK(ui.backends_open == std::vector<char>{1, 1, 1});
     CHECK_FALSE(ui.all_open());
-    // A new path keeps the footer folds as the user left them.
+    // Fails if a new path turns the switch on.
+    CHECK_FALSE(ui.effective_figures);
+    // A new path keeps the footer folds and the switch as the user left them.
     ui.mult_open = false;
+    ui.effective_figures = true;
     ui.reset(2);
     CHECK_FALSE(ui.mult_open);
     CHECK(ui.breakdown_open);
+    // Fails if a new path turns the switch back off.
+    CHECK(ui.effective_figures);
     ui.reset(3);
 
     ui.click_row(2);  // opens row 3 alone
     CHECK(ui.act_open == std::vector<char>{0, 0, 1});
     ui.click_row(2);  // closes it again
     CHECK(ui.act_open == std::vector<char>{0, 0, 0});
+    // Fails if opening or closing a row turns the switch off.
+    CHECK(ui.effective_figures);
 
     ui.set_all(true);
     CHECK(ui.all_open());
+    // Fails if Expand all turns the switch off.
+    CHECK(ui.effective_figures);
     ui.click_row(1);  // an open row closes and leaves the others open
     CHECK(ui.act_open == std::vector<char>{1, 0, 1});
     ui.set_all(false);
     CHECK(ui.act_open == std::vector<char>{0, 0, 0});
+    // Fails if Collapse all turns the switch off.
+    CHECK(ui.effective_figures);
     ui.click_row(7);  // past the end: nothing
     CHECK(ui.act_open == std::vector<char>{0, 0, 0});
+    // Fails if a click past the last row turns the switch off.
+    CHECK(ui.effective_figures);
 
     PathsTabUi empty;
     empty.reset(0);

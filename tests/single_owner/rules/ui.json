@@ -1910,11 +1910,6 @@
           "file": "src/ui/paths_tab.cpp",
           "line_text": "case 2: return row.points;",
           "why": "backend_cell, the owner"
-        },
-        {
-          "file": "src/ui/paths_tab.cpp",
-          "line_text": "default: return row.rating;",
-          "why": "backend_cell, the owner"
         }
       ],
       "scope": [
