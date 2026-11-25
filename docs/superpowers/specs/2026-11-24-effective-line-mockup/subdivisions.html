@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mockup: Effective line on Subdivisions</title>
+<style>
+  body{background:#1e1e1e;color:#e6e6e6;font:13px/1.35 "Segoe UI",sans-serif;margin:0;padding:18px}
+  .note{max-width:900px;color:#aaa;margin-bottom:14px}
+  .panel{width:900px;background:#232323;border:1px solid #333;padding:10px 12px}
+  h3{font-size:13px;color:#aaa;font-weight:normal;margin:22px 0 6px}
+  .row{display:grid;grid-template-columns:18px 30px 46px 110px 1fr 190px;align-items:start;
+       padding:5px 0;font-family:Consolas,monospace;background:#14504b}
+  .arrow{color:#888;font-size:10px;padding-top:3px}
+  .num{background:#3a3a3e;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:12px}
+  .nota{color:#fad200}.dim{color:#999}
+  .badges{display:flex;flex-direction:column;gap:5px}
+  .pill{border-radius:9px;padding:1px 8px;text-align:center;white-space:nowrap;font-family:Consolas,monospace}
+  .sq{background:#33261a;border:1px solid #6a4520;color:#999}
+  .tag{background:#2a2410;border:1px solid #f2c300;color:#f2c300}
+  .body{margin:2px 0 8px 48px}
+  .chordline{display:flex;justify-content:space-between;margin:4px 0;font-family:Consolas,monospace}
+  .chordline .lbl{font-family:"Segoe UI",sans-serif;color:#aaa;margin-right:6px}
+  .box{background:#33261a;border:1px solid #6a4520;color:#e8d6c4;padding:6px 8px;margin:4px 0}
+  .dhw{border-top:1px solid #4a3622;margin-top:6px;padding-top:4px;font-family:Consolas,monospace}
+  .new{background:#3d2f12;outline:1px dashed #f2c300;outline-offset:1px}
+  .w{color:#c9b39b}.f{color:#fff}
+  .scalew{color:#ff7f00;font-size:12px;margin:2px 0}
+  .btn{background:#0d7a73;color:#fff;padding:1px 6px;font-size:12px;border:0}
+</style></head><body>
+<div class="note">
+  <b>Mockup, not the app.</b> Subdivisions (Rush, charted by Harmonix, Onyxite), the optimal path <code>2 4+ 0 3 0</code>,
+  activation 2, read from Hydra 3.2.0 on 2026-11-24. The new line is outlined in yellow.
+</div>
+
+<div class="panel" id="after"></div>
+<h3>For comparison, the current box</h3>
+<div class="panel" id="before"></div>
+
+<script>
+function box(withLine){
+  const eff = withLine ? `<div class="dhw new">Effective: <span class="w">frontend</span> <span class="f">80.2 ms</span></div>` : "";
+  return `
+  <div class="row"><span class="arrow">▼</span><span class="num">2</span><span class="nota">4+</span><span>m64.1.0</span><span class="dim">4 bars</span>
+    <div class="badges"><span class="pill sq">squeeze in -338.4 ms</span><span class="pill tag">497.2 ms safe</span></div></div>
+  <div class="body">
+    <div class="chordline"><span><span class="lbl">Chord</span>[Kick - Green cymbal]</span><button class="btn">Show in Preview &gt;</button></div>
+    <div class="box">Hit the SP phrase's last note no more than 338.4 ms late (eff. 334.0 ms) so it lands before Star Power ends.
+      <div class="dhw">Dynamic Hit Window: <span class="w">frontend</span> <span class="f">78.2 ms</span> [K &nbsp; G] &nbsp; <span class="w">backend</span> <span class="f">78.6 ms</span> [K Y &nbsp;]</div>${eff}</div>
+    <div class="scalew">Frontend timing scales x1.03 (early) at the SqIn's SP end.</div>
+    <div class="scalew">Frontend timing scales x1.02 (early) / x0.97 (late) at the SP end.</div>
+    <div class="dim">▶ Backend timings · 8 notes near the SP end</div>
+  </div>`;
+}
+document.getElementById("after").innerHTML = box(true);
+document.getElementById("before").innerHTML = box(false);
+</script>
+</body></html>
