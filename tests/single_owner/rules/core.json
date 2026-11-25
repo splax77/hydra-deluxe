@@ -812,7 +812,7 @@
       "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
       "anchor": "sqins[",
       "must_match": [
-        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++]);",
+        "const TransferScale& at_end = out.scales->sqins[j++];",
         "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
       ],
       "must_not_match": [
@@ -825,6 +825,39 @@
         "tests"
       ],
       "note": "A SqIn's transfer scale sits at its SqIn rank. Indexing the list with a hand-kept counter restates that rank; index it with sqin_rank, or compare whole lists (stored_transfer_scales pairs them). Literal-index pins in tests do not match."
+    },
+    {
+      "question": "Which stored transfer scale belongs to this squeeze?",
+      "owner": "stored_scale in src/core/squeeze_rating.cpp",
+      "owner_file": "src/core/squeeze_rating.cpp",
+      "owner_symbol": "stored_scale",
+      "date": "2026-11-24",
+      "decision": "the user's words of 2026-11-24, \"why are you even offering an option that would make the display wrong?\", in docs/superpowers/plans/2026-11-24-one-multiplier.md (task M6)",
+      "added_by": "one-multiplier M6",
+      "pattern": "\\?\\s*\\*?\\w+(\\.|->)(transfer_post\\s*:\\s*\\*?\\w+(\\.|->)transfer\\b|transfer\\s*:\\s*\\*?\\w+(\\.|->)transfer_post\\b)",
+      "anchor": "transfer",
+      "must_match": [
+        "q.kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer;",
+        "const std::optional<TransferScale>& ratio = is_in ? q.transfer : act.transfer_post;",
+        "sq.kind == SqueezeKind::SqIn ? sq.transfer : act.transfer_post;"
+      ],
+      "must_not_match": [
+        "act.transfer_post = scales->post;",
+        "end_scale_early = act.transfer_post->early;",
+        "const char* field = &ratio == &act.transfer_post ? \"Activation::transfer_post\" : \"SPSqueeze::transfer\";"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/squeeze_rating.cpp",
+          "line_text": "return q.kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer;",
+          "why": "stored_scale, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A squeeze's stored scale is stored_scale's answer: picking between Activation::transfer_post and SPSqueeze::transfer by the squeeze's kind restates it. A plain read of either field, and a message that names which field the owner returned, pick nothing and do not match. Applying a press to a scale is transfer_side's question, not this one."
     },
     {
       "question": "Is this transfer scale x1.00?",
