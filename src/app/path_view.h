@@ -9,6 +9,7 @@
 #ifndef HYDRA_APP_PATH_VIEW_H
 #define HYDRA_APP_PATH_VIEW_H
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -23,11 +24,49 @@
 
 namespace hydra::app {
 
+// Where an effective figure sits inside a longer text: the piece eff_suffix
+// (path_view.cpp) appended, its leading space included, as a start and a
+// length in bytes. Empty when the text carries no effective figure. The code
+// that appends the figure records the span, so nothing works the text out a
+// second time.
+struct TextSpan {
+    size_t start = 0;
+    size_t length = 0;
+    bool empty() const { return length == 0; }
+};
+
 // One display line plus whether it renders warning-colored.
 struct TextLine {
     std::string text;
     bool warn = false;
+    TextSpan eff;  // where `text` holds its "(eff. ...)"; empty when it holds none
 };
+
+// ---- inks: which colour each piece of a text is drawn in --------------------
+
+// The colour a piece of text is drawn in, named by what it means. The drawing
+// maps each name to a colour in one place; the view decides which name a
+// piece gets.
+enum class Ink {
+    Plain,      // the text colour already in force
+    Warning,    // the warning colour: the piece shows a cost or a bug
+    Effective,  // an effective figure, drawn gray
+};
+
+// One piece of text and the ink it is drawn in.
+struct InkRun {
+    std::string text;
+    Ink ink = Ink::Plain;
+};
+
+// The pieces to draw for `text`, whose effective figure sits at `eff`.
+// With `effective_figures` off: the text with the span left out, in one or two
+// runs of `around` ink. With it on: the whole text, the span's piece in
+// Effective ink and the pieces around it in `around` ink. A text with an
+// empty span is one run of `around` ink either way. The one owner of how a
+// text is cut at its span; sentence_runs and rating_runs call it.
+std::vector<InkRun> effective_runs(const std::string& text, TextSpan eff, Ink around,
+                                   bool effective_figures);
 
 // ---- one measure format ------------------------------------------------------
 
@@ -55,8 +94,18 @@ struct BackendRowView {
     std::string chord;
     std::string points;   // what the engine paid for the row; 0 when uncounted
     std::string rating;   // summarystr + " (eff. ...)" + " <-- squeezed out", then " (-N)" if counted
+    TextSpan rating_eff;  // where `rating` holds its " (eff. ...)"; empty when it holds none
     bool warn = false;    // a squeezed-out row the engine counts (it costs points)
 };
+
+// The pieces of a backend row's Rating cell, for the Effective figures switch
+// (PathsTabUi::effective_figures). The pieces around the figure are Warning
+// ink on a row that costs points (BackendRowView::warn), Plain ink otherwise.
+std::vector<InkRun> rating_runs(const BackendRowView& row, bool effective_figures);
+
+// The hover note over a backend row's Timing cell: the row's tooltip when the
+// Effective figures switch is on, empty (no note) when it is off.
+std::string timing_hover_note(const BackendRowView& row, bool effective_figures);
 
 // The Dynamic Hit Window tag a badge carries: its timing's
 // WindowRowView::tag and is_short.
@@ -141,9 +190,14 @@ struct ActivationRowView {
     // and shows first; it is empty when no SqIn's scale prints differently
     // from the SP end's. scale_warning names the SP end; it is empty when the
     // scales are known and no side a row or squeeze reads there is scaled.
+    // When the scales are unknown, scale_warning holds the guard instead
+    // (scale_unknown).
     std::string sqin_scale_warning;
     std::string scale_warning;
-    bool scale_warn = false;    // orange, both lines: a shown scale moves a squeeze or backend figure
+    // The record stored no transfer scale for this activation: scale_warning
+    // is the "Transfer scale unknown." guard, a sign of a bug, not a scale
+    // line. Set by the branch that writes the guard.
+    bool scale_unknown = false;
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
     // "3 notes near the SP end": every stored row, with the hidden part after
     // it when the backend limit hides some. Written by build_activations.
@@ -204,9 +258,24 @@ std::string longest_activation_badge();
 // supplies the SqOut's chord. `note_effective_ms` is
 // ActivationRating::note_effective_ms: a SqIn's sentence prints its figure as
 // "(eff. N ms)" after the timing; a SqOut's figure is on its backend row.
+// Each sentence's TextLine::eff is where its "(eff. N ms)" sits; empty on a
+// SqOut and on a SqIn the rating gave no figure.
 std::vector<TextLine> squeeze_sentences(const Activation& act,
                                         const BackendRating* squeezed_out,
                                         const std::vector<std::optional<double>>& note_effective_ms);
+
+// The pieces of a squeeze sentence, for the Effective figures switch
+// (PathsTabUi::effective_figures). The pieces around the figure are Plain
+// ink: a difficult squeeze (TextLine::warn) colours its box's border, not its
+// words.
+std::vector<InkRun> sentence_runs(const TextLine& sentence, bool effective_figures);
+
+// The lines drawn under an activation's boxes, in order, one run per line.
+// Unknown scales (ActivationRowView::scale_unknown): the guard, in Warning ink,
+// whatever the switch says. Otherwise, with the Effective figures switch on,
+// each non-empty scale line, the SqIn's first, in Effective ink; with it off,
+// none.
+std::vector<InkRun> scale_lines(const ActivationRowView& row, bool effective_figures);
 
 // The hover hint shown next to a scale warning.
 extern const char* const kTransferScaleHint;
@@ -307,6 +376,12 @@ struct PathsTabUi {
     // to path and from song to song while the app runs.
     bool mult_open = true;
     bool breakdown_open = true;
+    // The Effective figures switch: whether the Activations list draws its
+    // effective figures (effective_runs, scale_lines, timing_hover_note read
+    // it). Off at the start; reset() leaves it alone like the folds above.
+    // It only chooses what is drawn, so the details cache does not rebuild
+    // on it.
+    bool effective_figures = false;
     // The 0-based activation "Show in Preview" asked for, until the Preview
     // tab has moved its playhead there.
     std::optional<size_t> preview_jump;
