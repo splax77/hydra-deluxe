@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -50,10 +51,34 @@ const std::string kOpensSource = "std::ifstream in(root / \"core\" / \"x.cpp\");
 const std::string kPyConstant = "assert x < mod.LIMIT_MS";
 const std::string kWalk = "for r, _, fs in os.walk(os.path.join(ROOT, \"src\")):";
 
+// The constant-pin, echo and stand-in entries' lines: each bad line is one
+// entry's shape, and each good line is the shape its advice asks for.
+const std::string kPin = "CHECK(kHitWindowMs == 85);";
+const std::string kPinEq = "CHECK_EQ(hydra::kSlackMs, doctest::Approx(60.0));";
+const std::string kReadByName = "CHECK(reach_ms(chart) == kHitWindowMs);";
+const std::string kEcho = "CHECK(round_ms(85) == 85);";
+const std::string kEchoEq = "CHECK_EQ(85, clamp_ms(85, chart));";
+const std::string kInputOnly = "CHECK(lane_of(2) == Lane::Yellow);";
+const std::string kFake = "struct FakeClock : Clock {};";
+const std::string kNotFake = "struct ChartFile {};";
+const std::string kCopy = "CHECK(g(b) == h(c) + k(d));";
+const std::string kPyPin = "assert mod.LIMIT_MS == 85";
+const std::string kPyPinEq = "self.assertEqual(mod.SLACK_MS, 60)";
+const std::string kPyReadByName = "assert mod.reach_ms(chart) == mod.LIMIT_MS";
+const std::string kPyEcho = "assert mod.round_ms(85) == 85";
+const std::string kPyInputOnly = "assert mod.lane_of(2) == mod.Lane.YELLOW";
+const std::string kPyMock = "from unittest import mock";
+const std::string kPyStub = "class StubDb:";
+const std::string kPyFakeImport = "from helpers import FakeClock";
+const std::string kPyNotFake = "from helpers import write_chart";
+const std::string kPyFormula = "self.assertEqual(mod.TOTAL_MS, mod.HIT_MS + mod.SLACK_MS)";
+
 const std::string kSpellCpp = "tests/test_spell.cpp";
 const std::string kSpellPy = "tests/test_spell.py";
 const std::string kWalkPy = "tools/walk.py";
 const std::string kTreeTest = "tests/test_tree.cpp";
+const std::string kKindsCpp = "tests/test_kinds.cpp";
+const std::string kKindsPy = "tests/test_kinds.py";
 
 // main holds one file with one line; the feature adds the lines under test,
 // to that file and to new ones.
@@ -163,6 +188,22 @@ std::string one_item_label(const std::vector<Item>& items, const std::string& ki
     return text.substr(0, text.size() - tail.size());
 }
 
+// A file's text made of whole lines, and the line each one lands on.
+struct LinedFile {
+    std::string text;
+    std::map<std::string, int> line_of;
+};
+
+LinedFile file_of(const std::vector<std::string>& lines) {
+    LinedFile f;
+    int ln = 0;
+    for (const std::string& line : lines) {
+        f.text += line + "\n";
+        f.line_of[line] = ++ln;
+    }
+    return f;
+}
+
 }  // namespace
 
 TEST_CASE("precheck check 2: each recompute spelling prints once, naming its line") {
@@ -185,6 +226,95 @@ TEST_CASE("precheck check 2: each recompute spelling prints once, naming its lin
     CHECK(items_at(got, kSpellCpp, 7).empty());
     CHECK(items_at(got, kSpellCpp, 10).empty());
     CHECK(got.size() == 5);
+}
+
+TEST_CASE("precheck check 2: a constant pin, an echo and a named stand-in each print; their good shapes do not") {
+    const std::vector<std::string> cpp_bad = {kPin, kPinEq, kEcho, kEchoEq, kFake};
+    const std::vector<std::string> cpp_good = {kReadByName, kInputOnly, kNotFake};
+    const std::vector<std::string> py_bad = {kPyPin, kPyPinEq, kPyEcho, kPyMock, kPyStub, kPyFakeImport};
+    const std::vector<std::string> py_good = {kPyReadByName, kPyInputOnly, kPyNotFake};
+    std::vector<std::string> cpp_lines = cpp_bad;
+    cpp_lines.insert(cpp_lines.end(), cpp_good.begin(), cpp_good.end());
+    std::vector<std::string> py_lines = py_bad;
+    py_lines.insert(py_lines.end(), py_good.begin(), py_good.end());
+    const LinedFile cpp = file_of(cpp_lines);
+    const LinedFile py = file_of(py_lines);
+    RulesFixture fx("precheck_check2_kinds", {}, {{kKindsCpp, cpp.text}, {kKindsPy, py.text}});
+
+    Run run(fx.dir);
+    Context ctx = run.context();
+    run_check_2(ctx);
+    const std::vector<Item> got = run.items.sorted();
+
+    // Each bad line prints one B item, naming its line.
+    std::map<std::string, std::string> label;
+    for (const std::string& line : cpp_bad) {
+        INFO(line);
+        label[line] = one_item_label(got, "B", kKindsCpp, cpp.line_of.at(line), line);
+        CHECK(!label[line].empty());
+    }
+    for (const std::string& line : py_bad) {
+        INFO(line);
+        label[line] = one_item_label(got, "B", kKindsPy, py.line_of.at(line), line);
+        CHECK(!label[line].empty());
+    }
+    // Lines of one kind print under one entry, and the three kinds under
+    // three different entries.
+    CHECK(label[kPin] == label[kPinEq]);
+    CHECK(label[kEcho] == label[kEchoEq]);
+    CHECK(label[kPyPin] == label[kPin]);
+    CHECK(label[kPyEcho] == label[kEcho]);
+    CHECK(label[kPyMock] == label[kPyStub]);
+    CHECK(label[kPyMock] == label[kPyFakeImport]);
+    CHECK(label[kPin] != label[kEcho]);
+    CHECK(label[kPin] != label[kFake]);
+    CHECK(label[kEcho] != label[kFake]);
+
+    // A constant read by name to check behaviour, a typed input whose
+    // expected value is not that input, and a real type print nothing.
+    for (const std::string& line : cpp_good) {
+        INFO(line);
+        CHECK(items_at(got, kKindsCpp, cpp.line_of.at(line)).empty());
+    }
+    for (const std::string& line : py_good) {
+        INFO(line);
+        CHECK(items_at(got, kKindsPy, py.line_of.at(line)).empty());
+    }
+}
+
+TEST_CASE("precheck check 2: each spelling's advice points at a page that exists") {
+    // A line for each of check 2's own spellings, in C++ and in Python. The
+    // hit-window spelling needs its words on a line near the 2.0.
+    const std::string near_words = "// the hit window";
+    const std::vector<std::string> cpp_flagged = {kHitWindowCheck, kTiedCount, kCopy, kWantRule, kPin, kEcho, kFake};
+    const std::vector<std::string> py_flagged = {kPyConstant, kPyFormula, kPyPin, kPyEcho, kPyMock};
+    std::vector<std::string> cpp_lines = {near_words};
+    cpp_lines.insert(cpp_lines.end(), cpp_flagged.begin(), cpp_flagged.end());
+    const LinedFile cpp = file_of(cpp_lines);
+    const LinedFile py = file_of(py_flagged);
+    RulesFixture fx("precheck_check2_advice", {}, {{kKindsCpp, cpp.text}, {kKindsPy, py.text}});
+
+    Run run(fx.dir);
+    Context ctx = run.context();
+    run_check_2(ctx);
+    const std::vector<Item> got = run.items.sorted();
+    for (const std::string& line : cpp_flagged) {
+        INFO(line);
+        CHECK(!items_at(got, kKindsCpp, cpp.line_of.at(line)).empty());
+    }
+    for (const std::string& line : py_flagged) {
+        INFO(line);
+        CHECK(!items_at(got, kKindsPy, py.line_of.at(line)).empty());
+    }
+
+    const std::regex page("docs/[\\w/-]+\\.md");
+    for (const Item& i : got) {
+        INFO(i.what);
+        INFO(i.why);
+        std::smatch m;
+        REQUIRE(std::regex_search(i.why, m, page));
+        CHECK(fs::exists(sourcetree::root() / fs::u8path(m.str())));
+    }
 }
 
 TEST_CASE("precheck check 4: source-tree reads outside src/, and a row's line prints once") {
