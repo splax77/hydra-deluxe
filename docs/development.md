@@ -146,7 +146,8 @@ builds once per phase, on the run's branch `plan/<slug>/<phase>`, after every
 task of the phase is reviewed and merged there. A second build is given only
 after a reviewed fix. A phase that changed a C++ test file may also take one
 build of the `mutation` preset, outside that count. A session with no open run
-gets a pass only when the user types `allow build`. `docs/agents/plan-runs.md` says how a run is opened,
+gets a pass only when the user types `allow build`. `docs/agents/plan-runs.md`
+says how a run is opened,
 joined and closed. `build_cpp.ps1` records each build it starts, with its
 commit and whether it passed or failed, in `builds.jsonl` in the repo's git
 common folder; `tools\build_record.ps1` owns that record, and the hooks read
@@ -660,7 +661,8 @@ skipped are `SKIP_REASONS` there and `REWRITE_SKIP_REASONS` in `rewrite.py`.
 `--out`, `--root` and `--precheck` change the folders; `--help` says each
 default.
 
-Second, build once with the `mutation` preset, through a build pass:
+Second, build once with the `mutation` preset, through a build pass asked for
+with `preset` set to `mutation`:
 
 ```
 $env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests

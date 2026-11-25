@@ -81,7 +81,7 @@ A session started before this rule landed still has the old `hydra_build_pass`, 
 
 ### The extra mutation build
 
-On 2026-11-24 the user was asked "May a phase compile a second time for the mutation gate?" and chose "Allow it", whose text was "One extra mutation-only build per phase that touches a C++ test." That answer was given in a question box in session `b885c6f8`. It is a session record, not a filed ruling.
+On 2026-11-24 the user was asked "May a phase compile a second time for the mutation gate?" and chose "Allow it", whose text was "One extra mutation-only build per phase that touches a C++ test. Needs its own reviewed change to the build gate in the hooks repo." That answer was given in a question box in session `b885c6f8`. It is a session record, not a filed ruling.
 
 So a phase that changed at least one C++ test file may take one more build, of the `mutation` preset only. It is given at the plan branch's tip, and only once a normal build of that same tip has passed on a clean tree. `plan_run_judge.py` in the hooks owns the full rule; the refusal names the condition that failed.
 
