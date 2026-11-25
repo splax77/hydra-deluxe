@@ -9,8 +9,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -2122,4 +2124,167 @@ TEST_CASE("dynamic hit window: every corpus row") {
     const RowKindsSeen focus_rows = seen_on("SoundHaven - Focus [Ariana Grande]");
     CHECK(focus_rows.squeeze_row);
     CHECK(focus_rows.note_pressed_early);
+}
+
+namespace {
+
+// Every fast-tempo fixture under testdata/input/test_fast_tempo, sorted. The
+// corpus scan skips that folder (it has no song.ini), so its charts are
+// listed here and read by path, the way late_sqin_twice() reads one.
+std::vector<std::string> fast_tempo_charts() {
+    std::vector<std::string> out;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(corpus::root() + "/test_fast_tempo"))
+        if (entry.path().extension() == ".chart") out.push_back(entry.path().string());
+    std::sort(out.begin(), out.end());
+    REQUIRE_FALSE(out.empty());
+    return out;
+}
+
+// A fast-tempo fixture analyzed the way late_sqin_twice() analyzes one, once
+// per test run.
+const AnalysisResult& analyzed_fast_tempo(const std::string& path) {
+    static std::map<std::string, AnalysisResult> cache;
+    auto it = cache.find(path);
+    if (it == cache.end())
+        it = cache.emplace(path, analyze_chart_file(path, scratch_settings().to_analysis_settings()))
+                 .first;
+    return it->second;
+}
+
+// Calls visit(act, row, chords) for every activation of every kept path of
+// every fast-tempo fixture, then of every corpus chart, with row the one
+// build_activations makes for act. This is the scan the Effective line's
+// cases find their real squeezes by, at test time.
+template <typename Visit>
+void for_each_scanned_row(Visit&& visit) {
+    const auto walk = [&](const std::string& chart, const Song& song, const HydraRecord& rec) {
+        CAPTURE(chart);
+        const ChordTimes chords = chord_times(song);
+        const SongTiming& timing = song.timing();
+        for (const Path& path : rec.paths) {
+            CAPTURE(path.pathstring());
+            const std::vector<Activation> acts = path.all_activations();
+            const ActivationsView view = build_activations(path, rec, &timing, chords, std::nullopt,
+                                                           core::default_rules(), std::nullopt,
+                                                           /*pro_drums=*/true);
+            REQUIRE(view.acts.size() == acts.size());
+            for (size_t i = 0; i < acts.size(); ++i) {
+                CAPTURE(i);
+                REQUIRE(view.acts[i].squeeze_windows.size() == acts[i].sqinouts.size());
+                visit(acts[i], view.acts[i], chords);
+            }
+        }
+    };
+    for (const std::string& chart : fast_tempo_charts()) {
+        const AnalysisResult& ar = analyzed_fast_tempo(chart);
+        walk(chart, ar.song, ar.record);
+    }
+    for_each_corpus_chart(walk);
+}
+
+}  // namespace
+
+// A squeeze whose multiplier the owner shows gets the Effective line: the
+// word "frontend" and the frontend's window after the multiplier, which is
+// the figure squeeze_window_ends kept from its safe sum. Every such squeeze
+// the scan meets is checked, and the scan must meet at least one.
+TEST_CASE("dynamic hit window: a shown multiplier gives the Effective line the engine's figure") {
+    int shown = 0;
+    for_each_scanned_row([&](const Activation& act, const ActivationRowView& av, const ChordTimes& chords) {
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            const std::optional<WindowEnds> ends = squeeze_window_ends(act, k, chords);
+            if (!ends || !ends->priced || !ends->priced->shown()) continue;
+            CAPTURE(k);
+            REQUIRE(av.squeeze_windows[k].has_value());
+            REQUIRE(ends->frontend_effective_ms.has_value());
+            const std::optional<WindowFigure>& eff = av.squeeze_windows[k]->effective;
+            REQUIRE(eff.has_value());
+            CHECK(eff->word == "frontend");
+            CHECK(eff->figure == format_ms(*ends->frontend_effective_ms));
+            CHECK(eff->chord.empty());
+            ++shown;
+        }
+    });
+    // The scan holds a real squeeze with a shown multiplier; without one this
+    // case would check nothing.
+    CHECK(shown > 0);
+}
+
+// A squeeze whose multiplier the owner does not show gets no Effective line,
+// and neither does an early fill, whose row has no multiplier.
+TEST_CASE("dynamic hit window: no Effective line at an unshown multiplier or on an early fill") {
+    int unshown = 0;
+    int fills = 0;
+    for_each_scanned_row([&](const Activation& act, const ActivationRowView& av, const ChordTimes& chords) {
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            if (!av.squeeze_windows[k]) continue;
+            const std::optional<WindowEnds> ends = squeeze_window_ends(act, k, chords);
+            REQUIRE(ends.has_value());
+            if (ends->priced && ends->priced->shown()) continue;
+            CAPTURE(k);
+            CHECK_FALSE(av.squeeze_windows[k]->effective.has_value());
+            ++unshown;
+        }
+        if (av.early_fill_window) {
+            CHECK_FALSE(av.early_fill_window->effective.has_value());
+            ++fills;
+        }
+    });
+    CHECK(unshown > 0);
+    CHECK(fills > 0);
+}
+
+// A scale line names a side exactly when the owner priced a row or squeeze
+// on that side and shows it. The SP end's line is checked against every
+// backend row (row_multiplier) and every squeeze out (squeeze_multiplier),
+// both ways. Each squeeze in's shown side is on the SqIn line, or on the SP
+// end's line when it prints alike there; and every side the SqIn line names
+// is one a squeeze in's owner answer shows.
+TEST_CASE("build_activations: a scale line names a side exactly when the owner shows it") {
+    int post_lines = 0;
+    int sqin_sides = 0;
+    const double leeway = core::default_rules().backend_leeway_ms;
+    for_each_scanned_row([&](const Activation& act, const ActivationRowView& av, const ChordTimes&) {
+        CAPTURE(av.scale_warning);
+        CAPTURE(av.sqin_scale_warning);
+        // A fresh record always stores its scales (D4).
+        REQUIRE(stored_transfer_scales(act).has_value());
+        SidesRead post;
+        SidesRead sqins;
+        const auto mark = [](SidesRead& read, const std::optional<PricedScale>& priced) {
+            if (priced && priced->shown()) (priced->press == Press::Early ? read.early : read.late) = true;
+        };
+        for (const BackendSqueeze& row : act.display_backends())
+            mark(post, row_multiplier(act, row, leeway));
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            const std::optional<PricedScale> priced = squeeze_multiplier(act, k);
+            if (act.sqinouts[k].kind == SqueezeKind::SqOut) {
+                mark(post, priced);
+                continue;
+            }
+            SidesRead own;
+            mark(own, priced);
+            for (const bool early : {true, false}) {
+                if (!(early ? own.early : own.late)) continue;
+                const std::string side = early ? "early" : "late";
+                CAPTURE(side);
+                CHECK((names_side(av.sqin_scale_warning, side) || names_side(av.scale_warning, side)));
+                ++sqin_sides;
+            }
+            sqins.early = sqins.early || own.early;
+            sqins.late = sqins.late || own.late;
+        }
+        CHECK(names_side(av.scale_warning, "early") == post.early);
+        CHECK(names_side(av.scale_warning, "late") == post.late);
+        CHECK(av.scale_warning.empty() == !(post.early || post.late));
+        if (names_side(av.sqin_scale_warning, "early")) CHECK(sqins.early);
+        if (names_side(av.sqin_scale_warning, "late")) CHECK(sqins.late);
+        if (!(sqins.early || sqins.late)) CHECK(av.sqin_scale_warning.empty());
+        if (post.early || post.late) ++post_lines;
+    });
+    // The scan holds real lines of both kinds, so neither direction passes
+    // on lines it never met.
+    CHECK(post_lines > 0);
+    CHECK(sqin_sides > 0);
 }
