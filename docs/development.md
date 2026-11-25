@@ -117,29 +117,37 @@ Under Claude Code, agents never build, and at most three builds run at once
 any command on another page that builds. An agent that needs one says so in
 its report.
 
-A build works like a ticket booth. The main session calls `hydra_build_pass`
-first. The call never waits: it hands back a pass, or a line saying who holds
-the slots. With a pass, the main session runs its command with the pass in
-the environment:
+A build works like a ticket booth, and the ticket has the seat printed on it.
+The main session calls `hydra_build_pass` first, with `preset` set to the
+preset it will build, such as `default`. A preset is a named build setup in
+`CMakePresets.json`. The call has no default preset, and a call without one
+is refused. The call never waits: it hands back a pass, or a line saying who
+holds the slots. With a pass, the main session runs its command with the pass
+in the environment and the same preset on the command line:
 
 ```
-$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Target hydra_tests
+$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset default -Target hydra_tests
 ```
 
-Any other target or preset goes the same way, and so does
-`installer\build_installer.ps1`. A session holds
+The pass builds that preset only. `build_cpp.ps1` refuses a different preset,
+and the two words must match letter for letter. Any other target goes the same
+way. Another preset needs its own pass that names it: the installer's
+`installer\build_installer.ps1` builds the `ship` preset, so it needs a pass
+asked for with `preset` set to `ship`. A session holds
 one pass at a time. `build_cpp.ps1` claims the slot, builds, and gives the slot
 back whether the build passed or failed. Without a pass it stops before
 configure. A pass nobody claims runs out, and a slot whose owner died frees
 itself; `tools\build_slot.ps1` owns those limits.
-`tools\build_slot.ps1 -Repo <worktree>` builds another worktree under the pass
-the caller already holds.
+`tools\build_slot.ps1 -Repo <worktree> -Preset <preset>` builds another
+worktree under the pass the caller already holds, with the pass's preset.
 
 The pass is given by the plan run, not asked for per task. A plan's work
 builds once per phase, on the run's branch `plan/<slug>/<phase>`, after every
 task of the phase is reviewed and merged there. A second build is given only
-after a reviewed fix, and a session with no open run gets a pass only when the
-user types `allow build`. `docs/agents/plan-runs.md` says how a run is opened,
+after a reviewed fix. A phase that changed a C++ test file may also take one
+build of the `mutation` preset, outside that count. A session with no open run
+gets a pass only when the user types `allow build`. `docs/agents/plan-runs.md`
+says how a run is opened,
 joined and closed. `build_cpp.ps1` records each build it starts, with its
 commit and whether it passed or failed, in `builds.jsonl` in the repo's git
 common folder; `tools\build_record.ps1` owns that record, and the hooks read
@@ -653,7 +661,8 @@ skipped are `SKIP_REASONS` there and `REWRITE_SKIP_REASONS` in `rewrite.py`.
 `--out`, `--root` and `--precheck` change the folders; `--help` says each
 default.
 
-Second, build once with the `mutation` preset, through a build pass:
+Second, build once with the `mutation` preset, through a build pass asked for
+with `preset` set to `mutation`:
 
 ```
 $env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
