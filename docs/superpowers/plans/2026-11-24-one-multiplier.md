@@ -377,4 +377,4 @@ Changing what any "eff. N ms" figure means or how it is worded is not built. Rel
 | P23: The user chose the badge's side at 0.0 ms. | ruling | the user's message, quoted in this plan's brief: `why are you even offering an option that would make the display wrong?` | checked 2026-11-24 |
 | P24: A multiplier that exists gets a display. | ruling | `docs/agents/rulings/ui-and-display.md:80` | checked 2026-11-24 |
 | P25: Display-only changes do not move the results stamp. | code | `docs/audit/2026-10-03-fix-decisions.md:1687`, `src/store/stored_versions.h:42-55` | checked 2026-11-24 |
-| P26: D302 item 2 and `CONTEXT.md` both say the rating reads `paid_by_sp_walk`, and SP-39 says the direction follows the sign of the difficulty. | code | `docs/audit/2026-10-03-fix-decisions.md:1685`, `CONTEXT.md:777-783`, `docs/clone-hero/05-star-power.md:444` | checked 2026-11-24 |
+| P26: D302 item 2 and `CONTEXT.md` both say the rating reads `paid_by_sp_walk`, and SP-39 says the direction follows the sign of the difficulty. | code | `docs/audit/2026-10-03-fix-decisions.md:1685`, `CONTEXT.md:777-783`, `docs/clone-hero/05-star-power.md:445` | checked 2026-11-24 |
