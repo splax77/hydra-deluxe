@@ -801,10 +801,27 @@ class BuildPassTool(unittest.TestCase):
         self.slots = Path(tempfile.mkdtemp(prefix="hydra_build_pass_"))
         self.addCleanup(shutil.rmtree, self.slots, ignore_errors=True)
 
-    def ask(self, session):
+    def ask(self, session, preset="default"):
         env = {"HYDRA_BUILD_SLOT_DIR": str(self.slots), hm.SESSION_ENV: session}
         with mock.patch.dict(os.environ, env):
-            return hm.build_pass()
+            return hm.build_pass(preset)
+
+    def test_the_pass_is_for_the_preset_asked_for(self):
+        out = self.ask("session-a", "mutation")
+        token = re.match(r"pass: (\w+)\n", out).group(1)
+        lines = (self.slots / "slot1.lock").read_text().split("\n")
+        self.assertIn(f"pass={token}", lines)
+        self.assertIn("preset=mutation", lines)
+        command = [ln for ln in out.split("\n")[1:] if "HYDRA_BUILD_PASS" in ln]
+        self.assertEqual(len(command), 1, out)
+        self.assertIn("-Preset mutation", command[0])
+
+    def test_a_blank_preset_is_refused_and_hands_out_nothing(self):
+        for value in ("", "   "):
+            with self.subTest(value=value):
+                out = self.ask("session-a", value)
+                self.assertTrue(out.startswith("no pass: name the build preset"), out)
+                self.assertEqual(list(self.slots.iterdir()), [])
 
     def test_the_reply_is_a_pass_and_the_command_to_build_with(self):
         out = self.ask("session-a")
@@ -844,7 +861,7 @@ class BuildPassTool(unittest.TestCase):
                 if value is unset:
                     with mock.patch.dict(os.environ, {"HYDRA_BUILD_SLOT_DIR": str(self.slots)}):
                         os.environ.pop(hm.SESSION_ENV, None)
-                        out = hm.build_pass()
+                        out = hm.build_pass("default")
                 else:
                     out = self.ask(value)
                 self.assertTrue(out.startswith("no pass: "), out)
@@ -877,6 +894,20 @@ class SdkClient(unittest.TestCase):
                 return {t.name for t in result.tools}
 
         self.assertEqual(asyncio.run(names()), TOOL_NAMES)
+
+    def test_the_build_pass_tool_requires_a_preset(self):
+        # The preset has no default, so a client must send it.
+        from mcp import Client, StdioServerParameters
+
+        async def schema():
+            params = StdioServerParameters(command=sys.executable, args=["-I", str(HELPER_SCRIPT)])
+            async with Client(params) as client:
+                result = await client.list_tools()
+                return next(t.input_schema for t in result.tools if t.name == "hydra_build_pass")
+
+        found = asyncio.run(schema())
+        self.assertEqual(found.get("required"), ["preset"], found)
+        self.assertNotIn("default", found["properties"]["preset"], found)
 
     def test_open_song_sends_open_and_the_title(self):
         sent = []

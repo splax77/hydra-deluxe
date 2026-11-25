@@ -1,0 +1,2 @@
+This branch's build scripts tie a build pass to the preset it was asked for, so a pass for one preset builds no other (tools/build_slot.ps1 owns that check).
+The hook reads only that this file exists.
