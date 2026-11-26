@@ -12,7 +12,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 3.3.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 3.4.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
