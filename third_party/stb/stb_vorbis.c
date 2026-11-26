@@ -3791,6 +3791,11 @@ static int start_decoder(vorb *f)
       c->sparse = ordered ? 0 : get_bits(f,1);
 
       if (c->dimensions == 0 && c->entries != 0)    return error(f, VORBIS_invalid_setup);
+      // Hydra change: libvorbis's vorbis_staticbook_unpack refuses a codebook whose
+      // entry count and dimensions together need more than 24 bits. Refusing
+      // it here, before any table is sized from the count, keeps a damaged
+      // setup header that claims millions of entries from building them all.
+      if (ilog(c->dimensions) + ilog(c->entries) > 24) return error(f, VORBIS_invalid_setup);
 
       if (c->sparse)
          lengths = (uint8 *) setup_temp_malloc(f, c->entries);
