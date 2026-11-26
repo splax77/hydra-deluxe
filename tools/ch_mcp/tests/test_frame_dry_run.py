@@ -74,10 +74,62 @@ class FrameDryRunTest(unittest.TestCase):
             w = csv.writer(f)
             w.writerow(play_chart.FRAME_CLOCK_COLUMNS)
             for n, clock in enumerate(clocks):
-                w.writerow([100 + n, clock - start])
+                w.writerow([100 + n, clock])
         t = D.run_frames(self.play, csv_path=path)
         self.assertEqual([d["seq"] for d in t["dropped_seqs"]], [middle["seq"]])
         self.assertEqual((t["sent"], t["dropped"]), (2, 1))
+
+
+def _run_folder() -> str:
+    """hydra-data's 2026-11-22 run folder, found beside this checkout or one
+    of its parents; "" when there is none."""
+    here = _REPO_ROOT
+    while True:
+        folder = os.path.join(here, "hydra-data", "ch-mcp-runs", "2026-11-22")
+        if os.path.isdir(folder):
+            return folder
+        up = os.path.dirname(here)
+        if up == here:
+            return ""
+        here = up
+
+
+RUNS = _run_folder()
+
+
+@unittest.skipIf(NODE is None, "node is not on PATH, so press_schedule.ts cannot run")
+@unittest.skipIf(RUNS == "", "hydra-data's 2026-11-22 run folder is not beside this checkout")
+class RealRunTest(unittest.TestCase):
+    """The picker, fed the frames LS-M16 run 2 logged, does with the run's
+    schedule what run 2's own press log says it did."""
+
+    def test_run_two_frames_send_every_press_on_the_logged_frame(self):
+        schedule = os.path.join(RUNS, "ls-m16-prep", "schedule.json")
+        run = os.path.join(RUNS, "ls-m16-run2")
+        play = D.play_message(schedule)
+        t = D.run_frames(play, csv_path=os.path.join(run, "frame_clock-1.csv"))
+        self.assertEqual((t["sent"], t["dropped"], t["skipped"]), (len(play["entries"]), 0, 0))
+        self.assertEqual(t["no_frame_in_band_seqs"], [])
+        mine = {}
+        for index, frame in t["sent_frames"]:
+            mine.setdefault(index, []).append(frame)
+        with open(os.path.join(run, "press-1.csv"), newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), len(play["entries"]))
+        # A chord Hydra declines is still pressed, so every row has a frame.
+        differ = {}
+        for row in rows:
+            index, logged = int(row["index"]), int(row["down_frame"])
+            if logged not in mine.get(index, []):
+                differ[index] = (logged, mine.get(index))
+        # The dry run reads no Star Power end, so no retime reaches the picker
+        # and a press waiting on one is timed as planned; run 2 timed index
+        # 1504 (it waits on chord 1192's end) one frame earlier. Every other
+        # press went down on the frame the log says.
+        self.assertEqual(sorted(differ), [1504], differ)
+        waits = [e for e in play["entries"] if e["index"] == 1504]
+        self.assertEqual([e["end_read_after"] for e in waits], [1192])
+        self.assertEqual(differ[1504], (801383, [801384]))
 
 
 if __name__ == "__main__":

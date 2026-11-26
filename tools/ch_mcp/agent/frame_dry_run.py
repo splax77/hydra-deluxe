@@ -16,11 +16,17 @@ package is needed.
 
 The frames:
   --frames CSV      a frame clock log a run wrote (play_chart.FRAME_CLOCK_COLUMNS).
-                    Its steps, frame to frame, are played from the start clock
-                    on, and played again from its first step when the schedule
-                    outlasts them.
-  --even-step-ms    one clock step on every frame.
-Both lists run when both are given. The first frame's clock is start_clock_ms.
+                    Every frame is played at the clock and frame number the run
+                    logged, from the run's first frame on, so each press meets
+                    the frames the game gave it. When the schedule outlasts the
+                    log, its steps are played again from the top.
+  --even-step-ms    one clock step on every frame, the first at start_clock_ms.
+Both lists run when both are given.
+
+Only the schedule the log was recorded with meets the frames it met in the run
+(its chord times are that run's song times). For another schedule the log's
+frame grid lands on other presses than it did, so the result is one sample.
+
 The wall time moves with the clock, one for one; the picker reads the wall only
 for its run cap, its stall check and when it reports a press, never to pick a
 frame. The score it reads is 0 on every frame, since no game is scoring.
@@ -70,7 +76,7 @@ const c = JSON.parse(readFileSync(0, "utf8"));
 
 // One pass of the frame list: each frame's clock and frame number, relative
 // to its first.
-let relClock, relFrame;
+let relClock, relFrame, firstClock = c.start_clock_ms, firstFrame = 0;
 if (c.frames.kind === "csv") {
     const lines = readFileSync(c.frames.path, "utf8").split(/\r?\n/).filter((l) => l.length !== 0);
     const header = lines[0].split(",");
@@ -88,7 +94,11 @@ if (c.frames.kind === "csv") {
         if (!Number.isFinite(clock) || !Number.isInteger(frame)) {
             throw new Error(`${c.frames.path} line ${k + 1} is not a frame and a clock: ${lines[k]}`);
         }
-        if (clock0 === null) { clock0 = clock; frame0 = frame; }
+        if (clock0 === null) {
+            clock0 = clock; frame0 = frame;
+            // The first frame sits where the run's did.
+            firstClock = clock; firstFrame = frame;
+        }
         relClock[k - 1] = clock - clock0;
         relFrame[k - 1] = frame - frame0;
         // The wall follows the clock, so a step that does not move it forward
@@ -112,7 +122,7 @@ const span = relClock[period], frameSpan = relFrame[period];
 
 const sched = new PressSchedule(c.play, () => 0);
 const t = {
-    entries: sched.slots.size, frames: 0, loops: 0, sent: 0, sent_no_frame_in_band: 0,
+    entries: sched.slots.size, first_clock_ms: firstClock, sent_frames: [], frames: 0, loops: 0, sent: 0, sent_no_frame_in_band: 0,
     sent_judged_outside_band: 0, dropped: 0, dropped_no_frame_in_band: 0, skipped: 0,
     retime_missed: 0, stop: null, max_examined: 0, max_examined_frame: null,
     max_examined_clock_ms: null, dropped_seqs: [], no_frame_in_band_seqs: [],
@@ -128,6 +138,7 @@ const tally = (events) => {
             const seen = { seq: e.seq, index: e.index, clock_ms: e.clock_ms_at_press };
             if (e.kind === "sent") {
                 t.sent += 1;
+                t.sent_frames.push([e.index, e.down_frame]);
                 if (e.no_frame_in_band) { t.sent_no_frame_in_band += 1; }
                 if (e.judged_in_band === false) {
                     t.sent_judged_outside_band += 1;
@@ -146,8 +157,8 @@ const tally = (events) => {
 for (let k = 0; sched.stopReason === null; k++) {
     const loop = Math.floor(k / period), j = k %% period;
     const rel = loop * span + relClock[j];
-    const frame = loop * frameSpan + relFrame[j];
-    const clock = c.start_clock_ms + rel;
+    const frame = firstFrame + loop * frameSpan + relFrame[j];
+    const clock = firstClock + rel;
     const wall = rel;
     const s = sched.step(frame, clock, wall);
     t.frames += 1;
@@ -217,7 +228,8 @@ def start_clock_ms(play: dict) -> float:
 def run_frames(play: dict, *, csv_path: Optional[str] = None,
                even_step_ms: Optional[float] = None) -> dict:
     """Step the picker over one frame list (exactly one of `csv_path` and
-    `even_step_ms`) and return the driver's tally."""
+    `even_step_ms`) and return the driver's tally. A CSV is played at the
+    clocks and frame numbers it logged; an even step starts at start_clock_ms."""
     if (csv_path is None) == (even_step_ms is None):
         raise ValueError("give one frame list: a frame clock CSV or an even step")
     node = shutil.which("node")
@@ -253,7 +265,7 @@ def require_settings(framerate: str, multiplier: str,
 
 
 def report_line(name: str, t: dict) -> str:
-    return (f"{name}: {t['frames']} frames, stop {t['stop']}; "
+    return (f"{name}: {t['frames']} frames from clock {t['first_clock_ms']} ms, stop {t['stop']}; "
             f"{t['entries']} presses: sent {t['sent']} ({t['sent_no_frame_in_band']} "
             f"no_frame_in_band, {t['sent_judged_outside_band']} judged outside their band), "
             f"dropped {t['dropped']} ({t['dropped_no_frame_in_band']} no_frame_in_band), "
@@ -282,8 +294,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"Refused: {e}")
         return 1
     play = play_message(args.schedule_json)
-    print(f"{os.path.basename(args.schedule_json)}: {len(play['entries'])} presses, first "
-          f"frame clock {start_clock_ms(play)} ms, cap {play['cap_ms']} ms")
+    print(f"{os.path.basename(args.schedule_json)}: {len(play['entries'])} presses, cap "
+          f"{play['cap_ms']} ms")
     tallies = {}
     if args.frames is not None:
         tallies["recorded"] = run_frames(play, csv_path=args.frames)
