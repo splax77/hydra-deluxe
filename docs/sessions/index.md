@@ -610,8 +610,9 @@
 - 2026-11-25 1ee040a7 Test Guard M1 handoff (2026-11-25) | hooks, planning, review, tests, agents | Ended with the plan-run gate removed from both repos, the test guard and the preset rules kept, and a handoff written for planning a new gate from scratch. The mutation build M1 was not run.
 - 2026-11-25 2eba124d Build gate redesign handoff (2026-11-25) | hooks, agents, planning, review, tests | The build gate redesign was merged on local main in both repos, and nothing was pushed.
 - 2026-11-25 5fb1d25b Hydra UI information overload (2026-11-25) | path, squeeze, backend-row, shown-timing, planning, review | The Effective figures switch was built, passed its tests and its test gate, and was merged to `main`; nothing was pushed.
-- 2026-11-25 47ceccb1 Token burn session (2026-11-25) | path, fill-rule, scan, planning, review | The path sheet (`hydra_sheet`) and the fill map (`hydra_fillmap`) were built and reviewed on their own branches, and nothing new was merged to main except session cards.
-- 2026-11-25 a6066f45 Token burn session (2026-11-25) | path, squeeze, record, planning, review | Three features were built as engine slices and mockups on their own branches, each with a fresh reviewer's sign-off, and one feature was dropped; nothing was merged to main.
+- 2026-11-25 47ceccb1 Token burn session (2026-11-25) | path, fill-rule, scan, planning, review | The path sheet (`hydra_sheet`) and the fill map (`hydra_fillmap`) were built and reviewed on their own branches, and nothing new was merged to main except session cards. [stale]
+- 2026-11-25 a6066f45 Token burn session (2026-11-25) | path, squeeze, record, planning, review | Three features were built as engine slices and mockups on their own branches, each with a fresh reviewer's sign-off, and one feature was dropped; nothing was merged to main. [stale]
+- 2026-11-26 c9ae3983 Previous sessions output review (2026-11-26) | agents, memory, clone-hero | Ended with all 24 leftover branches and their worktrees from the two earlier sessions deleted, on the user's order, and none of their features kept. [write-back]
 
 ## Proposed tags
 
