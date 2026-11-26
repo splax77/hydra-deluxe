@@ -294,6 +294,52 @@ std::string cmake_code(const std::string& text) {
     return out;
 }
 
+// The root build file: its project() line holds the app's version.
+const char* const kRootCmake = "CMakeLists.txt";
+
+// Where the version number sits in a project() line: the digits and dots
+// after its VERSION word, as [at, at + len). Nothing when the line is no
+// one-line project() call with a version number in it.
+std::optional<std::pair<size_t, size_t>> project_version(const std::string& line) {
+    const std::string code = cmake_code(line);
+    static const std::string kCall = "project";
+    const size_t start = skip_space(code, 0);
+    if (code.compare(start, kCall.size(), kCall) != 0) return std::nullopt;
+    const size_t open = skip_space(code, start + kCall.size());
+    if (open >= code.size() || code[open] != '(') return std::nullopt;
+    const size_t close = code.find(')', open);
+    if (close == std::string::npos) return std::nullopt;
+    for (size_t h : word_hits(code, "VERSION")) {
+        if (h < open || h > close) continue;
+        const size_t at = skip_space(code, h + std::string("VERSION").size());
+        size_t e = at;
+        while (e < close && (std::isdigit(static_cast<unsigned char>(code[e])) || code[e] == '.')) ++e;
+        if (e == at || (e < code.size() && word_char(code[e]))) return std::nullopt;
+        return std::make_pair(at, e - at);
+    }
+    return std::nullopt;
+}
+
+// The names of the compile definitions in `cmake` whose value is the
+// project version.
+std::vector<std::string> version_constants(const std::string& cmake) {
+    static const std::string kVar = "PROJECT_VERSION";
+    std::vector<std::string> out;
+    for (size_t h : word_hits(cmake, kVar)) {
+        if (h < 2 || cmake.compare(h - 2, 2, "${") != 0) continue;
+        if (h + kVar.size() >= cmake.size() || cmake[h + kVar.size()] != '}') continue;
+        size_t eq = h - 2;
+        if (eq > 0 && cmake[eq - 1] == '"') --eq;
+        if (eq == 0 || cmake[eq - 1] != '=') continue;
+        size_t b = eq - 1;
+        while (b > 0 && word_char(cmake[b - 1])) --b;
+        const std::string name = cmake.substr(b, eq - 1 - b);
+        if (!name.empty() && ident_start(name[0]) && std::find(out.begin(), out.end(), name) == out.end())
+            out.push_back(name);
+    }
+    return out;
+}
+
 // The targets whose add_executable(...) in `cmake` lists `file`.
 std::vector<std::string> exe_targets_listing(const std::string& cmake, const std::string& file) {
     std::vector<std::string> out;
@@ -350,12 +396,20 @@ public:
     TestPick run() {
         const std::vector<std::string> changed =
             repo_.git({"diff", "--name-only", "--no-color", "--no-renames", range_.base, range_.tip});
-        // Step 2: shared code decides before any name work.
-        for (const std::string& f : changed)
+        // Step 2: shared code decides before any name work. A version bump
+        // alone in the root build file is the one build-file edit that does
+        // not: the tests naming the version's constants run instead.
+        std::vector<std::string> version_keys;
+        for (const std::string& f : changed) {
+            if (f == kRootCmake) {
+                version_keys = version_bump_constants();
+                if (!version_keys.empty()) continue;
+            }
             if (std::optional<WholeSuite> w = shared_code_in(f, tip_includes_, limits_.header_includers)) {
                 out_.whole_suite = w;
                 return out_;
             }
+        }
         collect_names();
         collect_callers();
         for (const std::string& f : changed) {
@@ -366,6 +420,9 @@ public:
                     if (runnable_test(inc)) add_reason(inc, f + " changed in range");
         }
         grep_tests();
+        for (const std::string& key : version_keys)
+            for (const std::string& t : tests_naming(key))
+                add_reason(t, key + " (version bump in " + kRootCmake + ")");
         if (!out_.whole_suite && static_cast<int>(picks_.size()) > limits_.pick_size)
             out_.whole_suite =
                 WholeSuite{"", "more picked test files than " + std::to_string(limits_.pick_size),
@@ -424,6 +481,31 @@ private:
         std::set<std::string> all(n.direct.begin(), n.direct.end());
         all.insert(n.via_helper.begin(), n.via_helper.end());
         return {all.begin(), all.end()};
+    }
+
+    // The version constants the root build file passes to the code, when the
+    // range's edit of that file is a version bump alone: one changed line on
+    // each side, both the project() line, alike but for the version number
+    // (project_version). Nothing for any other edit, so it stays a build-file
+    // change. The diff is read by ChangedLines' one parser.
+    std::vector<std::string> version_bump_constants() {
+        const ChangedLines c = ChangedLines::parse_diff(repo_.git(
+            {"diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", range_.base, range_.tip, "--", kRootCmake}));
+        const auto gone = c.deleted.find(kRootCmake);
+        if (gone == c.deleted.end() || gone->second.size() != 1 || !c.added.has_file(kRootCmake)) return {};
+        const View& base = views_.get(range_.base, kRootCmake);
+        const View& tip = views_.get(range_.tip, kRootCmake);
+        const std::vector<int> added = c.added.lines(kRootCmake, tip.line_count());
+        if (added.size() != 1) return {};
+        std::string before = base.line(base.raw, *gone->second.begin());
+        std::string after = tip.line(tip.raw, added.front());
+        const auto old_version = project_version(before);
+        const auto new_version = project_version(after);
+        if (!old_version || !new_version) return {};
+        before.erase(old_version->first, old_version->second);
+        after.erase(new_version->first, new_version->second);
+        if (before != after) return {};
+        return version_constants(cmake_code(tip.raw));
     }
 
     // The exe a main file builds and the tests that run it (the user's ruling

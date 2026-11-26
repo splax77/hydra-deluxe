@@ -90,7 +90,9 @@ struct TestPick {
 // The reason ("build file", "test harness", or the header-includer rule
 // with its count) the change of `file` runs the whole suite, or nothing.
 // The one place shared code is decided. A header's direct includers are
-// counted at `rev`.
+// counted at `rev`. This reads one file, not a range, so it cannot see a
+// version bump; pick_tests lets a range whose root CMakeLists.txt edit is a
+// version bump alone past this rule (version_bump_constants in test_pick.cpp).
 std::optional<WholeSuite> shared_code(Repo& repo, const std::string& rev, const std::string& file,
                                       int header_includer_limit = kHeaderIncluderLimit);
 

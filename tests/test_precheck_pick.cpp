@@ -691,6 +691,68 @@ TEST_CASE("precheck pick (h): a changed build file makes the pick the whole suit
     CHECK(p.tests.empty());
 }
 
+namespace {
+
+// A root build file whose project() line holds the version and passes it to
+// the code as FX_VERSION, a name the picker can only learn from this file.
+const std::string kVersionCmake =
+    "project(Fx VERSION 1.2.0 LANGUAGES CXX)\n"
+    "add_library(fx_core src/core.cpp)\n"
+    "target_compile_definitions(fx_core PUBLIC FX_VERSION=\"${PROJECT_VERSION}\")\n";
+
+const std::map<std::string, std::string> kVersionBase = {
+    {"CMakeLists.txt", kVersionCmake},
+    {"src/core.cpp", "int core() { return 1; }\n"},
+    {"tests/test_version.cpp", "const char* v() { return FX_VERSION; }\n"},
+    {"tests/test_other.cpp", "int o() { return 2; }\n"}};
+
+std::string bumped(const std::string& cmake) { return hydra::replace_all(cmake, "VERSION 1.2.0", "VERSION 1.3.0"); }
+
+}  // namespace
+
+TEST_CASE("precheck pick (h): a version bump alone in the root build file picks the tests naming the version") {
+    PickRepo fx("precheck_pick_h_version", kVersionBase);
+    const TestPick p = fx.pick({{"CMakeLists.txt", bumped(kVersionCmake)}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_version.cpp"});
+    const std::vector<std::string> why = reasons_of(p, "tests/test_version.cpp");
+    REQUIRE(why.size() == 1);
+    CHECK(hydra::starts_with(why.front(), "FX_VERSION"));
+}
+
+TEST_CASE("precheck pick (h): a version bump beside another root build file edit still runs the whole suite") {
+    PickRepo fx("precheck_pick_h_version_more", kVersionBase);
+    const TestPick p = fx.pick({{"CMakeLists.txt", bumped(kVersionCmake) + "add_compile_options(-Wall)\n"}});
+    REQUIRE(p.whole_suite);
+    CHECK(p.whole_suite->file == "CMakeLists.txt");
+    CHECK(p.tests.empty());
+}
+
+TEST_CASE("precheck pick (h): an edit of the project() line other than its version still runs the whole suite") {
+    const std::string more_languages = hydra::replace_all(kVersionCmake, "LANGUAGES CXX", "LANGUAGES C CXX");
+    SUBCASE("the languages alone") {
+        PickRepo fx("precheck_pick_h_project_lang", kVersionBase);
+        const TestPick p = fx.pick({{"CMakeLists.txt", more_languages}});
+        REQUIRE(p.whole_suite);
+        CHECK(p.whole_suite->file == "CMakeLists.txt");
+    }
+    SUBCASE("the languages and the version on the same line") {
+        PickRepo fx("precheck_pick_h_project_both", kVersionBase);
+        const TestPick p = fx.pick({{"CMakeLists.txt", bumped(more_languages)}});
+        REQUIRE(p.whole_suite);
+        CHECK(p.whole_suite->file == "CMakeLists.txt");
+    }
+}
+
+TEST_CASE("precheck pick (h): a version bump in a CMakeLists.txt below the root still runs the whole suite") {
+    std::map<std::string, std::string> base = kVersionBase;
+    base["tools/fx/CMakeLists.txt"] = kVersionCmake;
+    PickRepo fx("precheck_pick_h_version_sub", base);
+    const TestPick p = fx.pick({{"tools/fx/CMakeLists.txt", bumped(kVersionCmake)}});
+    REQUIRE(p.whole_suite);
+    CHECK(p.whole_suite->file == "tools/fx/CMakeLists.txt");
+}
+
 TEST_CASE("precheck pick (i): files under tests/single_owner/ are never picked") {
     PickRepo fx("precheck_pick_i",
                 {{"src/k.cpp", "constexpr int kStamp = 1;\n"},
