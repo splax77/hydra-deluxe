@@ -798,7 +798,9 @@ class BuildPassTool(unittest.TestCase):
     tests those. This checks what the tool itself adds."""
 
     def setUp(self):
-        self.slots = Path(tempfile.mkdtemp(prefix="hydra_build_pass_"))
+        # resolve() spells an 8.3 short name in TEMP (C:\Users\RUNNER~1 on CI)
+        # in full, the way tools/build_slot.ps1 writes the folder in a lock.
+        self.slots = Path(tempfile.mkdtemp(prefix="hydra_build_pass_")).resolve()
         self.addCleanup(shutil.rmtree, self.slots, ignore_errors=True)
         # The folder a pass is asked for. The script asking for a pass does
         # not read it, so it need not exist.
