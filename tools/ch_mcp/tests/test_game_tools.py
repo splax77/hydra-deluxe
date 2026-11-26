@@ -424,7 +424,8 @@ class GameToolsTest(unittest.TestCase):
         # each text given a value. A parameter added with no value here fails
         # the test, so a new one is checked too.
         given = {"song_folder": CORPUS_CHART_FOLDER, "player": "Drums,Hard",
-                 "profile": "Tester", "frame_multiplier": 4}
+                 "profile": "Tester", "frame_multiplier": 4,
+                 "song_speed": GT.bot_run.song_speed_limits()[1]}
         # A real settings.ini with vsync off, so the multiplier's own checks
         # pass and the start reaches the quiet check; the busy refusal leaves
         # the file as it was.
@@ -2479,6 +2480,25 @@ class FrameMultiplierTest(unittest.TestCase):
                 reply = self.t.tools.ch_start(frame_multiplier=value)
                 self.assert_started_nothing(reply, self.real)
                 self.assertIn(f"{G.FRAME_MULTIPLIER_MIN} to {G.FRAME_MULTIPLIER_MAX}", reply)
+
+    def test_a_song_speed_outside_the_games_range_is_refused_before_anything(self):
+        self.put(self.real)
+        low, high = GT.bot_run.song_speed_limits()
+        for value in (low - 1, high + 1):
+            with self.subTest(value):
+                reply = self.t.tools.ch_start(CORPUS_CHART_FOLDER, human=True,
+                                              song_speed=value)
+                self.assert_started_nothing(reply, self.real)
+                self.assertIn(f"{low} to {high}", reply)
+
+    def test_a_song_speed_on_a_bot_or_menu_start_is_refused_before_anything(self):
+        self.put(self.real)
+        high = GT.bot_run.song_speed_limits()[1]
+        for folder in (CORPUS_CHART_FOLDER, None):
+            with self.subTest(folder=folder):
+                reply = self.t.tools.ch_start(folder, song_speed=high)
+                self.assert_started_nothing(reply, self.real)
+                self.assertIn("launch agent", reply)
 
     def test_a_file_with_no_multiplier_line_is_refused_naming_the_line(self):
         lines = self.real.splitlines(keepends=True)

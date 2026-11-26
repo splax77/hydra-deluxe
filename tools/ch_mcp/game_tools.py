@@ -732,7 +732,8 @@ class GameTools:
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: Optional[str] = None, human: bool = False,
-                 frame_multiplier: Optional[int] = None) -> str:
+                 frame_multiplier: Optional[int] = None,
+                 song_speed: Optional[int] = None) -> str:
         """Check the machine is quiet (quiet.quiet_report), back up the
         Rewired registry key (game_files.backup; no file is backed up), set
         settings.ini's pause_on_focus_lost line for the run (nothing puts it
@@ -752,7 +753,9 @@ class GameTools:
         after the check and before the launch, with no wait, and hears the
         game's pid once the launch is back; a launch that fails stops it."""
         with self._lock:
-            refusal = bot_run.human_refusal(human, song_folder)
+            refusal = (bot_run.human_refusal(human, song_folder)
+                       or bot_run.song_speed_refusal(song_speed, human, song_folder,
+                                                     self._env.launch_patch_path))
             if refusal is not None:
                 return refusal
             if frame_multiplier is not None:
@@ -807,7 +810,7 @@ class GameTools:
                     run = bot_run.start_run(song_folder, player=player, profile=profile,
                                             backup_root=scratch, env=env,
                                             before_launch=before_launch, human=human,
-                                            song_end=song_end)
+                                            song_end=song_end, song_speed=song_speed)
                 except BaseException:
                     self._stop_recorder(lines)
                     self._settle_failed_start(lines)
