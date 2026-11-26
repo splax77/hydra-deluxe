@@ -2,7 +2,7 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 3.3.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 3.4.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
@@ -12,7 +12,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 3.3.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 3.4.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -168,5 +168,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 3.1.2 | An `Early fill window` setting, 60 ms by default and from 0 to 85 ms, the same on both sides of a fill's deadline, so every saved result reads `Stale`; each squeeze box in the Paths tab says one sentence; a library analysis no longer slows down on each save |
 | 3.2.0 | `1.0 fills` places generated fills and times their deadline as Clone Hero 1.0 does, so every saved result reads `Stale`; the activation note ranks any cymbal above any tom, as Clone Hero does; a squeezed-out note past the SP end reads like any other note there |
 | 3.3.0 | A `Song speed` setting, 100% by default, times a chart at the speed you play it, and the Preview plays at that speed; a `Safe paths` setting, off by default, keeps only paths whose every `Dynamic Hit Window:` row reads `safe`; both reports export to Excel; the dmleaderboards comparison shows `Timing required` in place of `% of opt` |
+| 3.4.0 | An `Effective figures` checkbox on the Paths tab, off at each start, hides every effective figure in the Activations list and shows them in gray when on; a squeeze box can add an `Effective:` line with the frontend note's scaled window; a squeeze in at exactly 0.0 ms reads the late side of its scale, as its tag does |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).

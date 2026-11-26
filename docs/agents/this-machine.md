@@ -22,7 +22,7 @@ The kit agent's TypeScript compiles with `npm run build:kit` in `tools/ch_mcp/ag
 
 The repo is `splax77/hydra-deluxe`. Text never goes to GitHub through a hand-typed `gh` command. It goes through `C:\Users\Patrick\.claude\gates\publish.ps1`, as the project CLAUDE.md's "Doc review" section says.
 
-How a release is built, signed and uploaded is in `docs/development.md`, in its "Every release" sections. A release's tag and title are both `v` plus the version, such as `v3.0.0`, and it carries two files: the installer and its `.sig` signature. The version number is set in one place, the project line of `CMakeLists.txt`, which reads VERSION 3.3.0 today.
+How a release is built, signed and uploaded is in `docs/development.md`, in its "Every release" sections. A release's tag and title are both `v` plus the version, such as `v3.0.0`, and it carries two files: the installer and its `.sig` signature. The version number is set in one place, the project line of `CMakeLists.txt`, which reads VERSION 3.4.0 today.
 
 The hooks folder is `C:\Users\Patrick\.claude\gates`, outside this checkout, inside the git repo at `C:\Users\Patrick\.claude`. The Python half of the mutation tool takes it as its `--target` (`docs/development.md`, "Mutation testing").
 
