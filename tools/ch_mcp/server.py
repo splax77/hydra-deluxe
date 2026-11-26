@@ -156,7 +156,8 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: str | None = None, human: bool = False,
-                 frame_multiplier: int | None = None) -> str:
+                 frame_multiplier: int | None = None,
+                 song_speed: int | None = None) -> str:
         """Check the machine is quiet (about 6 s; a machine that is not quiet
         refuses the launch and the reply says why). Back up the Rewired
         registry key, set settings.ini's pause_on_focus_lost line for the run
@@ -173,7 +174,13 @@ def build_server(helper: Optional[Helper] = None):
         back either; it is refused before anything runs when it is outside
         the game's range, when the file has no such line, or when vsync is
         not off, since the multiplier then does nothing. Left out, that line
-        is not touched. A run already open is stopped and
+        is not touched. song_speed (a percent) is set in the game's memory,
+        never in a file: on a human launch the launch agent calls the game's
+        own song speed setter once, at the command-line loader's first run,
+        and reads it back; the reply names the value before and after. It is
+        refused before anything runs outside the game's range
+        (launch_patch.json's song_speed block) or on a bot or menu start,
+        which loads no launch agent. A run already open is stopped and
         restored first. Every run also starts the machine recorder beside the
         game, after the check and before the launch; a recorder that fails to
         start is one line and the run goes on. The reply names the recorder's
@@ -182,7 +189,8 @@ def build_server(helper: Optional[Helper] = None):
         folder (framerate, vsync and the multiplier before and after), the
         command line, the pid and the song length."""
         return capped(h.game.ch_start(song_folder, player, profile, human=human,
-                                      frame_multiplier=frame_multiplier))
+                                      frame_multiplier=frame_multiplier,
+                                      song_speed=song_speed))
 
     @server.tool()
     def ch_stop() -> str:

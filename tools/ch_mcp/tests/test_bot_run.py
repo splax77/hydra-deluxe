@@ -1278,6 +1278,85 @@ class HumanLaunchTest(unittest.TestCase):
             self.assertEqual((_read(r.env.exe), os.stat(r.env.exe).st_mtime_ns), before)
 
 
+def speed_part(state, value, before=None, after=None, **kw):
+    """The speed part of a launch.ts status, in the fields waitingStatus and
+    setSpeed in agent/launch_core.ts give it."""
+    return {"value": value, "state": state, "object": kw.get("object"), "min": kw.get("min"),
+            "max": kw.get("max"), "before": before, "after": after}
+
+
+class SpeedPollTest(unittest.TestCase):
+    """launch_human with a song speed: the arm carries it, the polls go on
+    past patched until the agent's speed part says set or refused, and the
+    lines name the speed before and after. The replies are the PATCHED
+    status with a speed part added, since no real launch has set a speed
+    yet."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.r = Rig(self.tmp, exits_at=None)
+        self.events = []
+        self.low, self.high = B.song_speed_limits()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def launch(self, statuses):
+        agent = FakeLaunchAgent(self.events, statuses=statuses)
+        wire_human(self.r, agent)
+        log = os.path.join(self.tmp, "launch.jsonl")
+        return agent, (lambda: B.launch_human(["exe", "--song", "s"], self.r.env, log,
+                                              song_speed=self.high))
+
+    def patched(self, speed, loader_runs):
+        return {**PATCHED, "loader_runs": loader_runs, "speed": speed}
+
+    def test_set_waits_past_patched_and_names_the_speed_before_and_after(self):
+        waiting = self.patched(speed_part("armed", self.high), 0)
+        done = self.patched(speed_part("set", self.high, before=self.low, after=self.high), 1)
+        agent, go = self.launch([waiting, waiting, done])
+        launch = go()
+        arm = [m for m, _cap in agent.requests if m["type"] == "arm"]
+        self.assertEqual([m.get("song_speed") for m in arm], [self.high])
+        # Three statuses: two patched with the speed armed, then set.
+        self.assertEqual(self.events.count("status"), 3, self.events)
+        self.assertEqual(launch.song_speed, self.high)
+        line = B.speed_line(done["speed"])
+        self.assertIn(line, self.r.lines)
+        self.assertIn(f"{self.low} before, {self.high} after", line)
+        self.assertIn("in the game's memory", line)
+        self.assertIn("no file was changed", line)
+
+    def test_refused_kills_the_game_and_names_the_agents_reason(self):
+        waiting = self.patched(speed_part("armed", self.high), 0)
+        reason = "the song speed was not set: the song_speed object (statics +0x10) is null"
+        refused = {**self.patched(speed_part("refused", self.high), 1),
+                   "state": "refused", "reason": reason}
+        _agent, go = self.launch([waiting, refused])
+        with self.assertRaises(B.LaunchFailed) as cm:
+            go()
+        said = str(cm.exception)
+        self.assertIn("refused the song speed", said)
+        self.assertIn(B.speed_line(refused["speed"]), said)
+        self.assertIn(reason, said)
+        self.assertIn("kill", self.events)
+
+    def test_the_cap_while_the_speed_waits_says_it_waited_for_the_speed(self):
+        # Patched for good, the speed never set: the cap's failure names the
+        # speed, never the patch's waiting.
+        waiting = self.patched(speed_part("armed", self.high), 0)
+        _agent, go = self.launch([waiting])
+        with self.assertRaises(B.LaunchFailed) as cm:
+            go()
+        said = str(cm.exception)
+        self.assertIn("song speed was still not set", said)
+        self.assertIn(f"{B.LAUNCH_PATCH_CAP_S:g} s after the resume", said)
+        self.assertIn(B.speed_line(waiting["speed"]), said)
+        self.assertNotIn(f"still said {B.STATE_WAITING}", said)
+        self.assertGreaterEqual(self.r.clock.now(), B.LAUNCH_PATCH_CAP_S)
+
+
 class LoaderLineTest(unittest.TestCase):
     """The three words of ch_status's loader line."""
 

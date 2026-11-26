@@ -54,6 +54,8 @@ from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_machine_recorder import complete_rows  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
     ORIGINAL, REAL_BACKUP, STATS_AFTER_A_RUN, FakeGame, Rig, _read, _write)
+from tools.ch_mcp.tests.test_bot_run import PATCHED, FakeLaunchAgent, wire_human  # noqa: E402
+from tools.ch_mcp.tests import test_frida_tools as TFT  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
@@ -424,7 +426,8 @@ class GameToolsTest(unittest.TestCase):
         # each text given a value. A parameter added with no value here fails
         # the test, so a new one is checked too.
         given = {"song_folder": CORPUS_CHART_FOLDER, "player": "Drums,Hard",
-                 "profile": "Tester", "frame_multiplier": 4}
+                 "profile": "Tester", "frame_multiplier": 4,
+                 "song_speed": GT.bot_run.song_speed_limits()[1]}
         # A real settings.ini with vsync off, so the multiplier's own checks
         # pass and the start reaches the quiet check; the busy refusal leaves
         # the file as it was.
@@ -2480,6 +2483,43 @@ class FrameMultiplierTest(unittest.TestCase):
                 self.assert_started_nothing(reply, self.real)
                 self.assertIn(f"{G.FRAME_MULTIPLIER_MIN} to {G.FRAME_MULTIPLIER_MAX}", reply)
 
+    def test_a_song_speed_outside_the_games_range_is_refused_before_anything(self):
+        self.put(self.real)
+        low, high = GT.bot_run.song_speed_limits()
+        for value in (low - 1, high + 1):
+            with self.subTest(value):
+                reply = self.t.tools.ch_start(CORPUS_CHART_FOLDER, human=True,
+                                              song_speed=value)
+                self.assert_started_nothing(reply, self.real)
+                self.assertIn(f"{low} to {high}", reply)
+
+    def test_a_song_speed_on_a_bot_or_menu_start_is_refused_before_anything(self):
+        self.put(self.real)
+        high = GT.bot_run.song_speed_limits()[1]
+        for folder in (CORPUS_CHART_FOLDER, None):
+            with self.subTest(folder=folder):
+                reply = self.t.tools.ch_start(folder, song_speed=high)
+                self.assert_started_nothing(reply, self.real)
+                self.assertIn("launch agent", reply)
+
+    def test_a_song_speed_start_leaves_the_file_as_todays_start_does(self):
+        # A faked human launch whose agent says the speed was set. The file
+        # afterwards holds exactly what a start with no speed leaves: the
+        # speed lives in the game's memory, never in settings.ini.
+        self.put(self.real)
+        low, high = GT.bot_run.song_speed_limits()
+        speed = {"value": high, "state": "set", "object": None, "min": low, "max": high,
+                 "before": low, "after": high}
+        agent = FakeLaunchAgent([], statuses=[{**PATCHED, "loader_runs": 1, "speed": speed}])
+        wire_human(self.t.r, agent)
+        # The rig's own song folder, whose chart the fake dump knows.
+        reply = self.t.tools.ch_start(self.t.r.song, human=True, song_speed=high)
+        self.assertEqual(len(self.t.r.launch.commands), 1, reply)
+        self.assertEqual([m.get("song_speed") for m, _cap in agent.requests
+                          if m["type"] == "arm"], [high])
+        self.assertEqual(_read(self.path), self.today(self.real))
+        self.assertIn(GT.bot_run.speed_line(speed), reply)
+
     def test_a_file_with_no_multiplier_line_is_refused_naming_the_line(self):
         lines = self.real.splitlines(keepends=True)
         del lines[G._game_setting_line(lines, self.key)]
@@ -3826,6 +3866,25 @@ class DroppedStatusTest(unittest.TestCase):
         # The no-drop wording comes from its owner, dropped_line, given no rows.
         counts = lines.index(f"sent {len(rows)}")
         self.assertEqual(lines[counts + 1], GT.dropped_line([]))
+
+
+class SongSpeedStateTest(TFT.Rig):
+    """ch_state's speed lines, on the recorded mid-song state read
+    (test_frida_tools.recorded_state) with the two fields state.ts now adds.
+    No saved read holds them yet, so the two values are added to it."""
+
+    def test_state_prints_practice_speed_and_the_song_speed_setting(self):
+        reply = TFT.recorded_state()
+        high = GT.bot_run.song_speed_limits()[1]
+        # The ratio GameManager.Awake would give at that speed: the percent over 100.
+        reply["practiceSpeed"] = high / 100
+        reply["songSpeed"] = high
+        reply["songSpeedField"] = "ʾʶʲʼʺʳʶʿʲʻʲ at +0x10"
+        tools = self.tools([reply, reply], attached=True, real_time=True)
+        out = tools.ch_state().splitlines()
+        for key in ("practiceSpeed", "songSpeed", "songSpeedField"):
+            with self.subTest(key):
+                self.assertIn(f"{key}: {FT._value_text(reply[key])}", out)
 
 
 if __name__ == "__main__":

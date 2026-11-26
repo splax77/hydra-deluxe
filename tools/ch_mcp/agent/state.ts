@@ -21,6 +21,46 @@ interface ReadRequest {
     id: number;
 }
 
+// The song_speed setting, as the Il2CppDumper dump of build 6142 names it.
+// The settings class (dump.cs line 12599, in CloneHero.dll) holds it in its
+// static field at 0x10 (line 12604); settings_load_374D50.asm lines 2016 to
+// 2030 build it there with the text 'song_speed'. Its value is the first field
+// its base class declares (dump.cs line 533657). The dump prints 0x0 for every
+// field of that generic class, so the agent sends the offset the game itself
+// gives the field, which ch_state shows beside the value; the launch agent's
+// setter writes the value at launch_patch.json's song_speed value_offset.
+const SETTINGS_ASSEMBLY = "CloneHero";
+const SETTINGS_CLASS = "ʹʺʽˁʽˁˀʼʶʷʼ";
+const SONG_SPEED_STATIC = "ʳʷʴʺʳʹʷʾʲʷʾ";
+const SONG_SPEED_VALUE = "ʾʶʲʼʺʳʶʿʲʻʲ";
+
+// The song_speed setting's value and the offset of the field it was read
+// from, or the error that stopped the read. A failed read never fails the
+// GameManager read beside it.
+function songSpeedBlock() {
+    try {
+        const assembly = Il2Cpp.domain.tryAssembly(SETTINGS_ASSEMBLY);
+        if (assembly === null) {
+            return { songSpeed: `not read: ${SETTINGS_ASSEMBLY} assembly not found` };
+        }
+        const klass = assembly.image.tryClass(SETTINGS_CLASS);
+        if (klass === null) {
+            return { songSpeed: `not read: ${SETTINGS_CLASS} not found` };
+        }
+        const setting = klass.field<Il2Cpp.Object>(SONG_SPEED_STATIC).value;
+        if (setting.isNull()) {
+            return { songSpeed: `not read: ${SETTINGS_CLASS}.${SONG_SPEED_STATIC} is null` };
+        }
+        const value = setting.field<number>(SONG_SPEED_VALUE);
+        return {
+            songSpeed: value.value,
+            songSpeedField: `${SONG_SPEED_VALUE} at +0x${value.offset.toString(16)}`,
+        };
+    } catch (e) {
+        return { songSpeed: `not read: ${e}` };
+    }
+}
+
 // The menu block, or the error that stopped it. A failed menu read never
 // fails the GameManager read beside it.
 function menuBlock() {
@@ -42,8 +82,9 @@ function readState() {
     // This walks the whole heap each time; the caller's read cap is the stop.
     const found = lookUpGameManager();
     const menu = menuBlock();
+    const speed = songSpeedBlock();
     if (!("gm" in found)) {
-        return { found: false, reason: found.reason, destroyed: found.destroyed, menu };
+        return { found: false, reason: found.reason, destroyed: found.destroyed, menu, ...speed };
     }
     const { gm, instances, destroyed } = found;
     return {
@@ -56,6 +97,9 @@ function readState() {
         isSongOver: gm.field<boolean>("isSongOver").value,
         isSongPlaying: gm.field<boolean>("isSongPlaying").value,
         songLoaded: gm.field<boolean>("songLoaded").value,
+        // GameManager.Awake sets it to the speed ratio (TM-57 on docs/clone-hero/03-timing.md).
+        practiceSpeed: gm.field<number>("practiceSpeed").value,
+        ...speed,
     };
 }
 

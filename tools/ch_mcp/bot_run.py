@@ -112,6 +112,34 @@ HUMAN_NEEDS_SONG = ("refused: a human launch needs a song folder, because the ga
                     "with --song")
 
 
+def song_speed_limits(path: str = LAUNCH_PATCH_FILE) -> tuple[int, int]:
+    """The game's song speed limits, min and max of launch_patch.json's
+    `song_speed` block, the one place they are written."""
+    with open(path, encoding="utf-8") as f:
+        block = json.load(f)["song_speed"]
+    return block["min"], block["max"]
+
+
+def song_speed_refusal(song_speed: object, human: bool, song_dir: Optional[str],
+                       path: str = LAUNCH_PATCH_FILE) -> Optional[str]:
+    """Why a launch may not set `song_speed`, or None. Only a human launch
+    with a song folder loads the launch agent, which is the only thing that
+    sets it, and the value must lie inside the game's limits
+    (song_speed_limits). Asked before anything runs."""
+    if song_speed is None:
+        return None
+    kept = "nothing was started and no file was changed"
+    if not human or song_dir is None:
+        return (f"refused: song_speed is set in the game's memory by the launch agent, which "
+                f"only a human launch with a song folder loads; {kept}")
+    low, high = song_speed_limits(path)
+    if isinstance(song_speed, bool) or not isinstance(song_speed, int) \
+            or not low <= song_speed <= high:
+        return (f"refused: song_speed {song_speed!r} is outside the game's range of {low} to "
+                f"{high} (TM-59); {kept}")
+    return None
+
+
 def human_refusal(human: bool, song_dir: Optional[str]) -> Optional[str]:
     """The line that refuses a launch asking for a human player with no song
     folder, or None when the launch may go on. start_run raises it as
@@ -484,6 +512,9 @@ class HumanLaunch:
     patch: dict
     form: str
     said: List[str] = field(default_factory=list)
+    # The song speed the launch agent read back after the game's setter,
+    # or None when no speed was armed.
+    song_speed: Optional[int] = None
 
 
 @dataclass
@@ -583,6 +614,8 @@ def launch_status_lines(status: dict, patch: dict) -> List[str]:
                      "(Date.now)")
     lines.append(f"loader runs since the patch: {status.get('loader_runs')}; bytes at its first "
                  f"run: {_bytes_text(status.get('bytes_at_first_run'))}")
+    if isinstance(status.get("speed"), dict):
+        lines.append(speed_line(status["speed"]))
     if status.get("reason"):
         lines.append(f"launch agent reason: {status.get('reason')}")
     lines.append(LOADER_LINE + loader_ran(status, patch))
@@ -619,7 +652,18 @@ IDLE_AFTER_ARM = ("the launch agent answered idle after its arm reply, so it hol
                   "and will never patch")
 
 
-def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
+def speed_line(speed: dict) -> str:
+    """The reply line for the launch agent's song speed part."""
+    if speed.get("state") == "set":
+        return (f"song speed: set to {speed.get('after')}% in the game's memory by its own "
+                f"setter ({speed.get('before')} before, {speed.get('after')} after); no file "
+                "was changed")
+    return (f"song speed: {speed.get('value')}% {speed.get('state')}; before "
+            f"{speed.get('before')}, after {speed.get('after')}")
+
+
+def launch_human(cmd: list[str], env: Env, log_path: str,
+                 song_speed: Optional[int] = None) -> HumanLaunch:
     """Start the game for a human player, in the order the direct-start
     plan's "The launch" sets: start it paused, attach launch.ts by process
     id, send arm with launch_patch.json, resume the main thread once the arm
@@ -630,7 +674,9 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
     LaunchFailed naming it. launch_patch.json's `launch` picks the form:
     LAUNCH_SUSPENDED (env.start_process, then env.resume_thread) or
     LAUNCH_SPAWN (env.spawn_process, then env.resume_spawned). The agent's
-    log goes to `log_path`."""
+    log goes to `log_path`. With `song_speed` the arm carries it, and the
+    polls go on past patched, under the same cap, until the agent says the
+    speed is set at the loader's first run or refused."""
     patch = _read_patch(env.launch_patch_path)
     form = patch["launch"]
     refusal = build_stamp.check(env.launch_agent_path)
@@ -681,7 +727,10 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
     env.out(f"launch agent attached; log: {log_path}")
 
     try:
-        armed = agent.request({"type": "arm", "patch": patch}, LAUNCH_ARM_CAP_S)
+        arm = {"type": "arm", "patch": patch}
+        if song_speed is not None:
+            arm["song_speed"] = song_speed
+        armed = agent.request(arm, LAUNCH_ARM_CAP_S)
     except FA.ReadFailed as e:
         cap = " (LAUNCH_ARM_CAP_S)" if e.reason == FA.END_CAP else ""
         raise fail(f"the arm request failed: {e}{cap}") from None
@@ -703,9 +752,18 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
     resumed_at = env.now()
     env.out("resumed the game")
 
+    # The last status that said patched while the speed was not yet set, so
+    # the cap's failure can say the speed was what it waited for.
+    speed_wait: Optional[dict] = None
     while True:
         remaining = LAUNCH_PATCH_CAP_S - (env.now() - resumed_at)
         if remaining <= 0:
+            if speed_wait is not None:
+                speed = speed_wait.get("speed")
+                said_speed = speed_line(speed) if isinstance(speed, dict) else "no speed part"
+                raise fail(f"the status said {STATE_PATCHED} but the song speed was still not "
+                           f"set {LAUNCH_PATCH_CAP_S:g} s after the resume (LAUNCH_PATCH_CAP_S); "
+                           f"loader runs: {speed_wait.get('loader_runs')}; {said_speed}")
             raise fail(f"the status still said {STATE_WAITING} {LAUNCH_PATCH_CAP_S:g} s after "
                        "the resume (LAUNCH_PATCH_CAP_S)")
         try:
@@ -714,11 +772,22 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
             cap = " (LAUNCH_PATCH_CAP_S)" if e.reason == FA.END_CAP else ""
             raise fail(f"the status request failed: {e}{cap}") from None
         state = status.get("state")
+        speed = status.get("speed")
+        if state == STATE_PATCHED and song_speed is not None and (
+                not isinstance(speed, dict) or speed.get("state") != "set"):
+            # Patched, but the loader has not run yet, so the speed waits.
+            speed_wait = status
+            env.sleep(LAUNCH_POLL_S)
+            continue
         if state == STATE_PATCHED:
             env.out(f"patched {env.now() - resumed_at:.1f} s after the resume")
             for line in launch_status_lines(status, patch):
                 env.out(line)
-            return HumanLaunch(game=game, agent=agent, patch=patch, form=form, said=said)
+            return HumanLaunch(game=game, agent=agent, patch=patch, form=form, said=said,
+                               song_speed=speed.get("after") if isinstance(speed, dict) else None)
+        if state == STATE_REFUSED and isinstance(speed, dict) and speed.get("state") == "refused":
+            raise fail(f"launch.ts refused the song speed: {speed_line(speed)}; the agent says: "
+                       f"{status.get('reason') or 'no reason given'}")
         if state == STATE_REFUSED:
             raise fail(_refused_text(status, patch))
         if state == STATE_IDLE:
@@ -734,7 +803,8 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
               env: Optional[Env] = None,
               before_launch: Optional[Callable[[], None]] = None,
               human: bool = False,
-              song_end: Optional[tuple[float, str]] = None) -> Run:
+              song_end: Optional[tuple[float, str]] = None,
+              song_speed: Optional[int] = None) -> Run:
     """Back up the registry key (game_files.backup), then start the game,
     and return at once. With
     a song folder the game plays it with a bot; a song with no known length
@@ -747,9 +817,12 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
     the backup and before the launch; a file it changes stays changed. When
     it or the launch raises, the key is put back before the error goes on,
     since no run comes back to finish. `song_end`, when given, is song_length_ms's answer for the
-    folder, already read by the caller, so the chart is not dumped twice."""
+    folder, already read by the caller, so the chart is not dumped twice.
+    `song_speed` goes to launch_human; song_speed_refusal refuses it before
+    anything is backed up."""
     env = env or Env()
-    refusal = human_refusal(human, song_dir)
+    refusal = (human_refusal(human, song_dir)
+               or song_speed_refusal(song_speed, human, song_dir, env.launch_patch_path))
     if refusal is not None:
         raise LaunchFailed(refusal)
     length_ms = source = cap_s = None
@@ -776,7 +849,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
         env.out("starting: " + subprocess.list2cmdline(cmd))
         if human:
             log_path = os.path.join(backup_root, f"launch-{env.stamp()}.jsonl")
-            human_launch = launch_human(cmd, env, log_path)
+            human_launch = launch_human(cmd, env, log_path, song_speed=song_speed)
             game = human_launch.game
         else:
             game = env.launch(cmd)

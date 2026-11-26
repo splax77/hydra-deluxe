@@ -8,8 +8,10 @@
 // launch" and "1. When the loader runs, and how the byte is 0 before it does";
 // the user allowed this one-byte patch there ("Questions for the user",
 // question 6). The decision itself, both byte checks, the write and the
-// read-only hook on the loader's entry, is applyPatch in launch_core.ts. This
-// file is the glue between it and Frida.
+// hook on the loader's entry, is applyPatch in launch_core.ts. When ch_start
+// arms a song speed, that hook also calls the game's int setter once, at the
+// loader's first run (setSpeed in launch_core.ts); callGame below is the one
+// place the call is made. This file is the glue between it and Frida.
 //
 // It holds no address of its own: the module name, every RVA and every byte
 // string come in the arm message, from tools/ch_mcp/launch_patch.json. It
@@ -23,8 +25,25 @@
 // other agent's. So a status never carries one; a refusal is a normal reply
 // with `state: "refused"` and its `reason` (launch_core.ts).
 
-import { applyPatch, readPatch, waitingStatus } from "./launch_core.js";
-import type { Io, Patch, Status } from "./launch_core.js";
+import { applyPatch, readPatch, readSpeed, waitingStatus } from "./launch_core.js";
+import type { GameCall, Io, Patch, SpeedPlan, Status } from "./launch_core.js";
+
+// The game functions this agent may call, by their names in
+// launch_patch.json's `calls` (tests/test_frida_attach.py pins the two to
+// each other). callGame refuses any other.
+const ALLOWED_CALLS = ["int_setting_set"];
+
+// The one place this agent calls a game function: the setter launch_core.ts
+// asks for at the loader's first run, when a speed was armed.
+function callGame(base: NativePointer, fn: GameCall, args: (string | number)[]): void {
+    if (!ALLOWED_CALLS.includes(fn.name)) {
+        throw new Error(`${fn.name} is not on launch.ts's list of calls`);
+    }
+    const target = new NativeFunction(base.add(fn.rva), fn.returns as NativeFunctionReturnType,
+                                      fn.args as NativeFunctionArgumentType[]);
+    const values = fn.args.map((kind, i) => kind === "pointer" ? ptr(args[i] as string) : args[i]);
+    (target as unknown as (...a: unknown[]) => unknown)(...values);
+}
 
 interface Message {
     type: string;
@@ -45,7 +64,7 @@ let observer: ModuleObserver | null = null;
 // The only function that changes the game's code. The observer's callback
 // and its deferred branch both call it, and nothing else does
 // (tests/test_frida_attach.py checks this).
-function patchModule(patch: Patch, module: Module): void {
+function patchModule(patch: Patch, module: Module, speed: SpeedPlan | null): void {
     const base = module.base;
     const io: Io = {
         readBytes(rva, n) {
@@ -67,8 +86,20 @@ function patchModule(patch: Patch, module: Module): void {
                 },
             });
         },
+        readSlot(rva) {
+            return base.add(rva).readPointer().toString();
+        },
+        readPointer(at, offset) {
+            return ptr(at).add(offset).readPointer().toString();
+        },
+        readInt(at, offset) {
+            return ptr(at).add(offset).readS32();
+        },
+        call(fn, args) {
+            callGame(base, fn, args);
+        },
     };
-    status = applyPatch(patch, io, { base: base.toString(), size: module.size }, Date.now);
+    status = applyPatch(patch, io, { base: base.toString(), size: module.size }, Date.now, speed);
 }
 
 // Frida calls onAdded for every module already loaded, then for each new one
@@ -79,9 +110,11 @@ function arm(m: Message): object {
         throw new Error("this agent is already armed; a launch arms once");
     }
     const patch = readPatch(m.patch);
+    // A speed only when ch_start asked for one (bot_run.launch_human).
+    const speed = readSpeed(m.patch, m.song_speed);
     const modules = Process.enumerateModules().map((x) => x.name);
     armed = patch;
-    status = waitingStatus();
+    status = waitingStatus(speed);
     observer = Process.attachModuleObserver({
         onAdded(module) {
             if (seen || module.name !== patch.module) {
@@ -89,9 +122,9 @@ function arm(m: Message): object {
             }
             seen = true;
             if (patch.defer) {
-                setImmediate(() => patchModule(patch, module));
+                setImmediate(() => patchModule(patch, module, speed));
             } else {
-                patchModule(patch, module);
+                patchModule(patch, module, speed);
             }
         },
     });
