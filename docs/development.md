@@ -606,10 +606,10 @@ in short; the code named at each step owns the exact rule.
    is the one build-file edit that does not. When the range changes only the
    version number on the `project(...)` line of the root `CMakeLists.txt`, the
    bump picks the tests that name the constant the build hands the version
-   to the code through (`HYDRA_VERSION` today), and the rest of the range is
-   picked as usual. Any other edit of a build file, even
-   one beside the bump, still runs the whole suite
-   (`version_bump_constants` in `tools/precheck/test_pick.cpp`).
+   to the code through (`HYDRA_VERSION`), and the rest of the range is picked
+   as usual. Any other edit of a build file, even one beside the bump, still
+   runs the whole suite (`version_bump_constants` in
+   `tools/precheck/test_pick.cpp`).
 3. It takes the names each changed line defines or sits inside: functions,
    types, constants and enum values (`changed_names` in
    `tools/precheck/changed_names.h`). A changed comment counts as a change to
