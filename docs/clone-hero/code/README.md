@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 100 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except nineteen: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618, and the chart loader, the events section, the section loop, the fill init, the two fill skips and the mid events coda were added on 2026-11-08, in session 7b39835b. The ini bool getter, the ini text lookup, the ini parse, the int32 tryparse and the note is kick were added on 2026-11-12, in session c61c1986. There are 288 `.asm` files under `code/6142/` and 4 `.cs` files under `code/4045/` (counted 2026-11-23; the table below does not list every one), and each has a `.md` beside it that explains its branches in plain words.
+The 100 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except nineteen: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618, and the chart loader, the events section, the section loop, the fill init, the two fill skips and the mid events coda were added on 2026-11-08, in session 7b39835b. The ini bool getter, the ini text lookup, the ini parse, the int32 tryparse and the note is kick were added on 2026-11-12, in session c61c1986. There are 299 `.asm` files under `code/6142/` and 4 `.cs` files under `code/4045/` (counted 2026-11-25; the table below does not list every one), and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
@@ -240,6 +240,17 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 
 | Start | Role | File | Build | Tool |
 |---|---|---|---|---|
+| 0x26410 | online settings | [code/6142/online_settings_26410.asm](6142/online_settings_26410.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x142330 | endofsong restore caller | [code/6142/endofsong_restore_caller_142330.asm](6142/endofsong_restore_caller_142330.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x15DF80 | endofsong start speed read | [code/6142/endofsong_start_speed_read_15DF80.asm](6142/endofsong_start_speed_read_15DF80.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x160260 | endofsong speed restore | [code/6142/endofsong_speed_restore_160260.asm](6142/endofsong_speed_restore_160260.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x235340 | ini register caller | [code/6142/ini_register_caller_235340.asm](6142/ini_register_caller_235340.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x252200 | stats song fields | [code/6142/stats_song_fields_252200.asm](6142/stats_song_fields_252200.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x398F00 | cli start | [code/6142/cli_start_398F00.asm](6142/cli_start_398F00.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x3A5A20 | replay header write | [code/6142/replay_header_write_3A5A20.asm](6142/replay_header_write_3A5A20.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0xFE5B10 | int setting clamp | [code/6142/int_setting_clamp_FE5B10.asm](6142/int_setting_clamp_FE5B10.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2114A80 | ini file load | [code/6142/ini_file_load_2114A80.asm](6142/ini_file_load_2114A80.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21159A0 | ini class cctor | [code/6142/ini_class_cctor_21159A0.asm](6142/ini_class_cctor_21159A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215BD50 | add fill | [code/6142/add_fill_215BD50.asm](6142/add_fill_215BD50.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215B7C0 | add fill twin | [code/6142/add_fill_twin_215B7C0.asm](6142/add_fill_twin_215B7C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20F6EB0 | add note score | [code/6142/add_note_score_20F6EB0.asm](6142/add_note_score_20F6EB0.asm) | 6142 | tools/ch_mcp/chdis.py |

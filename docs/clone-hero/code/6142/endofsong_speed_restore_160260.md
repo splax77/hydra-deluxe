@@ -8,4 +8,4 @@ Lines 41 to 43 fetch the `song_speed` setting (settings static +0x10). Lines 47 
 
 The setter ends in the clamp (`int_setting_clamp_FE5B10.md`), so a saved number of 0 leaves the setting at its minimum, 10.
 
-Not read here: the class this method belongs to, its two sibling methods, the pause menu's methods, and who writes +0x5C. The brief of session aa0ce9ac names them (EndOfSong `0x160260`, `0x160650`, `0x1637E0`; song select writes +0x5C).
+Who calls it (byte scan of direct calls, 2026-11-25): `0x160260` from 0x161163, `0x160650` from 0x1423CF and 0x164196, `0x1637E0` from 0x161A5E. Those sit in `EndOfSong`'s methods at `0x160BA0`, `0x161480` and `Update` (`0x163BB0`), and in the method at `0x142330`, which finds an `EndOfSong` object first and does nothing when none exists (`endofsong_restore_caller_142330.md`). None of the four is inside `EndOfSong.Start` (`endofsong_start_speed_read_15DF80.md`), and `0x160BA0`, `0x161480`, `0x142330` and `0x163BB0` have no direct callers, so they run through method pointers. `GlobalVariables` +0x5C is the field `originalSongSpeed` (`dump.cs` line 55813). Not read: who writes it, and the pause menu's own calls of the setter.

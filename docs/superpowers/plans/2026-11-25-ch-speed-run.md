@@ -6,7 +6,7 @@ Date: 2026-11-25. Task id: speed-run-plan-r2. Planner session: aa0ce9ac.
 
 The earlier draft asked you whether `ch_start` may add a `song_speed = 5000` line to `settings.ini`, and you said "Yes, add it". That question stood on a guess. The game never reads its song speed from `settings.ini` and never writes it there (TM-58 on `docs/clone-hero/03-timing.md`, P9). So the question, your answer to it and the ruling row that quoted your 2026-11-13 choice for it are removed: your answer was given on a false premise, and no file line can set the speed.
 
-The speed lives only in the game's memory. One game method changes it (TM-59). So the plan now sets the speed by calling that method from inside the game, before the chart loads (T2). That needs your leave, because a written rule says the launch agent calls no game method (question 1).
+The speed lives only in the game's memory. One game method changes it (TM-59). So the plan now sets the speed by calling that method from inside the game, before the chart loads (T2). Your 2026-10-30 ruling already lets the tools call game methods and write game fields (P42), so this needs no question. T2 rewords the one page sentence that says the launch agent calls none.
 
 ## The short answer first
 
@@ -24,7 +24,7 @@ You said: "if our existing settings can handle this, i want to try that first". 
 
 The offline half needs no game. It teaches `hydra_replay` the song speed, so it can write the 5000% path's press schedule (T1, T4). It then replays that schedule through the tool's real frame picker, fed with frame steps from a real run (T5). That counts how many presses would be dropped or skipped, without starting Clone Hero.
 
-If the dry run is not clean, the fallbacks come in this order. First a higher framerate, up to the game's limit of 2010 (T6, question 2). Second, the bot route, which a separate planner owns in `docs/superpowers/plans/2026-11-25-ch-bot-route.md` on branch `claude/bot-route-plan`. This plan does not design it.
+If the dry run is not clean, the fallbacks come in this order. First a higher framerate, up to the game's limit of 2010 (T6, question 1). Second, the bot route, which a separate planner owns in `docs/superpowers/plans/2026-11-25-ch-bot-route.md` on branch `claude/bot-route-plan`. This plan does not design it.
 
 The live half starts only if the dry run shows no dropped press and no skipped band. It sets the game's song speed in memory, checks the game holds 5000%, plays the path and compares the score with Hydra's 38,976,455.
 
@@ -48,20 +48,7 @@ No step writes a speed to any file. The game's speed is set in memory only, thro
 
 ## The tasks
 
-T0, T1, T2 and T3 touch different files and can run at once. T2 waits for your answer to question 1. T4 needs T1 merged and built. T5 can start with T1 and finishes after T4's files exist. T6 runs only if T5 reports a drop. T7 comes last.
-
-### T0: the code reads this plan could not finish
-
-This is a read of the game's code by a scout, with no game running. Five facts the plan uses were not read to the bottom. The scout makes a listing and a note for each under `docs/clone-hero/code/6142/`, the way `docs/clone-hero/code/README.md` says, and updates TM-58, TM-59 and TM-60.
-
-Acceptance criteria:
-
-1. P30 is settled: the listing of the settings loader's caller shows whether `0x374D50` has run before the command-line start `0x398F00`, so the `song_speed` object exists at the loader's entry. If it has not, T2's hook point is wrong and the plan returns to the planner.
-2. P31 is settled: the listing shows which function the int setting's vtable slot +0x2C8 holds.
-3. P32 is settled: the listing of the stats writer `0x15DC20` shows where `playback_speed` comes from, and whether that read happens before the end-of-song restore at `0x160384`. If it happens after, `ch_compare` would see speed 10, and the plan returns to the planner.
-4. P33 is settled: every caller of the file load `0x2114A80` is listed with the name it passes. A call with the empty name reopens TM-58.
-5. P34 is settled: the writers of `GlobalVariables` +0x5C and the other callers of the setter with it are listed.
-6. Each block touched keeps its seven lines and one label, and `py -I tools/ch_mcp/dump_facts.py --check` passes, run by the main session after it rebuilds the facts table.
+T1, T2 and T3 touch different files and can run at once. T4 needs T1 merged and built. T5 can start with T1 and finishes after T4's files exist. T6 runs only if T5 reports a drop. T7 comes last.
 
 ### T1: hydra_replay takes the song speed and Safe paths
 
@@ -81,15 +68,13 @@ Acceptance criteria:
 
 ### T2: ch_start sets the game's song speed in memory, and ch_state shows it
 
-Waits for: question 1.
-
 `ch_start` takes a new optional argument, `song_speed`. It writes no file. The launch agent sets the speed inside the game by calling the game's own int setter on the `song_speed` object, and reads the value back.
 
 Where the call goes. A human launch already loads the launch agent, which changes one byte and then hooks the entry of the command-line player loader `0x3968D0` (`applyPatch` in `tools/ch_mcp/agent/launch_core.ts`, P35). Today that hook only counts the loader's runs and reads the patch site. The loader loads the chart, and the chart load reads the speed (TM-60, P36). So the loader's entry is the last moment before the speed is used, and the hook is already there.
 
 What the hook does, on the loader's first run only, when the arm message carries a speed:
 
-1. It finds the `song_speed` object: the settings class's TypeInfo slot, its statics at +0xB8, then static +0x10 (P29). If any of the three is null it sets nothing and the launch is refused. This step uses P30.
+1. It finds the `song_speed` object: the settings class's TypeInfo slot, its statics at +0xB8, then static +0x10 (P29). If any of the three is null it sets nothing and the launch is refused. P30 (the object exists at the loader's entry) is unchecked and can only be shown by a run, so this refusal is what makes a wrong P30 fail loud, and LS1 is the run that shows it.
 2. It reads the object's minimum (+0x14) and maximum (+0x18) and requires them to equal the two limits the arm message carries. If they differ, the object is not the one the plan read, and the launch is refused with what it found.
 3. It calls the setter `0xFE5F50` with the object and the value (P29).
 4. It reads +0x10 back and requires it to equal the value. If not, the launch is refused.
@@ -100,7 +85,7 @@ What stays as it is. The agent holds no address of its own: the setter's RVA, th
 
 The game must also be seen at 5000%. No tool prints the song speed today (P13). The executor adds two lines to what `ch_state` prints: `GameManager.practiceSpeed` (+0xD8), which `GameManager.Awake` sets to the speed ratio (TM-57, P37), and the `song_speed` setting's value, read the way the state agent reads its other fields.
 
-After the run. An end-of-song method sets the speed to the number `GlobalVariables` holds at +0x5C (TM-59, P38). The brief of this session says only song select writes that number, so on a command-line start it is 0 and the speed is clamped to 10 once the song ends (P34, unchecked). That happens after the stats are written only if P32 holds. `ch_stop` then closes the game. Your own next game session starts at 100%, because the speed is never loaded from a file (TM-58). Nothing on disk changes.
+After the run. The game's end-of-song methods put the speed back to a number they saved, in the game's memory (TM-59, P38). That happens after the stats file's `playback_speed` was taken from the setting (TM-63, P32). `ch_stop` then closes the game, so the speed lives nowhere after the run. Your own next game session starts at 100%, because the speed is never loaded from a file (TM-58, P33). Nothing on disk changes.
 
 Files: `tools/ch_mcp/agent/launch.ts`, `tools/ch_mcp/agent/launch_core.ts`, `tools/ch_mcp/launch_patch.json`, `tools/ch_mcp/bot_run.py`, `tools/ch_mcp/game_tools.py`, `tools/ch_mcp/server.py`, `tools/ch_mcp/frida_tools.py`, the state agent's field list, `tools/ch_mcp/tests/test_launch_core.py`, `tools/ch_mcp/tests/test_frida_attach.py`, `tools/ch_mcp/tests/test_game_tools.py`, `docs/agents/clone-hero-mcp.md` (the sentences "The launch agent calls no game method" and "that hook only counts the loader's runs" are reworded to name the one call).
 
@@ -160,7 +145,7 @@ Waits for: T4's schedule file.
 
 ### T6: a higher framerate (only if T5 stops at S3)
 
-The setting's limits are read: framerate 60 to 2010, multiplier 1 to 25 (TM-61, P27a). So a higher rate is allowed by the settings. This task writes the follow-up plan that adds a `framerate` argument to `ch_start` and reruns T5 with a frame log taken at that rate. It builds nothing itself, and it starts only after question 2 is answered yes.
+The setting's limits are read: framerate 60 to 2010, multiplier 1 to 25 (TM-61, P27a). So a higher rate is allowed by the settings. This task writes the follow-up plan that adds a `framerate` argument to `ch_start` and reruns T5 with a frame log taken at that rate. It builds nothing itself, and it starts only after question 1 is answered yes.
 
 Acceptance criteria:
 
@@ -178,7 +163,7 @@ Acceptance criteria:
 
 ## The live steps
 
-No live step starts unless T5 reported zero dropped and zero `no_frame_in_band` presses on both frame lists, T0 settled P30 and P32, and you have said go to that step's own message. Each step runs at most twice. A second failure stops the plan and goes to you with the design question, not a third try.
+No live step starts unless T5 reported zero dropped and zero `no_frame_in_band` presses on both frame lists, and you have said go to that step's own message. Each step runs at most twice. A second failure stops the plan and goes to you with the design question, not a third try.
 
 ### LS0a: the compare tool on a saved run
 
@@ -218,7 +203,7 @@ S1: `hydra_replay` at 5000% Safe paths does not give the screen's score or activ
 
 S2: the schedule refuses the path or holds a squeeze the game cannot make. Nothing live runs.
 
-S3: the dry run drops a press or marks one `no_frame_in_band`. Report both lists' counts. The next steps are question 2 and T6, then the bot route.
+S3: the dry run drops a press or marks one `no_frame_in_band`. Report both lists' counts. The next steps are question 1 and T6, then the bot route.
 
 S4: the picker's per-frame work grows with the schedule. It goes to a fresh plan.
 
@@ -230,9 +215,7 @@ A separate planner owns it: `docs/superpowers/plans/2026-11-25-ch-bot-route.md` 
 
 ## Questions
 
-1. May the launch agent call one game method, the song speed's own setter, when a run asks for a speed? The written rule today, in `docs/agents/clone-hero-mcp.md`, is: "The launch agent calls no game method." The same page says of its hook: "that hook only counts the loader's runs and reads the patch site at the first one." Your 2026-10-30 ruling lifted the ban on game method calls for the tools in general ("nobody picked that rule", and "Allow writes too", `docs/agents/rulings/clone-hero.md`), and the kit agent calls setters under it. No ruling names the launch agent. What you would see: nothing on disk changes; the game runs the one song at 5000%; after the song the game sets its own speed to 10 in memory (P34); `ch_stop` closes the game; your next game session starts at 100%. If no, there is no way in this plan to set the speed, and it ends after T5.
-
-2. Asked only if the dry run fails at today's settings: may `ch_start` set `framerate` in your `settings.ini`, as it sets the multiplier? The game allows 60 to 2010. You would see the game run at a higher frame rate for the run, and `framerate` left at the new value afterwards, as you chose for the tools' other lines on 2026-11-13 (`docs/agents/rulings/clone-hero.md`, "Leave the line changed"). If no, the frame route is closed at today's settings and the bot route is next.
+1. Asked only if the dry run fails at today's settings: may `ch_start` set `framerate` in your `settings.ini`, as it sets the multiplier? The game allows 60 to 2010 (TM-61). You would see the game run at a higher frame rate for the run, and `framerate` stay at the new value in `settings.ini` afterwards, because the tools do not put the file back (`docs/agents/clone-hero-mcp.md`). Your 2026-11-13 choice "Leave the line changed" (`docs/agents/rulings/clone-hero.md`, under `## Confirmed`) was asked about the pause line only, so it does not answer this. If no, the frame route is closed at today's settings and the bot route is next.
 
 ## Out of scope
 
@@ -249,7 +232,6 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | The player scales no time for the speed | Global constraints, paragraph 5 | T5 | T5 criterion 1, second test |
 | No step treats 330 or 16 as a limit | Global constraints, paragraph 6 | T6 | T6 criterion 1 reads the limit from TM-61 |
 | No speed is written to any file | Global constraints, paragraph 7 | T2 | T2 criterion 6 |
-| The remaining code reads are done before any live step | T0, "The live steps" | T0 | T0 criteria 1 to 5 |
 | `--speed` reaches the parser | T1 | T1 | criterion 1 |
 | A bad speed is refused or clamped | T1 | T1 | criterion 2 |
 | Files record their speed and Safe paths | T1 | T1 | criteria 3 and 4 |
@@ -270,7 +252,7 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | The dry run counts the picker's own outcomes | T5 | T5 | criterion 1 |
 | No live step starts after a dropped press | T5, "The live steps" | T5 | criterion 3, stop S3 |
 | The picker's work does not grow with the schedule | T5 | T5 | criterion 4, stop S4 |
-| A higher framerate is tried only after today's settings fail | "What the plan does" | T6, question 2 | T6 runs only at S3 and after question 2 |
+| A higher framerate is tried only after today's settings fail | "What the plan does" | T6, question 1 | T6 runs only at S3 and after question 1 |
 | The real frame rate is measured before a run at a new framerate | T6 | T6 | criterion 2 |
 | Each live step runs at most twice | "The live steps" | LS0a to LS3 | the run count in the result folder |
 | The game is confirmed at 5000% before the full run | LS2 | LS2 | LS2's pass line, stop S5 |
@@ -294,7 +276,7 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | P10: hydra_replay at `--speed 5000 --safe-paths` reproduces the screen's 38,976,455 and 302 activations. | unchecked | `tools/replay.cpp:196-242` shows only that the settings path is shared | T4 |
 | P11: The 5000% path's schedule holds no refusal and no infeasible squeeze. | unchecked | `tools/replay_schedule.cpp:314-361` is the refusal rule; nobody has run it at 5000% | T4 |
 | P12: `ch_start` refuses a bad multiplier before any launch and then sets it, the pattern T2's range refusal follows. | code | `tools/ch_mcp/game_tools.py:872-911` | checked 2026-11-25 |
-| P13: No tool prints the game's song speed today. | unchecked | a search of `tools/ch_mcp` for `practiceSpeed` by the first draft found nothing; this revision did not repeat it | T2 (its executor repeats the search before adding the lines) |
+| P13: No tool prints the game's song speed today. | code | `tools/ch_mcp/agent/state.ts:49-59` (the state reply holds five GameManager fields and none is the speed) and `tools/ch_mcp/agent/gamemanager.ts:50-66`; a search of `tools/ch_mcp` (`.py` and `.ts`, `node_modules` excluded) for `practiceSpeed` and `0xd8` finds nothing | checked 2026-11-25 |
 | P14: `ch_compare` and `ch_sp_compare` ran on LS-M16 run 2. | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-22\ls-m16-run2` holds no compare reply | LS0a, LS0b; blocks nothing (LS3 waits on both) |
 | P15: The chart at 5000% has 99,163 chords in 409.2 s, median chord gap 3.0 ms, smallest same-pad gap 0.838 ms. | data | `C:\Users\Patrick\Downloads\Hydra\hydra-data\disco_score100.json`, recounted by the first draft's reviewer | checked 2026-11-25 |
 | P16: The schedule refuses a press that would land inside an earlier unhit same-pad window. | code | `tools/replay_schedule.cpp:314-361` | checked 2026-11-25 |
@@ -310,15 +292,14 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | P27b: The game reaches framerate times multiplier frames a second at the top of both ranges. | unchecked | `TM-61` on docs/clone-hero/03-timing.md says it is not known; live only, because it depends on this machine | T6 (its follow-up plan holds the live step) |
 | P28: `maxsongspeed` and `lowsongspeed` are separate online settings, and the song speed's clamp reads only its own minimum and maximum, so they do not cap a value given to the setter. | code | `docs/clone-hero/code/6142/online_settings_26410.asm:93-127` and `docs/clone-hero/code/6142/int_setting_clamp_FE5B10.asm:15-45` | checked 2026-11-25 |
 | P29: The setter `0xFE5F50` stores its second argument at the object's +0x10 and tail-calls vtable +0x2C8 without reading its third argument; the `song_speed` object is static +0x10 of the class at TypeInfo slot 0x3C98320, statics at +0xB8. | code | `docs/clone-hero/code/6142/int_setting_set_FE5F50.asm:1-4` and `docs/clone-hero/code/6142/settings_load_374D50.asm:2028-2030` | checked 2026-11-25 |
-| P30: At the entry of the loader `0x3968D0` the `song_speed` object already exists. | unchecked | `docs/clone-hero/code/6142/cli_loader_3968D0.asm` shows the loader using the settings class but not who built the settings first; a read of the settings loader's callers can settle it, and this revision ran out of time before it | T0 |
-| P31: The int setting's vtable slot +0x2C8 holds the clamp `0xFE5B10`. | unchecked | `docs/clone-hero/code/6142/int_setting_clamp_FE5B10.asm` is the clamp; the slot was named by the main session's brief and not read here | T0 |
-| P32: The stats file's `playback_speed` is taken before the end-of-song restore changes the speed. | unchecked | `docs/clone-hero/code/6142/endofsong_speed_restore_160260.asm` shows the restore; the stats writer `0x15DC20` was not opened in this revision | T0 |
-| P33: No caller of the file load passes the empty ini name. | unchecked | `docs/clone-hero/code/6142/ini_file_load_2114A80.md` says the callers were not read | T0 |
-| P34: Only song select writes `GlobalVariables` +0x5C, so on a command-line start it is 0 and the restore leaves the speed at 10. | unchecked | the main session's brief; `docs/clone-hero/code/6142/endofsong_speed_restore_160260.md` says the writers were not read | T0 |
+| P30: At the entry of the loader `0x3968D0` the `song_speed` object already exists. | unchecked | `docs/clone-hero/code/6142/cli_loader_3968D0.asm:58` and `:72` (the loader's one game call before the chart load is the list getter, so it builds nothing) and `docs/clone-hero/code/6142/songentry_load_35C110.asm:141-145` (the chart load reads the object and throws when it is null; scored command-line runs, LS-P2 run 2, passed it) | LS1. Live only: the settings loader `0x374D50` has no direct caller (byte scan, 2026-11-25) and one pointer to it in the DLL's data, so no listing shows what runs it or when; only a run shows the object exists at the loader's entry. T2's null refusal makes a wrong P30 fail loud before anything is set |
+| P31: The int setting's vtable slot +0x2C8 holds the clamp `0xFE5B10`. | code | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs:533834-533840` (slot 25 of the generic setting class, the int instance at RVA 0xFE5B10; the vtable starts at +0x138 with 16 bytes a slot, so slot 25 is +0x2C8), `dump.cs:534655-534743` and `dump.cs:532111-532198` (the two subclasses: TypeDefIndex 8354 overrides slots 20 to 24 and 26, and 8308 overrides none, so neither overrides 25) and `docs/clone-hero/code/6142/int_setting_set_FE5F50.asm:1-4` | checked 2026-11-25 |
+| P32: The stats file's `playback_speed` is the setting's value when `EndOfSong.Start` reads it, before any restore method runs. | code | `docs/clone-hero/code/6142/endofsong_start_speed_read_15DF80.asm:28-48`, `docs/clone-hero/code/6142/stats_song_fields_252200.asm:8` and `:77`, `docs/clone-hero/code/6142/scorestats_json_252630.asm:138-140`, and the four call sites of the three restore methods, none inside Start, in `docs/clone-hero/code/6142/endofsong_speed_restore_160260.md` | checked 2026-11-25; the one gap, a restore reached by a method pointer from inside Start, is named on TM-63 and LS3's `ch_compare` would show it |
+| P33: No path is ever registered for the empty ini name, so a file load with it loads nothing. | code | `docs/clone-hero/code/6142/ini_register_caller_235340.asm:42-64` (the ninth registration, 'highway_' plus a name), `docs/clone-hero/code/6142/ini_save_2112DB0.md` (the other eight registrations' names), `docs/clone-hero/code/6142/ini_file_load_2114A80.asm:61-73` and `:95-104` (the lookup, then no file, so the saver and a return) | checked 2026-11-25 |
 | P35: The launch agent takes every RVA from the arm message, writes one byte, then hooks the loader's entry; the hook only counts runs and reads the patch site. The page says "The launch agent calls no game method." | code | `tools/ch_mcp/agent/launch_core.ts:141-198`, `tools/ch_mcp/agent/launch.ts:45-72` and `docs/agents/clone-hero-mcp.md:35` | checked 2026-11-25 |
 | P36: The command-line start calls the loader, then the scene change; the loader's chart load reads the speed ratio. | code | `docs/clone-hero/code/6142/cli_start_398F00.asm:44-58`, `docs/clone-hero/code/6142/cli_start_398F00.asm:115-122`, `docs/clone-hero/code/6142/cli_loader_3968D0.asm:72` and `docs/clone-hero/code/6142/songentry_load_35C110.asm:141-152` | checked 2026-11-25 |
 | P37: `GameManager.Awake` stores the speed ratio at GameManager+0xD8. | code | `docs/clone-hero/code/6142/gm_awake_B41A0.asm:85-92` | checked 2026-11-25 |
-| P38: An end-of-song method calls the setter with `GlobalVariables` +0x5C, and the clamp turns a value below 10 into 10. | code | `docs/clone-hero/code/6142/endofsong_speed_restore_160260.asm:41-57` and `docs/clone-hero/code/6142/int_setting_clamp_FE5B10.asm:30-45` | checked 2026-11-25; rests on P31 for the link between setter and clamp |
+| P38: An end-of-song method calls the setter with `GlobalVariables` +0x5C, and the clamp turns a value below 10 into 10. | code | `docs/clone-hero/code/6142/endofsong_speed_restore_160260.asm:41-57` and `docs/clone-hero/code/6142/int_setting_clamp_FE5B10.asm:30-45` | checked 2026-11-25; the link between setter and clamp is P31 |
 | P39: A call of a game method from the launch agent's entry hook, on the game's own thread, works. | unchecked | `tools/ch_mcp/agent/launch.ts:63-69` is the hook; no run has made a call from it; live only | LS1; blocks nothing (T2 is built first; LS2 and LS3 wait on LS1) |
 | P40: The game plays the song at 5000%, and the audio library accepts the tempo 4900 the audio load passes (value minus 100). | unchecked | `docs/clone-hero/code/6142/audio_load_36B700.asm:114-120` shows the subtraction only; the library's range is outside the game's code; live only | LS3; blocks nothing |
 | P41: The command-line parser knows no speed option. | code | `docs/clone-hero/code/6142/cli_args_parse_395C10.asm:12-35` | checked 2026-11-25 |
