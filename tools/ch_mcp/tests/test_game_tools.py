@@ -721,6 +721,27 @@ class GameToolsTest(unittest.TestCase):
         self.assertLessEqual(set(named),
                              set(inspect.signature(GT.GameTools.ch_compare).parameters))
 
+    def test_ch_compare_fails_the_playback_speed_line_when_the_game_played_another_speed(self):
+        # The run asked for 5000%, the speed the plan's run plays at; the saved
+        # stats file says the game played another speed.
+        run = dataclasses.replace(self._window_map_run(), playback_speed=5000)
+        with open(WINDOW_MAP_STATS, encoding="utf-8-sig") as f:
+            played = json.load(f)["playback_speed"]
+        self.assertNotEqual(played, run.playback_speed)
+        reply = self.real_tools().ch_compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE, run.checksum,
+                                             run.playback_speed, run.no_fail, list(run.modifiers))
+        lines = reply.splitlines()
+        speed = [line for line in lines if line.startswith("playback_speed: ")]
+        self.assertEqual(len(speed), 1, lines)
+        self.assertTrue(speed[0].startswith("playback_speed: FAIL; "), speed[0])
+        self.assertIn(f"game {played} ", speed[0])
+        self.assertTrue(speed[0].endswith(f"run {run.playback_speed}"), speed[0])
+        # The other three settings are the ones the game played, so they pass.
+        for name in ("checksum", "no_fail", "modifiers"):
+            self.assertTrue([line for line in lines if line.startswith(f"{name}: pass; ")],
+                            (name, lines))
+        self.assertEqual(lines[-1], "fail")
+
     def test_ch_compare_takes_an_empty_modifier_list_as_given(self):
         run = self._window_map_run()
         self.assertTrue(run.modifiers)
@@ -2121,6 +2142,112 @@ class GameToolsTest(unittest.TestCase):
         self.assertNotIn("path_index", reply)
         self.assertTrue(reply.startswith(f"refused: song_folder {song} "), reply)
         self._assert_started_nothing(tools)
+
+    # -- the song speed (task T3 of docs/superpowers/plans/2026-11-25-ch-speed-run.md) ----
+
+    # A speed other than the game's default: the speed the plan's run plays at.
+    FAST_SPEED = 5000
+
+    def _schedule_at_speed(self, speed):
+        """The early-fill prep's schedule, written to a temp file with
+        `speed` as its recorded song speed, as hydra_replay schedule records
+        it (GT.SCHEDULE_SPEED_KEY)."""
+        doc = GT.schedule_doc(self.EFL_SCHEDULE)
+        doc[GT.SCHEDULE_SPEED_KEY] = speed
+        path = os.path.join(self.tmp, f"schedule-at-{speed}.json")
+        _write(path, json.dumps(doc).encode())
+        return path
+
+    def _start_set_speed(self, tools, speed):
+        """Open a human launch's run on `tools` whose launch record holds
+        `speed` as the speed ch_start set in the game. The run is taken off
+        again when the test ends, so nothing tries to stop its game."""
+        launch = B.HumanLaunch(game=None, agent=None, patch={}, form=B.LAUNCH_FORMS[0])
+        launch.song_speed = speed
+        tools._run = B.Run(song_dir=None, backup_dir=self.tmp, command=[], game=None,
+                           launched_at=0.0, cap_s=None, length_ms=None, length_source=None,
+                           before=None, launch=launch)
+        self.addCleanup(setattr, tools, "_run", None)
+        self.assertEqual(tools.started_song_speed(), speed)
+
+    def _both_replies(self, tools, schedule):
+        """ch_run_chart's and ch_play_chart's replies on `schedule`, asked
+        for its own path, on a song folder that is not its chart's."""
+        index, _dump = self._schedule_source(schedule)
+        song = os.path.join(self.tmp, "another song")
+        return (tools.ch_run_chart(song, self.EFL_SCORE, schedule, "System", path_index=index),
+                tools.ch_play_chart(self.EFL_SCORE, schedule, route="keys", path_index=index))
+
+    def test_a_schedule_at_another_speed_than_the_game_is_refused_before_the_attach(self):
+        fast = self.FAST_SPEED
+        cases = (
+            # A schedule made at the fast speed, and a start that set none:
+            # the game is at its default.
+            ("start set none", self._schedule_at_speed(fast), None,
+             fast, GT.GAME_DEFAULT_SONG_SPEED),
+            # A schedule made at the default, and a start that set the fast
+            # speed.
+            ("start set fast", self._schedule_at_speed(GT.GAME_DEFAULT_SONG_SPEED), fast,
+             GT.GAME_DEFAULT_SONG_SPEED, fast),
+            # A schedule from before hydra_replay recorded a speed counts as
+            # UNRECORDED_SCHEDULE_SPEED.
+            ("unrecorded schedule, start set fast", self.EFL_SCHEDULE, fast,
+             GT.UNRECORDED_SCHEDULE_SPEED, fast))
+        self.assertNotIn(GT.SCHEDULE_SPEED_KEY, GT.schedule_doc(self.EFL_SCHEDULE))
+        self.assertNotIn(fast, (GT.GAME_DEFAULT_SONG_SPEED, GT.UNRECORDED_SCHEDULE_SPEED))
+        for name, schedule, set_speed, made, game in cases:
+            with self.subTest(case=name):
+                tools = self._server_tools()
+                if set_speed is not None:
+                    self._start_set_speed(tools, set_speed)
+                for reply in self._both_replies(tools, schedule):
+                    self.assertTrue(reply.startswith(f"refused: {schedule} "), reply)
+                    self.assertIn(f"made at song speed {made}%", reply)
+                    self.assertIn(f"the game is at {game}%", reply)
+                    self.assertTrue(reply.endswith("nothing started"), reply)
+                    self._assert_started_nothing(tools)
+
+    def test_a_schedule_at_the_games_speed_passes_the_speed_check(self):
+        fast = self.FAST_SPEED
+        cases = (("both fast", self._schedule_at_speed(fast), fast),
+                 ("both default", self._schedule_at_speed(GT.GAME_DEFAULT_SONG_SPEED), None),
+                 ("unrecorded schedule, start set none", self.EFL_SCHEDULE, None))
+        for name, schedule, set_speed in cases:
+            with self.subTest(case=name):
+                tools = self._server_tools()
+                if set_speed is not None:
+                    self._start_set_speed(tools, set_speed)
+                self.assertIsNone(GT.song_speed_refusal(GT.schedule_doc(schedule), schedule,
+                                                        tools.started_song_speed()))
+                # ch_run_chart goes past the speed check: the song folder's
+                # check, the next one, is the one that refuses. ch_play_chart
+                # is not asked, because past its checks it starts a play.
+                index, _dump = self._schedule_source(schedule)
+                reply = tools.ch_run_chart(os.path.join(self.tmp, "another song"),
+                                           self.EFL_SCORE, schedule, "System", path_index=index)
+                self.assertTrue(reply.startswith("refused: song_folder "), reply)
+                self._assert_started_nothing(tools)
+
+    def test_a_schedule_whose_recorded_speed_is_not_a_whole_percent_is_refused(self):
+        for speed in (None, "5000", 5000.0, True):
+            with self.subTest(speed=speed):
+                schedule = self._schedule_at_speed(speed)
+                tools = self._server_tools()
+                for reply in self._both_replies(tools, schedule):
+                    self.assertTrue(reply.startswith(f"refused: {schedule} records its song "
+                                                     "speed as "), reply)
+                    self.assertTrue(reply.endswith("nothing started"), reply)
+                    self._assert_started_nothing(tools)
+
+    def test_started_song_speed_is_none_with_no_run_or_a_launch_that_set_none(self):
+        tools = self._server_tools()
+        self.assertIsNone(tools.started_song_speed())
+        # A bot or menu launch has no human launch record.
+        tools._run = B.Run(song_dir=None, backup_dir=self.tmp, command=[], game=None,
+                           launched_at=0.0, cap_s=None, length_ms=None, length_source=None,
+                           before=None, launch=None)
+        self.addCleanup(setattr, tools, "_run", None)
+        self.assertIsNone(tools.started_song_speed())
 
     def test_builds_json_in_the_run_folder(self):
         t, _events, _seen = self._chain_rig()
