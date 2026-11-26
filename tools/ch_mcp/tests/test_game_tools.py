@@ -2143,7 +2143,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(reply.startswith(f"refused: song_folder {song} "), reply)
         self._assert_started_nothing(tools)
 
-    # -- the song speed (task T3 of docs/superpowers/plans/2026-11-25-ch-speed-run.md) ----
+    # -- the song speed ----
 
     # A speed other than the game's default: the speed the plan's run plays at.
     FAST_SPEED = 5000
@@ -3870,6 +3870,19 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                 for key in ("band", "no_frame_aim_ms", "window_from_ms", "window_to_ms"):
                     self.assertNotIn(key, entry)
                 self.assertEqual(entry["elements"], unmoved[index]["elements"])
+
+    def test_the_probe_refuses_a_schedule_made_at_another_song_speed(self):
+        # A game whose start set no speed is at the default; the schedule
+        # was made at another. The refusal comes before any play.
+        t, _seen = self._probe_rig()
+        doc = dict(SCHEDULE_JSON, **{GT.SCHEDULE_SPEED_KEY: 5000})
+        schedule = self._json("fast-schedule.json", doc)
+        reply = t.tools.ch_edge_probe(t.r.song, self._json("score.json", SCORE_JSON), schedule,
+                                      self._json("probes.json", []))
+        self.assertTrue(reply.startswith(f"refused: {schedule} "), reply)
+        self.assertIn("made at song speed 5000%", reply)
+        self.assertIn(f"the game is at {GT.GAME_DEFAULT_SONG_SPEED}%", reply)
+        self.assertIsNone(t.tools._play)
 
     def test_the_probe_needs_the_kit(self):
         # A GameTools with no kit set up, as the server starts.

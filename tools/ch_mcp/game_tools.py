@@ -472,7 +472,7 @@ def path_index_refusal(doc: dict, schedule_json: str, path_index: object) -> Opt
 
 
 # The schedule file's key for the song speed, in percent, that hydra_replay
-# schedule made it at (tools/replay.cpp writes it; it names the speed the way
+# schedule made it at (tools/replay_schedule.cpp writes it; it names the speed the way
 # app::Settings and core::Song do).
 SCHEDULE_SPEED_KEY = "speed_percent"
 
@@ -1453,7 +1453,8 @@ class GameTools:
         the schedule's song end (schedule_run_cap_s). The press rows go to a
         press-<n>.csv in the session folder as they happen. Needs
         ch_kit_setup, as ch_play_chart's kit route does, and plays through
-        play_chart.live_in_game as that route does."""
+        play_chart.live_in_game as that route does. A schedule made at
+        another song speed than the game's is refused (song_speed_refusal)."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
@@ -1463,6 +1464,11 @@ class GameTools:
             # A refusal closes the player again, so no unused player keeps
             # listening to the agent.
             try:
+                refusal = song_speed_refusal(schedule_doc(schedule_json), schedule_json,
+                                             self.started_song_speed())
+                if refusal is not None:
+                    player.close()
+                    return refusal
                 chords, plan_lines = chords_to_play(schedule_json)
                 cap_s = schedule_run_cap_s(schedule_json)[0]
             except ChordsRefused as e:
