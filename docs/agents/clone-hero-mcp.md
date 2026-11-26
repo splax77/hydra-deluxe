@@ -82,3 +82,17 @@ The agents now skip any `GameManager` the game has destroyed. Every Unity object
 The one live run that checked this skip (2026-10-29) is recorded in docs/clone-hero/07-internals.md (IN-03). If a later read at the menu still says "song over" with `destroyed: 0`, the game kept a `GameManager` alive, and the skip would not tell them apart.
 
 If the game is updated, `ch_attach`, `ch_trace_start` and `ch_method_watch_start` refuse until a dump of the new build exists, and the refusal names the scripts to run. That check reads only the version string in the game's own version file, so a changed game that keeps its version string passes it. The launch agent (`tools/ch_mcp/agent/launch.ts`) checks no build at all; it rests on its two byte checks. It writes its one byte only when the loader's first bytes and the patch site both read as `tools/ch_mcp/launch_patch.json` lists them, and otherwise it refuses with nothing written (`applyPatch` in `tools/ch_mcp/agent/launch_core.ts`).
+
+## A dry run of the frame picker, with no game
+
+Before a kit run on a dense schedule, you can find out offline how the kit agent's frame picker would treat each press. `tools/ch_mcp/agent/frame_dry_run.py` plays a schedule through `PressSchedule.step` in `press_schedule.ts`, one frame at a time, and adds up what the picker reports: presses sent, dropped, skipped and marked `no_frame_in_band`, sent presses whose judge time fell outside their band, and the most presses the picker looked at in one frame. It decides nothing itself. Plain Node runs the TypeScript, as `tools/ch_mcp/tests/test_press_schedule.py` does, so it needs no `node_modules` and no build.
+
+The `play` message is the live run's own. The script calls `play_chart.play_in_game` with a stand-in player that keeps the first message posted and ends the call there, and takes the run cap from `game_tools.schedule_run_cap_s`, as `ch_run_chart` does. No Star Power end is read, so no retime reaches the picker, and a press waiting on one carries the note `retime_missed`.
+
+The frames are either a frame clock log a run wrote (`--frames`), whose steps are played again from the top when the schedule outlasts them, or an even step (`--even-step-ms`). `start_clock_ms` in the script says where the first frame's clock sits. The wall time moves with the clock; the picker reads the wall only for its cap, its stall check and when it reports a press. The script refuses to run unless `settings.ini` holds the `--framerate` and `--multiplier` you give it. It exits 0 when no press was dropped or marked `no_frame_in_band`, and 2 otherwise:
+
+```
+py -I tools/ch_mcp/agent/frame_dry_run.py <schedule.json> --frames <frame_clock-1.csv> --even-step-ms 0.1894 --framerate 330 --multiplier 16 --json <out.json>
+```
+
+`--json` writes each list's counts with the seq, chord index and clock of every dropped, `no_frame_in_band` and judged-outside press.
