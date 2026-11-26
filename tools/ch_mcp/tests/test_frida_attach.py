@@ -79,9 +79,14 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 # called by name, and each real `.invoke(` and the NativeFunction trace to a
 # literal lookup. A name set by destructuring or `for ... of` has no
 # lookup source, so it is a finding, not a miss.
+# launch.ts runs before il2cpp starts, so it looks nothing up by name: its
+# list names launch_patch.json's `calls`, and its one NativeFunction must sit
+# in LAUNCH_CALLER, which checks that list (LaunchAgentTest pins both).
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
-LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
+LAUNCH_LISTED = "launch.ts"
+LAUNCH_CALLER = "callGame"
+LISTED_AGENTS = (MENU_AGENT, KIT_AGENT, LAUNCH_LISTED)
 KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
 # name when it is a string literal.
@@ -224,6 +229,13 @@ def call_findings(texts: dict[str, str]) -> list[str]:
                              f"by a literal name: {lines[n - 1].strip()}")
         for m in _NATIVE_FUNCTION.finditer(text):
             n = text.count("\n", 0, m.start()) + 1
+            if name == LAUNCH_LISTED:
+                scope = _enclosing_function(text, m.start())
+                if (scope is None or scope[0] != LAUNCH_CALLER
+                        or "ALLOWED_CALLS.includes(" not in text[scope[2]:scope[3]]):
+                    found.append(f"{name}:{n}: calls a game function outside "
+                                 f"{LAUNCH_CALLER}: {lines[n - 1].strip()}")
+                continue
             address = re.match(r"\s*\(\s*(\w+)\s*\.\s*virtualAddress\s*,", text[m.end():])
             if address is None or _traced_name(
                     text, m.end() + address.start(1) + len(address.group(1))) is None:
@@ -1813,13 +1825,39 @@ class LaunchAgentTest(unittest.TestCase):
 
     def test_the_launch_files_are_scanned_with_the_other_agents(self):
         # The by-name and allowed-calls tests above read every agent_sources
-        # file, so these two get them too. Neither holds an ALLOWED_CALLS
-        # list, so neither may look up or call a game method.
+        # file, so these two get them too. Only launch.ts holds a list.
         names = [os.path.basename(p) for p in agent_sources()]
         self.assertIn(LAUNCH_AGENT, names)
         self.assertIn(LAUNCH_CORE, names)
-        self.assertEqual(allowed_calls(self.read(LAUNCH_AGENT)), [])
         self.assertEqual(allowed_calls(self.read(LAUNCH_CORE)), [])
+
+    def test_the_one_call_is_on_launch_ts_own_list(self):
+        # launch.ts's list is launch_patch.json's `calls`, one name, each way.
+        with open(os.path.join(_REPO_ROOT, "tools", "ch_mcp", "launch_patch.json"),
+                  encoding="utf-8") as fh:
+            data = json.load(fh)
+        listed = allowed_calls(self.read(LAUNCH_AGENT))
+        self.assertEqual(listed, [c["name"] for c in data["calls"]])
+        self.assertEqual(len(listed), 1)
+        # One NativeFunction in the two files, in the caller that checks the
+        # list, and one call of that caller besides its definition.
+        launch, core = self.read(LAUNCH_AGENT), self.read(LAUNCH_CORE)
+        self.assertEqual(len(_NATIVE_FUNCTION.findall(launch)), 1)
+        self.assertEqual(len(_NATIVE_FUNCTION.findall(core)), 0)
+        self.assertEqual(call_findings({LAUNCH_AGENT: launch}), [])
+        self.assertEqual(len(re.findall(rf"\b{LAUNCH_CALLER}\(", launch)), 2)
+        # launch_core.ts asks for a call at one place only, by a listed name.
+        self.assertEqual(len(re.findall(r"\bio\.call\(", core)), 1)
+        self.assertEqual(re.findall(r'SETTER_CALL\s*=\s*"(\w+)"', core), listed)
+
+    def test_a_native_function_outside_the_caller_fails(self):
+        good = self.read(LAUNCH_AGENT)
+        bad = good + "function other() { new NativeFunction(ptr(1), \"void\", []); }\n"
+        findings = call_findings({LAUNCH_AGENT: bad})
+        self.assertEqual(len(findings), 1, findings)
+        self.assertIn(f"outside {LAUNCH_CALLER}", findings[0])
+        unchecked = good.replace("ALLOWED_CALLS.includes(", "[].includes(")
+        self.assertEqual(len(call_findings({LAUNCH_AGENT: unchecked})), 1)
 
     def test_neither_launch_file_holds_an_address(self):
         # Every RVA arrives in the arm message, from launch_patch.json.
@@ -1830,7 +1868,7 @@ class LaunchAgentTest(unittest.TestCase):
     def test_the_check_catches_a_patch_outside_the_observer(self):
         good = self.read(LAUNCH_AGENT)
         self.assertEqual(patch_findings(good), [])
-        deferred = "setImmediate(() => patchModule(patch, module));"
+        deferred = "setImmediate(() => patchModule(patch, module, speed));"
         self.assertEqual(good.count(deferred), 1, deferred)
         calls = "patchModule( appears {} times, expected its definition and the observer's two calls"
         observer = ("the observer's callback does not call patchModule once "

@@ -10,5 +10,26 @@
     "entry_expect": "40 56 57 41 55 48 81 EC C0 00 00 00",
     "patch_rva": "0x396EC5",
     "expect": "BA 01 00 00 00",
-    "write": "BA 00 00 00 00"
+    "write": "BA 00 00 00 00",
+    "calls": [
+        {
+            "name": "int_setting_set",
+            "rva": "0xFE5F50",
+            "dump_line": 533735,
+            "signature": "ʹʶʿʹʲʳʲʲʼʵʶ<int>.ʸʾʵʽʳʾʾʻʷʲʽ(int)",
+            "returns": "void",
+            "args": ["pointer", "int", "pointer"]
+        }
+    ],
+    "song_speed": {
+        "about": "Where the launch agent finds the game's song_speed setting and what it must hold before the one call above sets it, on the loader's first run, only when ch_start armed a speed. The object is static +0x10 of the class whose TypeInfo slot is at typeinfo_rva, with its statics at +0xB8 (docs/clone-hero/code/6142/settings_load_374D50.asm lines 2028 to 2030); the value, minimum and maximum are at +0x10, +0x14 and +0x18 (int_setting_clamp_FE5B10.asm lines 15 to 17); min and max are the limits the setting is built with (settings_load_374D50.asm lines 2020 to 2025, TM-59 on docs/clone-hero/03-timing.md). ch_start refuses a speed outside min and max before anything runs, and the agent refuses an object whose own limits differ. The setter stores the value and clamps it (int_setting_set_FE5F50.asm); its third argument is never read, so the agent passes null.",
+        "typeinfo_rva": "0x3C98320",
+        "statics_offset": "0xB8",
+        "object_offset": "0x10",
+        "value_offset": "0x10",
+        "min_offset": "0x14",
+        "max_offset": "0x18",
+        "min": 10,
+        "max": 5000
+    }
 }

@@ -62,12 +62,35 @@ if (c.op === "apply") {
             calls.push(["hook", rva]);
             hook = onEnter;
         },
+        // The speed's memory: `slots` maps an RVA to the pointer stored
+        // there, `words` maps "pointer+offset" to what is stored there, and
+        // the setter stores into `set_result ?? value` at the object's value.
+        readSlot(rva) {
+            calls.push(["slot", rva]);
+            return c.slots[rva] ?? "0";
+        },
+        readPointer(at, offset) {
+            calls.push(["pointer", at, offset]);
+            return c.words[`${at}+${offset}`] ?? "0";
+        },
+        readInt(at, offset) {
+            calls.push(["int", at, offset]);
+            return c.words[`${at}+${offset}`];
+        },
+        call(fn, args) {
+            calls.push(["call", fn.name, fn.rva, args]);
+            c.words[`${args[0]}+${c.value_at}`] = c.set_result ?? args[1];
+        },
     };
+    const speed = core.readSpeed(c.patch, c.song_speed);
     const status = core.applyPatch(core.readPatch(c.patch), io, c.module,
-                                   () => c.now);
+                                   () => c.now, speed);
     for (let i = 0; i < (c.loader_runs ?? 0); i++) { hook(); }
     out.status = status;
     out.calls = calls;
+} else if (c.op === "read_speed") {
+    try { out.speed = core.readSpeed(c.patch, c.song_speed); }
+    catch (e) { out.error = e.message; }
 } else if (c.op === "read_patch") {
     try { out.patch = core.readPatch(c.patch); }
     catch (e) { out.error = e.message; }
@@ -187,6 +210,120 @@ class ApplyPatchTest(unittest.TestCase):
                          ["read", SITE, len(hex_bytes(PATCH["expect"]))])
         self.assertEqual(kinds(out["calls"]),
                          ["read", "read", "write", "read", "hook", "read"])
+
+
+SPEED = PATCH["song_speed"]
+SETTER = next(c for c in PATCH["calls"] if c["name"] == "int_setting_set")
+# Made-up pointers for the class, its statics and the song_speed object.
+KLASS, STATICS, OBJECT = "0x1000", "0x2000", "0x3000"
+# The speed the plan arms, inside the patch's own limits.
+ARMED = SPEED["max"]
+
+
+def speed_memory(min_=None, max_=None, before=None, null=None) -> dict:
+    """The speed's part of an apply case: the setting found by the patch's
+    own RVA and offsets, holding the patch's own limits unless told
+    otherwise. `null` names the one pointer that reads as null: "slot",
+    "statics" or "object"."""
+    slots = {SPEED["typeinfo_rva"]: "0" if null == "slot" else KLASS}
+    words = {
+        f"{KLASS}+{SPEED['statics_offset']}": "0" if null == "statics" else STATICS,
+        f"{STATICS}+{SPEED['object_offset']}": "0" if null == "object" else OBJECT,
+        f"{OBJECT}+{SPEED['min_offset']}": SPEED["min"] if min_ is None else min_,
+        f"{OBJECT}+{SPEED['max_offset']}": SPEED["max"] if max_ is None else max_,
+        f"{OBJECT}+{SPEED['value_offset']}": SPEED["min"] if before is None else before,
+    }
+    return {"slots": slots, "words": words, "value_at": SPEED["value_offset"]}
+
+
+def speed_calls(calls: list) -> list:
+    """The calls after the patch site's read at the loader's first run."""
+    first_run = [i for i, c in enumerate(calls) if c[0] == "hook"][0] + 2
+    return calls[first_run:]
+
+
+@unittest.skipIf(NODE is None, "node is not on PATH, so launch_core.ts cannot run")
+class SpeedTest(unittest.TestCase):
+    def test_the_speed_is_found_checked_set_once_and_read_back(self):
+        out = apply(song_speed=ARMED, loader_runs=1, **speed_memory())
+        self.assertEqual(speed_calls(out["calls"]), [
+            ["slot", SPEED["typeinfo_rva"]],
+            ["pointer", KLASS, SPEED["statics_offset"]],
+            ["pointer", STATICS, SPEED["object_offset"]],
+            ["int", OBJECT, SPEED["min_offset"]],
+            ["int", OBJECT, SPEED["max_offset"]],
+            ["int", OBJECT, SPEED["value_offset"]],
+            ["call", SETTER["name"], SETTER["rva"], [OBJECT, ARMED, "0"]],
+            ["int", OBJECT, SPEED["value_offset"]],
+        ])
+        status = out["status"]
+        self.assertEqual(status["state"], "patched")
+        self.assertEqual(status["speed"], {
+            "value": ARMED, "state": "set", "object": OBJECT,
+            "min": SPEED["min"], "max": SPEED["max"],
+            "before": SPEED["min"], "after": ARMED})
+
+    def test_no_speed_armed_reads_and_calls_nothing(self):
+        out = apply(loader_runs=1, **speed_memory())
+        self.assertEqual(kinds(out["calls"]),
+                         ["read", "read", "write", "read", "hook", "read"])
+        self.assertNotIn("speed", out["status"])
+
+    def test_before_the_loader_runs_nothing_is_called(self):
+        out = apply(song_speed=ARMED, **speed_memory())
+        self.assertEqual(kinds(out["calls"]), ["read", "read", "write", "read", "hook"])
+        self.assertEqual(out["status"]["speed"]["state"], "armed")
+
+    def test_each_failure_point_refuses_with_no_call(self):
+        cases = {
+            "a null slot": (speed_memory(null="slot"), SPEED["typeinfo_rva"]),
+            "null statics": (speed_memory(null="statics"), SPEED["statics_offset"]),
+            "a null object": (speed_memory(null="object"), SPEED["object_offset"]),
+            "another minimum": (speed_memory(min_=SPEED["min"] + 1), str(SPEED["min"] + 1)),
+            "another maximum": (speed_memory(max_=SPEED["max"] - 1), str(SPEED["max"] - 1)),
+        }
+        for what, (memory, named) in cases.items():
+            with self.subTest(case=what):
+                out = apply(song_speed=ARMED, loader_runs=1, **memory)
+                status = out["status"]
+                self.assertEqual(status["state"], "refused")
+                self.assertEqual(status["speed"]["state"], "refused")
+                self.assertNotIn("call", kinds(out["calls"]))
+                self.assertIn(named, status["reason"])
+
+    def test_a_read_back_that_differs_refuses(self):
+        out = apply(song_speed=ARMED, loader_runs=1, set_result=SPEED["min"],
+                    **speed_memory())
+        status = out["status"]
+        self.assertEqual(kinds(out["calls"]).count("call"), 1)
+        self.assertEqual(status["state"], "refused")
+        self.assertEqual(status["speed"]["after"], SPEED["min"])
+        self.assertIn(str(ARMED), status["reason"])
+
+    def test_the_setter_is_called_on_the_first_run_only(self):
+        out = apply(song_speed=ARMED, loader_runs=2, **speed_memory())
+        self.assertEqual(kinds(out["calls"]).count("call"), 1)
+        self.assertEqual(out["status"]["loader_runs"], 2)
+        self.assertEqual(out["status"]["speed"]["state"], "set")
+
+    def test_a_speed_outside_the_patch_limits_is_refused_at_the_arm(self):
+        for value in (SPEED["min"] - 1, SPEED["max"] + 1, 1.5, "5000", True):
+            with self.subTest(value=value):
+                out = run({"op": "read_speed", "patch": PATCH, "song_speed": value})
+                self.assertIn("song speed", out["error"])
+        self.assertIsNone(run({"op": "read_speed", "patch": PATCH,
+                               "song_speed": None})["speed"])
+
+    def test_a_missing_speed_field_is_named(self):
+        for key in ("typeinfo_rva", "statics_offset", "object_offset", "value_offset",
+                    "min_offset", "max_offset", "min", "max"):
+            with self.subTest(field=key):
+                block = {k: v for k, v in SPEED.items() if k != key}
+                out = run({"op": "read_speed", "patch": {**PATCH, "song_speed": block},
+                           "song_speed": ARMED})
+                self.assertIn(f'"{key}"', out["error"])
+        out = run({"op": "read_speed", "patch": {**PATCH, "calls": []}, "song_speed": ARMED})
+        self.assertIn(SETTER["name"], out["error"])
 
 
 @unittest.skipIf(NODE is None, "node is not on PATH, so launch_core.ts cannot run")
