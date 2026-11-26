@@ -471,6 +471,43 @@ def path_index_refusal(doc: dict, schedule_json: str, path_index: object) -> Opt
     return None
 
 
+# The schedule file's key for the song speed, in percent, that hydra_replay
+# schedule made it at (tools/replay_schedule.cpp writes it; it names the speed the way
+# app::Settings and core::Song do).
+SCHEDULE_SPEED_KEY = "speed_percent"
+
+# The speed of a schedule that has no SCHEDULE_SPEED_KEY: hydra_replay wrote
+# such files before it took a speed, so it made them at the default speed,
+# kNormalSpeedPercent in src/core/model.h.
+UNRECORDED_SCHEDULE_SPEED = 100
+
+# The song speed of a game whose start set none: the game's own default, which
+# no file loads (TM-58 on docs/clone-hero/03-timing.md).
+GAME_DEFAULT_SONG_SPEED = 100
+
+
+def song_speed_refusal(doc: dict, schedule_json: str, game_speed: Optional[int]) -> Optional[str]:
+    """Why a run may not play the schedule `doc` (read from `schedule_json`)
+    in a game at `game_speed`, or None when the schedule was made at that
+    speed. `game_speed` is the speed this session's ch_start set in the game
+    (GameTools.started_song_speed); None means it set none, so the game is at
+    GAME_DEFAULT_SONG_SPEED. A schedule's press times hold only at the speed
+    it was made at, and nothing rescales them, so another speed is refused."""
+    game = GAME_DEFAULT_SONG_SPEED if game_speed is None else game_speed
+    made = doc.get(SCHEDULE_SPEED_KEY, UNRECORDED_SCHEDULE_SPEED)
+    if not isinstance(made, int) or isinstance(made, bool):
+        return (f"refused: {schedule_json} records its song speed as {made!r}, not a whole "
+                "percent, so the speed it was made at is unknown; make it again with "
+                "hydra_replay schedule; nothing started")
+    if made != game:
+        how = ("this session's ch_start set it" if game_speed is not None
+               else "this session's ch_start set no speed, so the game is at its default")
+        return (f"refused: {schedule_json} was made at song speed {made}%, but the game is "
+                f"at {game}% ({how}); make the schedule at {game}% or start the game at "
+                f"{made}%; nothing started")
+    return None
+
+
 def schedule_chart_folder(doc: dict, schedule_json: str) -> str:
     """The song folder of the chart the schedule `doc` was made from: the
     folder of its `chart`, the --chart file hydra_replay schedule read.
@@ -1175,6 +1212,15 @@ class GameTools:
         with self._lock:
             return self._watch.line() if self._watch is not None else None
 
+    def started_song_speed(self) -> Optional[int]:
+        """The song speed, in percent, that this session's ch_start set in
+        the open run's game, or None when it set none. Only a human launch
+        can set one, so it is the launch's record (bot_run.HumanLaunch's
+        song_speed); a bot or menu launch, and a game the server did not
+        start, set none. song_speed_refusal reads it."""
+        launch = self._run.launch if self._run is not None else None
+        return launch.song_speed if launch is not None else None
+
     def ch_play_chart(self, score_json: str, schedule_json: str, log: Optional[str] = None,
                       song_folder: Optional[str] = None, route: Optional[str] = None,
                       path_index: int = 0) -> str:
@@ -1189,7 +1235,9 @@ class GameTools:
         to the focused window); None means the kit, and is refused until the
         kit is set up, so no run takes the keyboard unless asked to.
         `path_index` is the path of the dump the caller means to play; a
-        schedule made from another path is refused (path_index_refusal).
+        schedule made from another path is refused (path_index_refusal), and
+        so is one made at another song speed than the game's
+        (song_speed_refusal).
         The schedule says which gems each press sends and when, a declined
         fill's kept gems among them; a schedule load_schedule refuses is
         refused here in its words (chords_to_play). The reply's declined_line,
@@ -1213,8 +1261,10 @@ class GameTools:
                     return (f"route {ROUTE_KIT}: the kit is not set up; call ch_kit_setup first, "
                             f'or pass route="{ROUTE_KEYS}"')
                 try:
-                    refusal = path_index_refusal(schedule_doc(schedule_json), schedule_json,
-                                                 path_index)
+                    doc = schedule_doc(schedule_json)
+                    refusal = (path_index_refusal(doc, schedule_json, path_index)
+                               or song_speed_refusal(doc, schedule_json,
+                                                     self.started_song_speed()))
                     if refusal is not None:
                         return refusal
                     chords, plan_lines = chords_to_play(schedule_json)
@@ -1295,7 +1345,8 @@ class GameTools:
                 return PLAY_ALREADY_RUNNING
             try:
                 doc = schedule_doc(schedule_json)
-                refusal = path_index_refusal(doc, schedule_json, path_index)
+                refusal = (path_index_refusal(doc, schedule_json, path_index)
+                           or song_speed_refusal(doc, schedule_json, self.started_song_speed()))
                 if refusal is not None:
                     return refusal
                 chart_folder = schedule_chart_folder(doc, schedule_json)
@@ -1405,7 +1456,8 @@ class GameTools:
         the schedule's song end (schedule_run_cap_s). The press rows go to a
         press-<n>.csv in the session folder as they happen. Needs
         ch_kit_setup, as ch_play_chart's kit route does, and plays through
-        play_chart.live_in_game as that route does."""
+        play_chart.live_in_game as that route does. A schedule made at
+        another song speed than the game's is refused (song_speed_refusal)."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
@@ -1415,6 +1467,11 @@ class GameTools:
             # A refusal closes the player again, so no unused player keeps
             # listening to the agent.
             try:
+                refusal = song_speed_refusal(schedule_doc(schedule_json), schedule_json,
+                                             self.started_song_speed())
+                if refusal is not None:
+                    player.close()
+                    return refusal
                 chords, plan_lines = chords_to_play(schedule_json)
                 cap_s = schedule_run_cap_s(schedule_json)[0]
             except ChordsRefused as e:
