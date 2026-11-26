@@ -160,7 +160,39 @@ S4: the picker's per-frame work grows with the schedule. Report it; it goes to a
 
 S5: the settings line does not set the speed.
 
+## The bot-style route (added at the user's request, "Yes, add it")
+
+This section was added late and is a first sketch, not a finished design. It names the reads that must come first. No task builds on it until they are done.
+
+The idea in plain words: the game's own bot never presses a pad. Each frame, `BasePlayer.Update` asks a method for the next chart note whose time has come, and hands that note's own time to the engine as a hit (IN-69, proven in the game's code). So a bot plays many notes inside one frame, each at its exact time, and a long frame costs nothing. That removes the one thing that sinks the frame route: the 5 frames over 48.15 ms in P4. But a Bot-kind player gains no Star Power (SP-44), and Hydra's path has 302 activations. So the route would keep the player kind Player and feed our schedule's judge times through that same loop.
+
+I recommend this route be read first, and the frame route kept as the fallback. The reason is the numbers at the top: the frame route's expected result is a miss on today's evidence, and the bot-style route is the only idea on the table that does not depend on frame length. T1, T3 and T4 serve both routes, so they lose nothing. T2 serves both. T5's dry run is still worth its small cost, because it says whether the fallback exists at all.
+
+Four things are unknown, and each is a read before any build. The main session or an `rea` read does them; nobody guesses.
+
+### R1: does the engine update hit one pad or the whole chord?
+
+Read the engine update at RVA 0x20F4550 on the path `BasePlayer.Update` takes at 0x20A425. The question: when it is called with a time as a hit, which notes does it mark hit, and can the caller choose pads? We need per-pad control for fills the path passes over (`kept_gems`), for squeeze order groups, and for cymbal against tom. Result: a new block on page 07. If the answer is "the whole chord, no choice", stop SB1.
+
+### R2: does a hit fed this way earn Star Power for a Player-kind player, and how is activation sent?
+
+Read the Star Power gain method (RVA 0x20F4FA0, SP-44) for what it needs besides the kind, and find where the fed hit reaches it. Then read how an activation is asked for on this path, since no pad is pressed. If activation needs a real pad press, the route still needs the kit for those 302 presses, and the result says so.
+
+### R3: how does the Replay kind feed its inputs?
+
+IN-64 says a profile holding a replay (its +0xE0) gets the Replay kind. Read what the replay object holds and how `BasePlayer.Update` reads it. The question: could our schedule be written as a replay, with no hook at all? Also read whether the gain method lets a Replay kind earn Star Power; SP-44 names only Bot and RemotePlayer as blocked.
+
+### R4: what would a hook on 0x208F50 change?
+
+Write down exactly what the hook would do: replace the method's return value and its out time for a Player-kind player. Check it against the allowed list in `docs/agents/clone-hero-mcp.md` ("Safety rules"), which allows method calls, field writes and trace hooks, and names the launch agent as the only one that changes what the game's own code does. A hook that changes a return value is not on that list, so it is question 4.
+
+Stops: SB1, R1 shows no per-pad control. SB2, R2 shows a fed hit earns no Star Power for a Player. Either one drops this route, and the frame route's T5 result decides whether anything goes live.
+
+After R1 to R4, a second plan designs the feed, with its own tasks, live steps, Promise map and Premise map. This plan does not design it, because every design choice depends on those reads.
+
 ## Questions
+
+4. If the reads favour the hook: may an agent hook the game method at RVA 0x208F50 and replace what it returns, in memory only, for the length of a run? Today's allowance covers method calls, field writes and trace hooks, and one launch byte. If yes, the game on disk is still never written, and the run would play notes at their exact times whatever the frame length. If no, the bot-style route is limited to the Replay kind (R3), or dropped.
 
 1. May the offline half (T1 to T5) start? You will see no change in Hydra or the game. You will get the dry run's counts: how many of the path's presses would be dropped on recorded frames and on even frames. If you say no, nothing is built and the answer to "can we test the path" stays "not with today's tool".
 
@@ -201,6 +233,9 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | The game is confirmed at 5000% before the full run | LS2 | LS2 | LS2's pass line, stop S5 |
 | The game's score equals Hydra's | LS3 | LS3 | `ch_compare` passes every line |
 | Results reach the Clone Hero pages | T6 | T6 | criteria 1 and 2 |
+| No build rests on the bot-style route before its reads | "The bot-style route", paragraph 1 | R1 to R4 | each read ends in a labelled block on page 07 or 05; this plan holds no build task for the route |
+| A route with no per-pad control or no Star Power is dropped | "The bot-style route", Stops | R1, R2 | stops SB1 and SB2 |
+| A return-value hook waits for the user's yes | "The bot-style route", R4 | R4 | question 4 |
 
 ## Premise map
 
@@ -225,4 +260,10 @@ Finding the cause of the long frames. Changing where presses are aimed to surviv
 | P17: `ch_compare` compares the game's `playback_speed` with the run's as two integers. | code | `tools/ch_mcp/compare_scorestats.py:99-117` | checked 2026-11-25 |
 | P18: The user never wants a run that does not match Hydra. | ruling | `docs/sessions/2026-11-23-537dcff7.md` line 16: "why would i ever want a run that doesnt match hydra?" | checked 2026-11-25 |
 | P19: The player refuses a schedule with an infeasible squeeze, with text that says "at 100% speed". | code | `tools/ch_probe/experiments/play_chart.py:320-330` | checked 2026-11-25 |
+| P21: A bot is fed the next due chart note and the loop hands that note's time to the engine update as a hit. | data | `IN-69` on docs/clone-hero/07-internals.md, "Proven in the game's code" | checked 2026-11-25 |
+| P22: A Bot or RemotePlayer kind gains no Star Power; a profile holding a replay gets the Replay kind. | data | `SP-44` on docs/clone-hero/05-star-power.md and `IN-64` on docs/clone-hero/07-internals.md, both "Proven in the game's code" | checked 2026-11-25 |
+| P23: The engine update called with a time can hit chosen pads, not only a whole chord. | unchecked | `IN-69` says only that the note's time is passed; RVA 0x20F4550 was not read for this | R1 |
+| P24: A hit fed through the loop earns Star Power for a Player kind, and an activation can be sent on that path. | unchecked | `SP-44` covers the Bot kind only | R2 |
+| P25: The Replay kind plays back timed inputs our schedule could be written as. | unchecked | `IN-64` names the kind; the replay object was not read | R3 |
+| P26: A hook that replaces a method's return value is outside today's allowance. | unchecked | `docs/agents/clone-hero-mcp.md:35` lists what agents may do and does not name it | question 4 |
 | P20: The schedule header says the per-note window is at 100% speed. | code | `tools/replay_schedule.h:8` | checked 2026-11-25 |
