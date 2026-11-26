@@ -141,6 +141,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70		0x251A70
 6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200		0x252200
 6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630		0x252630
+6142	method	1037		ʾʶʳˀʼʿʳʹʹʶˀ	0x253060		0x253060
 6142	method	1037		ˁʺʾʾʵʲʲʻˀʿʵ	0x253EF0		0x253EF0
 6142	method	1043		ʷʺʽʲʵʵʹˀʹˁʷ	0x247CB0		0x247CB0
 6142	method	1043		ˀʵʺʼʾʷˀˀʿˁʿ	0x24DC30		0x24DC30
@@ -435,6 +436,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	13401	SequenceStart	get_NestingIncrease	0x102040		0x102040
 6142	method	13404	StreamStart	get_NestingIncrease	0x102040		0x102040
 6142	method	13404	StreamStart	get_Type	0x102040		0x102040
+6142	method	13467		ʺʷʻʲʴʺʷʺʺʶʴ	0x26410		0x26410
 6142	method	13500		ˀˁʲʼʽʽʸʺʾʹʺ	0x322B0		0x322B0
 6142	method	136		ʵʼʲʹʹʷʼʾʻʾˁ	0x84220		0x84220
 6142	method	136		ʶʸʸʿʻʿʿʹʵˀʲ	0x102040		0x102040
@@ -601,12 +603,14 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	2798	RuntimeMethodInfo	get_core_clr_security_level	0x102040		0x102040
 6142	method	2799	RuntimeConstructorInfo	get_BindingFlags	0x84220		0x84220
 6142	method	2799	RuntimeConstructorInfo	get_core_clr_security_level	0x102040		0x102040
+6142	method	280		MoveNext	0x3A5A20		0x3A5A20
 6142	method	2807	RuntimePropertyInfo	get_BindingFlags	0x84220		0x84220
 6142	method	282	CliGameLauncher	ʴʶʲʻʳʵʳʽʲʳʿ	0x395C10		0x395C10
 6142	method	282	CliGameLauncher	ʴʾʹʶʺˁʼʳʼʾʹ	0x396110		0x396110
 6142	method	282	CliGameLauncher	ʵˀʾʹʽʶʵʷʲʽʹ	0x3964F0		0x3964F0
 6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
 6142	method	282	CliGameLauncher	ʽʲˀʲʵʾʴʷʴʷʸ	0x398440		0x398440
+6142	method	282	CliGameLauncher	ˀʽʿʵʸʷʲʵʶʸʳ	0x398F00		0x398F00
 6142	method	2875	GregorianCalendar	GetEra	0x102040		0x102040
 6142	method	2879	HijriCalendar	GetAdvanceHijriDate	0x84220		0x84220
 6142	method	2880	JapaneseCalendar	GetErasFromRegistry	0x84220		0x84220
@@ -617,6 +621,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	3151	StreamReader.NullStreamReader	ReadLine	0x84220		0x84220
 6142	method	3161	TextReader.NullTextReader	Read	0x84220		0x84220
 6142	method	3161	TextReader.NullTextReader	ReadLine	0x84220		0x84220
+6142	method	3177	File	Exists	0x1B1AB40		File.Exists
 6142	method	3177	File	OpenWrite	0x1B1B6E0		File.OpenWrite
 6142	method	3187	Stream.NullStream	Read	0x84220		0x84220
 6142	method	3187	Stream.NullStream	Seek	0x84220		0x84220
@@ -788,6 +793,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	608	LeaderboardsOnlineManager	ʿʲʳˀʶʿʷʻʵˀʳ	0x139AD0		0x139AD0
 6142	method	612		ˀʵʲʲʻʸʸʽʹʽˁ	0x13F8B0		0x13F8B0
 6142	method	612		ˀʾʻʷʿʿʶʵʻʲʷ	0x13F8E0		0x13F8E0
+6142	method	613		ʾʻʿʷˀʾʳʽʳˀʴ	0x142330		0x142330
 6142	method	617	DrumsNoteRenderer	Update	0x1370A0		0x1370A0
 6142	method	617	DrumsNoteRenderer	Update	0x1370A0		DrumsNoteRenderer.Update
 6142	method	649		ʿʺˁʼʿʶʲʻʲˁʶ	0x102040		0x102040
@@ -863,7 +869,13 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	7098	XmlSchemaDatatype	get_Variety	0x84220		0x84220
 6142	method	711	EndOfSong	Start	0x15DC20		0x15DC20
 6142	method	711	EndOfSong	Start	0x15DC20		EndOfSong.Start
+6142	method	711	EndOfSong	Update	0x163BB0		0x163BB0
+6142	method	711	EndOfSong	ʸʵʵˁʵʶʼʹʺʹʸ	0x160260		0x160260
+6142	method	711	EndOfSong	ʹʵʵʽˀʼʺʽʽʷʹ	0x160650		0x160650
+6142	method	711	EndOfSong	ʽʷʽʿʾʹʶˀʴʷʿ	0x160BA0		0x160BA0
+6142	method	711	EndOfSong	ˀʵʼʳʳʷʹʲˀʼʻ	0x161480		0x161480
 6142	method	711	EndOfSong	ˀʾʲʾˀʵʳʷʲʸʵ	0x161C70		0x161C70
+6142	method	711	EndOfSong	ˁˀʸʶʶˁʹʿʴʸʾ	0x1637E0		0x1637E0
 6142	method	7132	XmlSchemaObject	get_IdAttribute	0x84220		0x84220
 6142	method	7132	XmlSchemaObject	get_NameAttribute	0x84220		0x84220
 6142	method	7203	Axis	get_Type	0x84220		0x84220
@@ -1138,6 +1150,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8316		ʼʴʷʽˀʺʻʹʿʺʲ	0x210D9C0		0x210D9C0
 6142	method	8316		ʾʵʺˀʺˀʶʺʵʵʶ	0x210D780		0x210D780
 6142	method	8333		ʾˁʲʻʹʽʶʹʶʲʹ<object>	0x5FAD90		0x5FAD90
+6142	method	8338		ʴˁʿˀʶʸʺʶʴʻʴ	0xFE5B10		0xFE5B10
 6142	method	8338		ʸʾʵʽʳʾʾʻʷʲʽ	0xFE5F50		0xFE5F50
 6142	method	8351		ʳʴʽʲʺʹˁʵʼʶʴ	0x210DD00		0x210DD00
 6142	method	8351		ʴʼʺˀˁʹʼʸʵʹʸ	0x210E2A0		0x210E2A0
@@ -1158,6 +1171,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0		0x211BAD0
 6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270		0x211C270
 6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0		0x211E4C0
+6142	method	8513		.cctor	0x21159A0		0x21159A0
 6142	method	8513		ʴˀʺʳʲʺʴʴʽʷʳ	0x2112BF0		0x2112BF0
 6142	method	8513		ʷʶʿʲʾʽʷʺʳʲʵ	0x2112DB0		0x2112DB0
 6142	method	8513		ʷʿʳʽʺʿʲʸʽˀʽ	0x2113300		0x2113300

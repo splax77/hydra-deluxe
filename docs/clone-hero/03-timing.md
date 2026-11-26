@@ -436,7 +436,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### TM-34 The calibration and speed settings and their limits
 
-Rule: Audio and video calibration are whole-millisecond settings in the `[offsets]` section, keys `audio` and `video`, default 0, limited to -2000 to 2000. The song speed setting is a whole percent, default 100, limited to 10 to 5000. The setting's constructor clamps the default into the range.
+Rule: Audio and video calibration are whole-millisecond settings in the `[offsets]` section, keys `audio` and `video`, default 0, limited to -2000 to 2000. The song speed setting is a whole percent, default 100, limited to 10 to 5000. The setting's constructor clamps the default into the range. The song speed is not loaded from settings.ini (TM-58), so it holds the default until the int setter changes it (TM-59).
 Label: Proven in the game's code
 Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio and video) and 2017 to 2035 (song speed); `code/6142/setting_base_ctor_2116210.asm` for the clamp.
 Game code (6142): the settings loader (scrambled names), RVA `0x374D50`; the int setting constructor `0x210C470`; the base constructor `0x2116210`.
@@ -560,11 +560,71 @@ Found: 2026-11-23, session 46353d99.
 
 Rule: `GameManager.Awake` sets practiceSpeed to the speed ratio, and the clock tick advances the raw clock by deltaTime x practice speed / ratio (TM-12), so outside practice mode the raw clock moves one second per second of wall time at every speed. With TM-56 that keeps the clock and the notes in the same seconds.
 Label: Proven in the game's code
-Evidence: `code/6142/gm_awake_B41A0.asm` lines 85 to 92 (settings static +0x10, the `song_speed` setting, through `0x210C090`, stored at GameManager+0xD8); the load coroutine copies +0xD8 into the clock (`code/6142/gm_load_coroutine_D8D80.asm` lines 472 and 473, TM-41); `code/6142/clock_tick_16C650.asm` line 16 divides by the ratio at clock+0x2C. Lines 93 to 103 of the Awake listing also store the setting's whole value minus 100 at GameManager+0xDC; its readers were not searched. Other writers of +0xD8 before a song loads, such as a practice-mode screen, were not searched.
+Evidence: `code/6142/gm_awake_B41A0.asm` lines 85 to 92 (settings static +0x10, the `song_speed` setting, through `0x210C090`, stored at GameManager+0xD8); the load coroutine copies +0xD8 into the clock (`code/6142/gm_load_coroutine_D8D80.asm` lines 472 and 473, TM-41); `code/6142/clock_tick_16C650.asm` line 16 divides by the ratio at clock+0x2C. Lines 93 to 103 of the Awake listing also store the setting's whole value minus 100 at GameManager+0xDC; its readers were not searched. Other writers of +0xD8 before a song loads, such as a practice-mode screen, were not searched. On a command-line start Awake runs after the chart has loaded (TM-60).
 Game code (6142): `GameManager.Awake`, RVA `0xB41A0`, `code/6142/gm_awake_B41A0.asm` lines 85 to 103.
 Hydra: `MsIndex` (src/core/timing.h line 75) gives played time, the seconds this clock counts, at every speed (TM-56); the Preview's `PreviewClock` (src/app/preview_clock.h line 20) runs one song second per second of wall time. Hydra has no practice mode.
 Ruling: none needed: same rule
 Found: 2026-11-23, session 46353d99.
+
+### TM-58 The song speed setting belongs to no ini file
+
+Rule: The `song_speed` setting is built under the ini class's static key whose two strings are the empty string and "tmp", not under the settings file's `[game]` section. The saver skips every key whose first string is empty, and a file load takes only the keys filed under the ini name it is given. So a `song_speed` line in settings.ini is not what the game's speed comes from, and the game writes none.
+Label: Proven in the game's code
+Evidence: `code/6142/settings_load_374D50.asm` line 2015 reads the key at the ini class's static +0x30 and line 2026 hands it to the setting's constructor; `code/6142/ini_class_cctor_21159A0.asm` lines 106 to 117 build that key from '' and 'tmp'; `code/6142/ini_save_2112DB0.asm` lines 100 to 105 skip a key whose first string is ''; `code/6142/ini_file_load_2114A80.asm` lines 61 to 73 look the given name up in the name-to-path dictionary and lines 145 to 163 pass over every entry whose name is not the one given; `code/6142/ini_save_2112DB0.md` and `code/6142/ini_register_caller_235340.asm` lines 42 to 64 show that all nine direct callers of the path registration `0x2112BF0` pass a non-empty name, so no path is ever registered for the empty name and a load with it finds no file.
+Game code (6142): the ini class's static constructor, RVA `0x21159A0`; its file load `0x2114A80`; its saver `0x2112DB0`; its path registration `0x2112BF0`; the settings loader `0x374D50`.
+Hydra: no owner: Hydra reads no Clone Hero settings file for the speed; its own speed is `Settings::speed_percent` (TM-34).
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-25, session aa0ce9ac.
+
+### TM-59 The song speed changes only through the int setter, which clamps and saves nothing
+
+Rule: The int setter stores the new value in the setting and ends in a clamp that pulls it into the setting's own minimum and maximum, 10 and 5000 for `song_speed`. It fires no event and writes no file. An end-of-song method calls it with the number `GlobalVariables` holds at +0x5C, and a replay function calls it with a number from its replay object.
+Label: Proven in the game's code
+Evidence: `code/6142/int_setting_set_FE5F50.asm` lines 2 to 4 (the store at +0x10 and the tail call through vtable +0x2C8); `code/6142/int_setting_clamp_FE5B10.asm` lines 15 to 17 and 30 to 45 (value, minimum +0x14, maximum +0x18, two integer compare calls, no other call); `code/6142/endofsong_speed_restore_160260.asm` lines 41 to 57 (who calls it: `code/6142/endofsong_speed_restore_160260.md`); `code/6142/replay_header_write_3A5A20.asm` lines 207 to 220. `dump.cs` lines 533834 to 533840 give slot 25 of the setting class (vtable +0x2C8) and the int instance at RVA `0xFE5B10`, and neither subclass lists a Slot 25 override (`code/6142/int_setting_clamp_FE5B10.md`). Not read: the pause menu's and song select's calls, and who writes +0x5C.
+Game code (6142): the int setter, RVA `0xFE5F50`; the clamp `0xFE5B10`; the end-of-song method `0x160260`; the replay function `0x3A5A20`.
+Hydra: no owner: Hydra sets no game setting; `kMinSpeedPercent` and `kMaxSpeedPercent` in src/core/model.h hold the same two limits for Hydra's own setting (TM-34).
+Ruling: none needed: same limits
+Found: 2026-11-25, session aa0ce9ac.
+
+### TM-60 On a command-line start the speed is read when the chart loads, before the gameplay scene
+
+Rule: The command-line start runs the player loader, which loads the chart, and only afterwards asks for the "Gameplay" scene. The chart load reads the speed ratio (TM-56), and `GameManager.Awake` reads it again once the scene exists (TM-57). The audio load then takes the setting's value minus 100 as its tempo. So a speed set after the loader's chart load leaves the chart's times at the old speed.
+Label: Proven in the game's code
+Evidence: `code/6142/cli_start_398F00.asm` line 49 (the loader call) and lines 115 to 122 (the scene change, after it); `code/6142/cli_loader_3968D0.asm` line 72 (the chart load); `code/6142/songentry_load_35C110.asm` lines 141 to 152; `code/6142/gm_awake_B41A0.asm` lines 85 to 92; `code/6142/gm_load_coroutine_D8D80.asm` lines 156 to 162 and 205 to 210; `code/6142/audio_load_36B700.asm` lines 114 to 120. Not checked: the range of tempo the audio library accepts.
+Game code (6142): the command-line start, RVA `0x398F00`; the loader `0x3968D0`; `SongEntry` load `0x35C110`; `GameManager.Awake` `0xB41A0`; the load coroutine `0xD8D80`; the audio load `0x36B700`.
+Hydra: `Song::set_speed_percent` (src/core/song.h line 212) must likewise run before `Song::build_timing`.
+Ruling: none needed: same order
+Found: 2026-11-25, session aa0ce9ac.
+
+### TM-61 The framerate setting runs from 60 to 2010 and the frame multiplier from 1 to 25
+
+Rule: The `framerate` setting is built with minimum 60, maximum 2010 and step argument 10, and its default is twice a number the loader reads just before. The `simulated_frame_multiplier` setting is built with default 1, minimum 1 and maximum 25. Whether the game reaches framerate times multiplier frames a second at the top of both ranges is not known.
+Label: Proven in the game's code
+Evidence: `code/6142/settings_load_374D50.asm` lines 449 to 459 (`framerate`: 0x3C, 0x7DA, 0xA, default `rbx + rbx`) and lines 1481 to 1491 (`simulated_frame_multiplier`: 1, 0x19, 1). The constructor's argument order is the one `song_speed` shows at lines 2017 to 2027 (default, minimum, maximum, step).
+Game code (6142): the settings loader, RVA `0x374D50`; the int setting constructor `0x210C470`.
+Hydra: no owner: Hydra reads neither setting; the run tool's copy of the multiplier's limits is `FRAME_MULTIPLIER_MAX` in tools/ch_mcp/game_files.py.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-25, session aa0ce9ac.
+
+### TM-62 The online section's maxsongspeed and lowsongspeed are separate settings
+
+Rule: `maxsongspeed` and `lowsongspeed` are two settings of the `[online]` section, each from 5 to 5000 with defaults 250 and 50, kept on a different class from `song_speed`. The song speed's clamp reads only the song speed setting's own minimum and maximum (TM-59), so neither online setting caps a value given to the int setter.
+Label: Proven in the game's code
+Evidence: `code/6142/online_settings_26410.asm` lines 93 to 107 and 114 to 127; `code/6142/int_setting_clamp_FE5B10.asm` lines 15 to 17. Not read: who reads the two online settings.
+Game code (6142): the online settings builder, RVA `0x26410`; the clamp `0xFE5B10`.
+Hydra: no owner: Hydra has no online play.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-25, session aa0ce9ac.
+
+### TM-63 The stats file's playback_speed is the song speed setting when EndOfSong.Start runs
+
+Rule: `EndOfSong.Start` passes the `song_speed` setting's current value to the stats object's fill method, which stores it at +0x38, and the stats serialiser writes `playback_speed` from that field. The end-of-song methods that put the speed back (TM-59) are not called from Start, so a speed set before the song is the speed the stats file records.
+Label: Proven in the game's code
+Evidence: `code/6142/endofsong_start_speed_read_15DF80.asm` lines 28 to 48 (settings static +0x10, its +0x10 into `r8d`, the call to `0x252200`); `code/6142/stats_song_fields_252200.asm` lines 8 and 77 (the argument stored at +0x38); `code/6142/scorestats_json_252630.asm` lines 138 to 140 (`playback_speed` from +0x38); `code/6142/endofsong_speed_restore_160260.md` (the four call sites of the three restore methods, none inside Start). Not shown: that no call through a method pointer inside Start reaches a restore method before the read.
+Game code (6142): `EndOfSong.Start` `0x15DC20`; the stats fill `0x252200`; the stats serialiser `0x252630`.
+Hydra: no owner: Hydra reads no stats file; `ch_compare` reads the file's `playback_speed` and checks it against the run's speed as two whole numbers.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-25, session aa0ce9ac.
 
 ## The lane-press window
 
