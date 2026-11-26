@@ -889,6 +889,173 @@ TEST_CASE("hydra_replay refuses --ms, --efill and --depth values that are not wh
     }
 }
 
+namespace {
+
+// The JSON file a hydra_replay run wrote with --out.
+nlohmann::json read_json_file(const std::string& path) {
+    std::ifstream in(fs::u8path(path), std::ios::binary);
+    REQUIRE_MESSAGE(in, "cannot read " << path);
+    return nlohmann::json::parse(in);
+}
+
+// The app's default settings with the song speed set to `percent`, the
+// settings a run given --speed `percent` builds.
+hydra::app::Settings settings_at_speed(int percent) {
+    hydra::app::Settings s{};
+    s.speed_percent = percent;
+    return s;
+}
+
+}  // namespace
+
+// --speed reaches the parser through Settings::reading(): every chord's time
+// at 200% is its time at the normal speed divided by the song's own speed
+// ratio, read off a Song loaded at the same settings. A flag that never
+// reached the parser would leave every time where it was.
+TEST_CASE("hydra_replay --speed times the chart at that song speed") {
+    CliSandbox box("replay_speed");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const hydra::Song fast = hydra::load_songpath(chart, settings_at_speed(200).reading());
+    const double ratio = fast.timing().speed_ratio();
+    REQUIRE(ratio != doctest::Approx(1.0));
+
+    const std::string normal_out = (box.dir / "normal.json").u8string();
+    const std::string fast_out = (box.dir / "fast.json").u8string();
+    const RunResult normal = run_exe(replay, {"score", "--chart", chart, "--out", normal_out});
+    INFO("score printed: " << normal.output);
+    REQUIRE(normal.exit_code == 0);
+    const RunResult at_200 =
+        run_exe(replay, {"score", "--chart", chart, "--speed", "200", "--out", fast_out});
+    INFO("score --speed 200 printed: " << at_200.output);
+    REQUIRE(at_200.exit_code == 0);
+
+    const nlohmann::json normal_doc = read_json_file(normal_out);
+    const nlohmann::json fast_doc = read_json_file(fast_out);
+    const nlohmann::json& normal_chords = normal_doc["chords"];
+    const nlohmann::json& fast_chords = fast_doc["chords"];
+    REQUIRE(!normal_chords.empty());
+    REQUIRE(normal_chords.size() == fast_chords.size());
+    bool any_time_moved = false;
+    for (size_t i = 0; i < normal_chords.size(); ++i) {
+        INFO("chord " << i);
+        REQUIRE(fast_chords[i]["tick"].get<int64_t>() == normal_chords[i]["tick"].get<int64_t>());
+        const double normal_ms = normal_chords[i]["ms"].get<double>();
+        const double fast_ms = fast_chords[i]["ms"].get<double>();
+        CHECK(fast_ms == doctest::Approx(normal_ms / ratio));
+        if (fast_ms != doctest::Approx(normal_ms)) any_time_moved = true;
+    }
+    CHECK(any_time_moved);
+}
+
+// --speed is a setting flag like --efill: text that is not a whole number, and
+// a percent of 0, stop the run naming the flag; a whole number past the
+// setting's range lands on the range's edge through Settings::clamp. The
+// speed the run was timed at is the one score records.
+TEST_CASE("hydra_replay refuses --speed 0 and text, and pulls a speed outside the range to its edge") {
+    CliSandbox box("replay_speed_flag");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const std::string out = (box.dir / "score.json").u8string();
+
+    for (const char* bad : {"0", "abc"}) {
+        const RunResult r = run_exe(replay, {"score", "--chart", chart, "--speed", bad, "--out", out});
+        INFO("--speed " << bad << " printed: " << r.output);
+        CHECK(r.exit_code == 2);
+        CHECK(contains(r.output, "--speed"));
+        CHECK(contains(r.output, std::string("\"") + bad + "\""));
+        CHECK_FALSE(fs::exists(fs::u8path(out)));
+        std::error_code ec;
+        fs::remove(fs::u8path(out), ec);  // a loose read writes it; the next run starts clean
+    }
+
+    REQUIRE(hydra::kMinSpeedPercent - 1 > 0);
+    const struct {
+        int typed;
+        int lands_on;
+    } pulled[] = {
+        {hydra::kMaxSpeedPercent + 1, hydra::kMaxSpeedPercent},
+        {hydra::kMinSpeedPercent - 1, hydra::kMinSpeedPercent},
+    };
+    for (const auto& p : pulled) {
+        const std::string typed = std::to_string(p.typed);
+        const RunResult r = run_exe(replay, {"score", "--chart", chart, "--speed", typed, "--out", out});
+        INFO("--speed " << typed << " printed: " << r.output);
+        REQUIRE(r.exit_code == 0);
+        CHECK(read_json_file(out)["speed_percent"].get<int>() == p.lands_on);
+        std::error_code ec;
+        fs::remove(fs::u8path(out), ec);
+    }
+}
+
+// The schedule file records the speed its song was timed at, read off the
+// song: for a run with no flag and one with --speed 200, the recorded speed
+// is the speed_percent() of a Song loaded at the same settings. The dump the
+// schedule reads its path from records it the same way. A typed constant
+// fails one of the two runs.
+TEST_CASE("hydra_replay schedule records the song speed it was made at") {
+    CliSandbox box("replay_schedule_speed");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const std::string dump_out = (box.dir / "dump.json").u8string();
+    const std::string schedule_out = (box.dir / "schedule.json").u8string();
+
+    const struct {
+        std::vector<std::string> flags;
+        hydra::app::Settings settings;
+    } runs[] = {
+        {{}, hydra::app::Settings{}},
+        {{"--speed", "200"}, settings_at_speed(200)},
+    };
+    for (const auto& run : runs) {
+        const int expected = hydra::load_songpath(chart, run.settings.reading()).speed_percent();
+        INFO("expected speed " << expected);
+        // The path limit is off, so the dump keeps a path at either speed for
+        // the schedule to plan.
+        std::vector<std::string> dump_args = {"dump", "--chart", chart, "--ms", "off", "--out", dump_out};
+        dump_args.insert(dump_args.end(), run.flags.begin(), run.flags.end());
+        const RunResult dumped = run_exe(replay, dump_args);
+        INFO("dump printed: " << dumped.output);
+        REQUIRE(dumped.exit_code == 0);
+        const nlohmann::json dump_doc = read_json_file(dump_out);
+        CHECK(dump_doc["speed_percent"].get<int>() == expected);
+        REQUIRE(!dump_doc["paths"].empty());
+
+        std::vector<std::string> schedule_args = {"schedule", "--chart", chart, "--ms", "off",
+                                                  "--path", dump_out, "--out", schedule_out};
+        schedule_args.insert(schedule_args.end(), run.flags.begin(), run.flags.end());
+        const RunResult scheduled = run_exe(replay, schedule_args);
+        INFO("schedule printed: " << scheduled.output);
+        REQUIRE(scheduled.exit_code == 0);
+        CHECK(read_json_file(schedule_out)["speed_percent"].get<int>() == expected);
+    }
+}
+
+// --safe-paths turns the app's "Safe paths" setting on in the settings the
+// run builds, and dump and score record that setting; without the flag it
+// keeps the app's default.
+TEST_CASE("hydra_replay --safe-paths sets the Safe paths setting") {
+    CliSandbox box("replay_safe_paths");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const std::string out = (box.dir / "out.json").u8string();
+    const bool default_safe_paths = hydra::app::Settings{}.safe_paths;
+    REQUIRE_FALSE(default_safe_paths);
+
+    for (const char* command : {"dump", "score"}) {
+        for (const bool flag : {false, true}) {
+            std::vector<std::string> args = {command, "--chart", chart, "--out", out};
+            if (flag) args.push_back("--safe-paths");
+            const RunResult r = run_exe(replay, args);
+            INFO(command << (flag ? " --safe-paths" : "") << " printed: " << r.output);
+            REQUIRE(r.exit_code == 0);
+            CHECK(read_json_file(out)["safe_paths"].get<bool>() == (flag ? true : default_safe_paths));
+            std::error_code ec;
+            fs::remove(fs::u8path(out), ec);
+        }
+    }
+}
+
 // The old skipped-fill decline option is gone: hydra_replay sends any flag it
 // does not know to unknown_option_line and exits 2, as it does for a typo.
 TEST_CASE("hydra_replay refuses --decline as an unknown option") {

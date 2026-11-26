@@ -1117,7 +1117,10 @@ nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& sett
     std::vector<const Activation*> acts;
     for (const Activation& act : path.walk_activations()) acts.push_back(&act);
     const ReplayResult replay = replay_path(song, windows_for_path(path), settings.rules);
-    return schedule_json(song, acts, replay, settings.rules);
+    nlohmann::json out = schedule_json(song, acts, replay, settings.rules);
+    out["speed_percent"] = song.speed_percent();
+    out["safe_paths"] = settings.safe_paths;
+    return out;
 }
 
 }  // namespace hydra::schedule

@@ -235,12 +235,16 @@ class LoadScheduleTest(unittest.TestCase):
                                    {"chord": 91, "kind": "SqOut", "feasible": False,
                                     "anchor_room_ms": -1.5, "squeeze_room_ms": -2.5,
                                     "safe_ms": -4.0}]}]
+        # A hand-picked speed other than the game's normal one.
+        doc["speed_percent"] = 200
         with self.assertRaises(ValueError) as caught:
             _write_and_load(doc, play_chart.load_schedule)
-        # The refusal names the squeeze's chord and the safe sum the file
-        # gives; its wording is the loader's.
+        # The refusal names the squeeze's chord, the safe sum the file gives
+        # and the speed the file records; its wording is the loader's.
         self.assertIn("chord 91", str(caught.exception))
         self.assertIn("safe sum -4 ms", str(caught.exception))
+        self.assertIn("200%", str(caught.exception))
+        self.assertNotIn("100%", str(caught.exception))
 
     def test_no_timing_constant_is_defined_in_python(self):
         # The schedule file's `constants` block is the list of timing numbers

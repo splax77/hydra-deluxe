@@ -5,8 +5,9 @@
 // SP-end steps and their anchors (Activation, core/model.h), each squeeze's
 // stored end, anchor and ratios, the steady spans (core/squeeze_rating.h),
 // and which windows paid each chord (ReplayChord::paid_by, core/replay.h).
-// The game's per-note hit window at 100% speed is core/note_window.h's.
-// Every press time in the file is the time the press should be judged, with
+// The game's per-note hit window is core/note_window.h's. Every time in the
+// file is played time at the song speed the file records as "speed_percent"
+// (TM-43 and TM-56 on docs/clone-hero/03-timing.md). Every press time in the file is the time the press should be judged, with
 // the band it may be judged in; when to send it so the game judges it then
 // is the player's, from the frame step it measures. The schedule keeps no
 // millisecond constant of its own.
@@ -319,7 +320,9 @@ std::optional<std::string> no_path_refusal(const nlohmann::json& doc, const std:
 // reads it): the windows are pinned through search_target so the engine's
 // own Activation records come back, then replayed. Throws std::runtime_error
 // with a plain line when the engine cannot realize the windows. The rules are
-// `settings.rules`, the ones the search and the replay price under.
+// `settings.rules`, the ones the search and the replay price under. The file
+// adds "speed_percent", the speed `song` is timed at (Song::speed_percent),
+// and "safe_paths", `settings.safe_paths`.
 nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& settings,
                                     const std::vector<ReplayWindow>& windows);
 
