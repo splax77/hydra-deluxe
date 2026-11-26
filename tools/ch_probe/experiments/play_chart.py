@@ -326,7 +326,9 @@ def load_schedule(path: str) -> Schedule:
                                   f"anchor room {q['anchor_room_ms']:g} ms, squeeze room "
                                   f"{q['squeeze_room_ms']:g} ms, safe sum {q['safe_ms']:g} ms)")
     if infeasible:
-        raise ValueError(f"{path} holds a squeeze the game cannot make at 100% speed: "
+        # The speed the file was made at, as hydra_replay schedule records it.
+        speed = doc["speed_percent"]
+        raise ValueError(f"{path} holds a squeeze the game cannot make at {speed}% speed: "
                          + "; ".join(infeasible))
     gems_of: dict = {}
     for row in rows:

@@ -499,9 +499,11 @@ deep the search; this is how you get its number anyway.
 file `dump` wrote and a path index (`--chart`, `--path`, `--index`, `--out`).
 For each fill the path passes over it sends every gem but the fill's
 activation note. It replays the path the way `score` does and writes one JSON
-file. For every chord the file gives its window side: the game's own hit window for that note at
-100% speed, which the gaps to the chords either side set
-(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). Every press time in
+file. For every chord the file gives its window side: the game's own hit window for that note,
+which the gaps to the chords either side set
+(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). Every time in the
+file is played time at the song speed the file records as `speed_percent`
+(TM-43 and TM-56 on the same page). Every press time in
 the file is the time the game should judge the press, not the time to send
 it. When to send a press so the game judges it then is the player's job,
 from the frame step it measures in the run, because the frame length is a
@@ -544,6 +546,13 @@ The schedule keeps no millisecond constant of its own; its `constants` are
 the game's window constants from src/core/note_window.h. No screen reads the
 schedule's code: Hydra's own judging keeps the fixed 85 ms timing step
 (`kTimingStepMs`).
+`score`, `dump`, `target` and `schedule` take `--speed N` and `--safe-paths`,
+the same as the app's "Song speed" and "Safe paths" settings. `--speed N`
+times the chart at N percent; a number outside the setting's range is pulled
+to its nearest edge, and 0 or text that is not a whole number is refused.
+Without either flag the run uses the setting's default. `dump`, `score` and
+`schedule` write the speed the chart was timed at as `speed_percent` and the
+Safe paths setting as `safe_paths`, so a file says which run made it.
 `hydra_replay selfcheck` is what keeps the numbers honest: it re-analyzes
 every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single

@@ -80,6 +80,8 @@ struct Args {
     std::optional<std::string> depth_mode;
     std::optional<int> depth;
     std::optional<std::string> efill;
+    std::optional<std::string> speed;
+    bool safe_paths = false;  // --safe-paths: the app's "Safe paths" on
     std::optional<bool> prodrums;
     std::optional<bool> bass2x;
     std::optional<bool> noteshuffle;
@@ -101,18 +103,22 @@ void usage() {
         "                     [--path <dump-or-target.json>] [--index N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy]\n"
+        "                     [--speed N] [--safe-paths]\n"
         "  hydra_replay dump  --chart <file> [--cap N] [--efill N]\n"
         "                     [--ms N|off] [--depth-mode scores|points] [--depth N]\n"
         "                     [--out <json>] [--pretty] [--legacy-fills]\n"
+        "                     [--speed N] [--safe-paths]\n"
         "  hydra_replay target --chart <file> [--ticks \"t1,t2,...\"]\n"
         "                     [--acts \"actTick:deactTick[:sqoutMs],...\"]\n"
         "                     [--path <dump-or-target.json>] [--index N] [--cap N]\n"
         "                     [--efill N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
+        "                     [--speed N] [--safe-paths]\n"
         "  hydra_replay schedule --chart <file> --path <dump-or-target.json> [--index N]\n"
         "                     [--out <json>] [--pretty]\n"
         "                     [--prodrums 0|1] [--bass2x 0|1] [--legacy-fills]\n"
+        "                     [--speed N] [--safe-paths]\n"
         "  hydra_replay selfcheck [--chart <file>] [--verbose]\n\n"
         "schedule writes the press schedule the auto-player sends for one path of\n"
         "a dump: each activation's SP-end steps and the chord each end moves with,\n"
@@ -160,6 +166,15 @@ void usage() {
         "score, dump and target take --noteshuffle 0|1: price the chart as Clone\n"
         "Hero 1.1's Note Shuffle modifier rearranges it, the same as the app's\n"
         "\"Note Shuffle\" setting.\n"
+        "Every command but selfcheck takes --speed N: time the chart at a song\n"
+        "speed of N percent, the same as the app's \"Song speed\" setting; without\n"
+        "it the run uses that setting's default. A number outside the setting's\n"
+        "range is pulled to its nearest edge, as the app's box does; 0 or below,\n"
+        "or text that is not a whole number, is refused.\n"
+        "Every command but selfcheck takes --safe-paths: search with the app's\n"
+        "\"Safe paths\" setting on. Without it the setting is off.\n"
+        "dump, score and schedule write the speed the chart was timed at as\n"
+        "\"speed_percent\" and the Safe paths setting as \"safe_paths\".\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
@@ -228,6 +243,19 @@ app::Settings settings_from(const Args& a) {
     if (a.depth) s.depth_value = *a.depth;
     if (a.efill) s.early_fill_window_ms = setting_flag_number("--efill", *a.efill);
 
+    if (a.speed) {
+        const int speed = setting_flag_number("--speed", *a.speed);
+        // A percent of 0 or below names no speed at all (Song::set_speed_percent
+        // refuses it too), so it is refused here, not pulled up to the range.
+        if (speed <= 0)
+            throw std::runtime_error("--speed takes a whole percent above 0, not \"" + *a.speed + "\"");
+        s.speed_percent = speed;
+    }
+
+    // Safe paths goes through Settings, so the search and the record key
+    // carry it together, as the app's "Safe paths" setting does.
+    if (a.safe_paths) s.safe_paths = true;
+
     // The 1.0 fill rule goes through Settings, so the search and the record
     // key carry it together, as the app's "1.0 fills" setting does.
     s.legacy_fills = a.legacy_fills;
@@ -236,7 +264,7 @@ app::Settings settings_from(const Args& a) {
     // (--depth -1 reads as 0, --ms 900 as 500). Settings::clamp owns the ranges.
     for (int Settings::* field : {&Settings::sp_cap, &Settings::mslimit_value,
                                   &Settings::depth_mode, &Settings::depth_value,
-                                  &Settings::early_fill_window_ms})
+                                  &Settings::early_fill_window_ms, &Settings::speed_percent})
         s.*field = Settings::clamp(field, s.*field);
     return s;
 }
@@ -481,6 +509,8 @@ int cmd_score(const Args& a, const app::Settings& s) {
 
     json out{{"chart", a.chart},
              {"chartmode", s.chartmode_key()},
+             {"speed_percent", song.speed_percent()},
+             {"safe_paths", s.safe_paths},
              {"activations", acts},
              {"chords", chords},
              {"final", final},
@@ -519,6 +549,8 @@ int cmd_dump(const Args& a, const app::Settings& s) {
     emit(json{{"hydra_replay_build", schedule::replay_build()},
               {"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
+              {"speed_percent", analysis.song.speed_percent()},
+              {"safe_paths", s.safe_paths},
               {"source", "analyzed"},
               {"sp_cap", rec.sp_cap ? *rec.sp_cap : -1},
               {"song_length_ms", schedule::song_length_json(
@@ -840,6 +872,8 @@ int main() {
             else if (k == "--depth-mode") a.depth_mode = next();
             else if (k == "--depth") a.depth = setting_flag_number(k, next());
             else if (k == "--efill") a.efill = next();
+            else if (k == "--speed") a.speed = next();
+            else if (k == "--safe-paths") a.safe_paths = true;
             else if (k == "--acts") a.acts = next();
             else if (k == "--path") a.path = next();
             // Parsed strictly: std::atoi turns a typo into 0, which would
