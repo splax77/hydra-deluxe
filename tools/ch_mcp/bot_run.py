@@ -752,9 +752,18 @@ def launch_human(cmd: list[str], env: Env, log_path: str,
     resumed_at = env.now()
     env.out("resumed the game")
 
+    # The last status that said patched while the speed was not yet set, so
+    # the cap's failure can say the speed was what it waited for.
+    speed_wait: Optional[dict] = None
     while True:
         remaining = LAUNCH_PATCH_CAP_S - (env.now() - resumed_at)
         if remaining <= 0:
+            if speed_wait is not None:
+                speed = speed_wait.get("speed")
+                said_speed = speed_line(speed) if isinstance(speed, dict) else "no speed part"
+                raise fail(f"the status said {STATE_PATCHED} but the song speed was still not "
+                           f"set {LAUNCH_PATCH_CAP_S:g} s after the resume (LAUNCH_PATCH_CAP_S); "
+                           f"loader runs: {speed_wait.get('loader_runs')}; {said_speed}")
             raise fail(f"the status still said {STATE_WAITING} {LAUNCH_PATCH_CAP_S:g} s after "
                        "the resume (LAUNCH_PATCH_CAP_S)")
         try:
@@ -767,6 +776,7 @@ def launch_human(cmd: list[str], env: Env, log_path: str,
         if state == STATE_PATCHED and song_speed is not None and (
                 not isinstance(speed, dict) or speed.get("state") != "set"):
             # Patched, but the loader has not run yet, so the speed waits.
+            speed_wait = status
             env.sleep(LAUNCH_POLL_S)
             continue
         if state == STATE_PATCHED:
