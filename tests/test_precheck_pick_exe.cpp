@@ -166,6 +166,21 @@ TEST_CASE("precheck --tests: a changed build file prints the whole suite and why
     check_lines_name_pick(pick);
 }
 
+TEST_CASE("precheck --tests: a version bump alone prints the tests naming the version, not the whole suite") {
+    // FX_VERSION is a name the picker can only learn from the build file.
+    const std::string cmake =
+        "project(Fx VERSION 1.2.0 LANGUAGES CXX)\n"
+        "target_compile_definitions(fx PUBLIC FX_VERSION=\"${PROJECT_VERSION}\")\n";
+    ExeRepo fx("precheck_pick_exe_version",
+               {{"CMakeLists.txt", cmake},
+                {"tests/test_version.cpp", "const char* v() { return FX_VERSION; }\n"},
+                {"tests/test_mode.cpp", "int m() { return 1; }\n"}});
+    fx.commit_tip({{"CMakeLists.txt", hydra::replace_all(cmake, "VERSION 1.2.0", "VERSION 1.3.0")}});
+    const TestPick pick = exe_prints_pick(fx);
+    REQUIRE_FALSE(pick.whole_suite);
+    CHECK(patterns_of(pick_lines(pick).front()) == std::vector<std::string>{"*test_version.cpp"});
+}
+
 TEST_CASE("precheck --tests: a range changing no code prints no tests, not an empty -sf= filter") {
     // An empty -sf= filter runs every test case.
     ExeRepo fx("precheck_pick_exe_none", {{"docs/plan.md", "old\n"}, {"tests/test_mode.cpp", "int m() { return 1; }\n"}});
